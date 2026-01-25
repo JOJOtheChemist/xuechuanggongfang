@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文章详情页</title>
+    <style>
+        /* --- 全局设置 --- */
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background-color: #F8F7FC; display: flex; justify-content: center; min-height: 100vh; }
+
+        /* 模拟手机容器 */
+        .mobile-container {
+            width: 100%;
+            max-width: 420px;
+            background: #ffffff;
+            min-height: 100vh;
+            box-shadow: 0 0 40px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        /* --- 1. 顶部导航 (可选) --- */
+        .nav-bar {
+            height: 50px;
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            position: sticky;
+            top: 0;
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            z-index: 10;
+            border-bottom: 1px solid #F3F4F6;
+        }
+        .back-btn { font-size: 20px; color: #374151; cursor: pointer; margin-right: 10px; }
+        .nav-title { font-size: 16px; font-weight: 600; color: #1F2937; }
+
+        /* --- 2. 文章主体 --- */
+        .article-content {
+            padding: 20px;
+            padding-bottom: 80px; /* 为底部栏留空 */
+        }
+
+        /* 标题 */
+        .article-h1 {
+            font-size: 22px;
+            font-weight: 800;
+            color: #111827;
+            line-height: 1.4;
+            margin-bottom: 16px;
+            letter-spacing: -0.5px;
+        }
+
+        /* 作者信息栏 */
+        .meta-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .author-avatar {
+            width: 36px; height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #8B5CF6, #7C3AED);
+            color: white;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 14px;
+            margin-right: 10px;
+        }
+
+        .meta-info { display: flex; flex-direction: column; }
+        .author-name { font-size: 14px; font-weight: 600; color: #374151; }
+        .publish-date { font-size: 12px; color: #9CA3AF; margin-top: 2px; }
+
+        /* 摘要块 (Summary Box) */
+        .summary-box {
+            background-color: #F5F3FF; /* 淡紫色背景 */
+            border-left: 4px solid #8B5CF6; /* 紫色装饰线 */
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+        }
+        .summary-text {
+            font-size: 14px;
+            color: #5B21B6;
+            line-height: 1.6;
+            font-weight: 500;
+        }
+
+        /* 正文区域 (Rich Text) */
+        .rich-text {
+            color: #374151;
+            font-size: 16px;
+            line-height: 1.8;
+        }
+        .rich-text p { margin-bottom: 16px; text-align: justify; }
+        .rich-text h2 {
+            font-size: 18px; font-weight: 700; color: #1F2937;
+            margin: 24px 0 12px 0;
+            display: flex; align-items: center;
+        }
+        /* 装饰性小标题 */
+        .rich-text h2::before {
+            content: ''; display: inline-block;
+            width: 6px; height: 18px;
+            background: #8B5CF6; border-radius: 4px;
+            margin-right: 8px;
+        }
+
+        /* 标签 */
+        .tags-row {
+            display: flex; gap: 8px; margin-top: 30px; flex-wrap: wrap;
+        }
+        .tag-pill {
+            background: #F3F4F6; color: #6B7280;
+            padding: 6px 12px; border-radius: 99px;
+            font-size: 12px; font-weight: 500;
+        }
+
+        /* --- 3. 底部互动栏 (Sticky Footer) --- */
+        .bottom-bar {
+            position: fixed;
+            bottom: 0; width: 100%; max-width: 420px;
+            background: white;
+            border-top: 1px solid #F3F4F6;
+            padding: 12px 20px;
+            display: flex; justify-content: space-between; align-items: center;
+            /* 毛玻璃效果 */
+            background: rgba(255,255,255,0.9);
+            backdrop-filter: blur(10px);
+        }
+
+        .view-stat {
+            display: flex; align-items: center; gap: 6px;
+            color: #9CA3AF; font-size: 13px; font-weight: 500;
+        }
+        .view-stat svg { width: 16px; height: 16px; stroke: currentColor; }
+
+        .like-btn {
+            display: flex; align-items: center; gap: 6px;
+            background: #F3F0FF;
+            color: #7C3AED;
+            padding: 8px 16px;
+            border-radius: 99px;
+            border: none;
+            font-size: 14px; font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        /* 点赞激活状态 */
+        .like-btn.liked {
+            background: #EF4444; /* 红色 */
+            color: white;
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        }
+        
+        /* 点赞图标动画 */
+        .like-btn svg { width: 18px; height: 18px; fill: currentColor; transition: transform 0.2s; }
+        .like-btn:active svg { transform: scale(1.3); }
+
+    </style>
+</head>
+<body>
+
+<div class="mobile-container">
+    
+    <div class="nav-bar">
+        <div class="back-btn">←</div>
+        <div class="nav-title">文章详情</div>
+    </div>
+
+    <div class="article-content">
+        
+        <h1 class="article-h1">专升本报名流程及注意事项</h1>
+
+        <div class="meta-row">
+            <div class="author-avatar">云</div>
+            <div class="meta-info">
+                <span class="author-name">云创管理员</span>
+                <span class="publish-date">2025-11-24 · 发布</span>
+            </div>
+        </div>
+
+        <div class="summary-box">
+            <div class="summary-text">
+                “ 详细解读报名时间、材料准备等关键信息，帮助考生梳理流程，避免错过重要节点。”
+            </div>
+        </div>
+
+        <div class="rich-text">
+            <p>2025年专升本考试即将拉开序幕，对于很多同学来说，这是提升学历的关键一步。为了帮助大家顺利完成报名，我们整理了以下核心流程。</p>
+            
+            <h2>01. 关键时间节点</h2>
+            <p>报名时间通常集中在12月初至12月中旬。请务必关注省教育考试院的官方公告，建议提前设置好手机提醒，避免因错过时间而无法补报。</p>
+            
+            <h2>02. 材料准备清单</h2>
+            <p>在系统开放前，请提前准备好身份证扫描件、学籍证明（学信网下载）、近期免冠蓝底证件照等电子版材料。</p>
+            
+            <p>特别注意：照片格式通常要求为JPG，大小不超过40KB，建议使用专业软件裁剪。</p>
+        </div>
+
+        <div class="tags-row">
+            <span class="tag-pill"># 报名指南</span>
+            <span class="tag-pill"># 避免错过重要节点</span>
+            <span class="tag-pill"># 专升本</span>
+        </div>
+
+    </div>
+
+    <div class="bottom-bar">
+        <div class="view-stat">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            1891 阅读
+        </div>
+
+        <button class="like-btn" onclick="toggleLike(this)">
+            <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+            <span class="like-count">134</span>
+        </button>
+    </div>
+
+</div>
+
+<script>
+    function toggleLike(btn) {
+        const countSpan = btn.querySelector('.like-count');
+        let count = parseInt(countSpan.innerText);
+
+        if (btn.classList.contains('liked')) {
+            // 取消点赞
+            btn.classList.remove('liked');
+            countSpan.innerText = count - 1;
+        } else {
+            // 点赞
+            btn.classList.add('liked');
+            countSpan.innerText = count + 1;
+        }
+    }
+</script>
+
+</body>
+</html>

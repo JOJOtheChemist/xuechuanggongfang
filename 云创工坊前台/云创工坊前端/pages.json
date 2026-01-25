@@ -1,0 +1,296 @@
+{
+	"easycom": {
+		"autoscan": true,
+		"custom": {
+			"^bottom-nav$": "@/components/dashboard/BottomNav.vue",
+			"^bento-stats-card$": "@/components/dashboard/BentoStatsCard.vue",
+			"^team-updates$": "@/components/dashboard/TeamUpdates.vue",
+			"^new-partners$": "@/components/dashboard/NewPartners.vue",
+			"^profile-header$": "@/components/profile/ProfileHeader.vue",
+			"^team-card$": "@/components/profile/TeamCard.vue",
+			"^wallet-card$": "@/components/profile/WalletCard.vue",
+			"^profile-stats-grid$": "@/components/profile/ProfileStatsGrid.vue",
+			"^profile-achievements$": "@/components/profile/ProfileAchievements.vue",
+			"^sales-summary$": "@/components/profile/SalesSummary.vue",
+			"^activity-feed$": "@/components/profile/ActivityFeed.vue",
+			"^business-header$": "@/components/business/BusinessHeader.vue",
+			"^business-grid$": "@/components/business/BusinessGrid.vue",
+			"^business-detail-card$": "@/components/business/BusinessDetailCard.vue",
+			"^article-list$": "@/components/business/ArticleList.vue",
+			"^check-in-card-compact$": "@/components/tasks/CheckInCardCompact.vue",
+			"^knowledge-section$": "@/components/tasks/KnowledgeSection.vue",
+			"^growth-log$": "@/components/tasks/GrowthLog.vue"
+		}
+	},
+	"pages": [
+		{
+			"path": "pages/dashboard/index",
+			"style": {
+				"navigationBarTitleText": "学创工坊"
+			}
+		},
+		{
+			"path": "pages/business/index",
+			"style": {
+				"navigationBarTitleText": "学习中心"
+			}
+		},
+		{
+			"path": "pages/task-center/index",
+			"style": {
+				"navigationBarTitleText": "任务中心"
+			}
+		},
+		{
+			"path": "pages/profile/index",
+			"style": {
+				"navigationBarTitleText": "个人中心"
+			}
+		}
+	],
+	"subPackages": [
+		{
+			"root": "pages/extra",
+			"pages": [
+				{
+					"path": "signup/index",
+					"style": {
+						"navigationBarTitleText": "报名"
+					}
+				},
+				{
+					"path": "leaderboard",
+					"style": {
+						"navigationBarTitleText": "积分排行榜"
+					}
+				},
+				{
+					"path": "team-dynamics",
+					"style": {
+						"navigationBarTitleText": "团队动态"
+					}
+				},
+				{
+					"path": "team-member-detail",
+					"style": {
+						"navigationBarTitleText": "成员详情"
+					}
+				},
+				{
+					"path": "goal-setting",
+					"style": {
+						"navigationBarTitleText": "设定月度目标"
+					}
+				},
+				{
+					"path": "team-browser",
+					"style": {
+						"navigationBarTitleText": "选择团队"
+					}
+				},
+				{
+					"path": "team-member-list",
+					"style": {
+						"navigationBarTitleText": "团队成员"
+					}
+				},
+				{
+					"path": "wallet-exchange",
+					"style": {
+						"navigationBarTitleText": "积分兑换"
+					}
+				},
+				{
+					"path": "wallet-withdraw",
+					"style": {
+						"navigationBarTitleText": "余额提现"
+					}
+				},
+				{
+					"path": "join-team-confirm",
+					"style": {
+						"navigationBarTitleText": "加入团队"
+					}
+				},
+				{
+					"path": "wallet-details",
+					"style": {
+						"navigationBarTitleText": "资金明细"
+					}
+				},
+				{
+					"path": "achievements",
+					"style": {
+						"navigationBarTitleText": "我的成就"
+					}
+				},
+				{
+					"path": "functions",
+					"style": {
+						"navigationBarTitleText": "更多功能"
+					}
+				},
+				{
+					"path": "invite-handler",
+					"style": {
+						"navigationBarTitleText": "处理邀请",
+						"navigationStyle": "custom"
+					}
+				},
+				{
+					"path": "payment-qrcode",
+					"style": {
+						"navigationBarTitleText": "我的提现收款码"
+					}
+				}
+			]
+		},
+		{
+			"root": "pages/admin",
+			"pages": [
+				{
+					"path": "batch-upload",
+					"style": {
+						"navigationBarTitleText": "批量图片上传"
+					}
+				},
+				{
+					"path": "local-import",
+					"style": {
+						"navigationBarTitleText": "数据导入工具"
+					}
+				},
+				{
+					"path": "update-prices",
+					"style": {
+						"navigationBarTitleText": "更新文章积分"
+					}
+				},
+				{
+					"path": "withdrawal-manage",
+					"style": {
+						"navigationBarTitleText": "提现管理"
+					}
+				},
+				{
+					"path": "update-url",
+					"style": {
+						"navigationBarTitleText": "标签修复工具"
+					}
+				},
+				{
+					"path": "batch-pdf-upload",
+					"style": {
+						"navigationBarTitleText": "批量 PDF 关联工具"
+					}
+				},
+				{
+					"path": "order-management",
+					"style": {
+						"navigationBarTitleText": "订单管理",
+						"enablePullDownRefresh": true
+					}
+				},
+				{
+					"path": "order-detail",
+					"style": {
+						"navigationBarTitleText": "订单详情"
+					}
+				}
+			]
+		},
+		{
+			"root": "pages/article",
+			"pages": [
+				{
+					"path": "detail",
+					"style": {
+						"navigationBarTitleText": "文章详情"
+					}
+				},
+				{
+					"path": "list",
+					"style": {
+						"navigationBarTitleText": "文章列表"
+					}
+				}
+			]
+		},
+		{
+			"root": "pages/banner-manage",
+			"pages": [
+				{
+					"path": "index",
+					"style": {
+						"navigationBarTitleText": "自动上传 Banner"
+					}
+				}
+			]
+		},
+		{
+			"root": "pages/growth-log",
+			"pages": [
+				{
+					"path": "index",
+					"style": {
+						"navigationBarTitleText": "写成长日志"
+					}
+				},
+				{
+					"path": "list",
+					"style": {
+						"navigationBarTitleText": "历史成长日志"
+					}
+				}
+			]
+		},
+		{
+			"root": "pages/auth",
+			"pages": [
+				{
+					"path": "login/index",
+					"style": {
+						"navigationBarTitleText": "登录"
+					}
+				},
+				{
+					"path": "login/privacy",
+					"style": {
+						"navigationBarTitleText": "隐私政策"
+					}
+				}
+			]
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "uni-app",
+		"navigationBarBackgroundColor": "#F8F8F8",
+		"backgroundColor": "#F8F8F8"
+	},
+	"tabBar": {
+		"custom": true,
+		"color": "#6b7280",
+		"selectedColor": "#4f46e5",
+		"backgroundColor": "#ffffff",
+		"list": [
+			{
+				"pagePath": "pages/dashboard/index",
+				"text": "首页"
+			},
+			{
+				"pagePath": "pages/task-center/index",
+				"text": "任务"
+			},
+			{
+				"pagePath": "pages/business/index",
+				"text": "学习"
+			},
+			{
+				"pagePath": "pages/profile/index",
+				"text": "我的"
+			}
+		]
+	},
+	"uniIdRouter": {}
+}

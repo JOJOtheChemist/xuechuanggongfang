@@ -1,0 +1,20 @@
+{
+	"easycom": {
+		"autoscan": false
+	},
+	"pages": [
+		{
+			"path": "pages/test/api-test",
+			"style": {
+				"navigationBarTitleText": "🧪 API测试中心"
+			}
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "uni-app",
+		"navigationBarBackgroundColor": "#F8F8F8",
+		"backgroundColor": "#F8F8F8"
+	},
+	"uniIdRouter": {}
+}

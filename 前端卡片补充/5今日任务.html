@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>成长日志 - 紧凑版</title>
+    <style>
+        /* --- 全局样式 --- */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            outline: none;
+        }
+
+        body {
+            background-color: #F3F0FF; /* 极淡紫背景 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .app-container {
+            width: 100%;
+            max-width: 420px;
+            position: relative;
+        }
+
+        /* --- 卡片外壳 --- */
+        .card {
+            background: #ffffff;
+            width: 100%;
+            padding: 24px;
+            /* 依然保持大圆角 */
+            border-radius: 32px;
+            box-shadow: 
+                0 20px 40px rgba(139, 92, 246, 0.08),
+                0 0 0 1px rgba(255, 255, 255, 0.8) inset;
+            display: flex;
+            flex-direction: column;
+            gap: 16px; /* 间距稍微调小 */
+            transition: all 0.3s ease;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        /* --- 顶部 Header --- */
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 800;
+            color: #4C1D95;
+            letter-spacing: -0.5px;
+        }
+
+        /* 顶部按钮组 */
+        .header-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        /* 1. 次要按钮 (历史记录) - 浅紫色文字按钮 */
+        .secondary-btn {
+            background: #EDE9FE;
+            color: #6D28D9;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 999px; /* 胶囊 */
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .secondary-btn:hover {
+            background: #DDD6FE;
+        }
+
+        /* 2. 主要按钮 (保存) - 深紫色渐变 */
+        .primary-btn {
+            background: linear-gradient(135deg, #8B5CF6, #7C3AED);
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+            box-shadow: 0 4px 10px rgba(139, 92, 246, 0.25);
+        }
+        .primary-btn:hover { transform: translateY(-1px); }
+        .primary-btn:active { transform: scale(0.96); }
+
+        /* --- 编辑页输入框 --- */
+        .section-label {
+            font-size: 12px;
+            color: #7C3AED;
+            font-weight: 700;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding-left: 4px;
+        }
+        
+        .dot {
+            width: 5px;
+            height: 5px;
+            background-color: #C4B5FD;
+            border-radius: 50%;
+        }
+
+        /* 输入框：高度变小 */
+        .input-area {
+            width: 100%;
+            background-color: #F9FAFB; /* 几乎白色的灰 */
+            border: 1px solid #F3F4F6;
+            border-radius: 16px; /* 稍微小的圆角 */
+            padding: 12px 15px;
+            font-size: 14px;
+            color: #374151;
+            line-height: 1.4;
+            resize: none;
+            transition: all 0.2s ease;
+            
+            /* 关键修改：默认高度改小 */
+            height: 60px; 
+        }
+
+        /* 明日计划更矮一点 */
+        .input-area.mini {
+            height: 50px;
+        }
+
+        .input-area:focus {
+            background-color: #fff;
+            border-color: #A78BFA;
+            box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.1);
+        }
+
+        .input-area::placeholder {
+            color: #9CA3AF;
+            font-size: 13px;
+        }
+
+        /* --- 历史页列表 --- */
+        .history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-height: 350px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+        
+        .history-list::-webkit-scrollbar { width: 3px; }
+        .history-list::-webkit-scrollbar-thumb { background: #DDD6FE; border-radius: 3px; }
+
+        .history-item {
+            display: flex;
+            gap: 12px;
+        }
+
+        /* 日期小方块 */
+        .date-box {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #F5F3FF;
+            color: #7C3AED;
+            width: 48px;
+            height: 48px; /* 正方形 */
+            border-radius: 14px;
+            flex-shrink: 0;
+            border: 1px solid #EDE9FE;
+        }
+        .date-day { font-size: 16px; font-weight: 700; line-height: 1; margin-bottom: 2px;}
+        .date-month { font-size: 10px; opacity: 0.8; }
+
+        /* 内容条 */
+        .content-strip {
+            flex-grow: 1;
+            background: #FAFAFA;
+            border: 1px solid #F3F4F6;
+            border-radius: 16px; /* 也是胶囊感 */
+            padding: 10px 14px;
+            font-size: 13px;
+            color: #4B5563;
+            line-height: 1.4;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .content-strip:hover {
+            background: #fff;
+            border-color: #DDD6FE;
+        }
+
+        .text-ellipsis {
+            white-space: nowrap; 
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 200px; /* 限制宽度以显示省略号 */
+        }
+
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    
+    <div class="card" id="editorCard">
+        <div class="card-header">
+            <div class="card-title">成长日志</div>
+            <div class="header-actions">
+                <button class="secondary-btn" onclick="switchView('history')">历史记录</button>
+                <button class="primary-btn" onclick="saveLog(this)">保存</button>
+            </div>
+        </div>
+
+        <div>
+            <div class="section-label"><span class="dot"></span> 今日进展</div>
+            <textarea class="input-area" placeholder="做成了什么？成交了谁？"></textarea>
+        </div>
+        <div>
+            <div class="section-label"><span class="dot"></span> 困难思考</div>
+            <textarea class="input-area" placeholder="遇到的卡点、复盘..."></textarea>
+        </div>
+        <div>
+            <div class="section-label"><span class="dot"></span> 明日计划</div>
+            <textarea class="input-area mini" placeholder="明天最重要的 2~3 件事"></textarea>
+        </div>
+    </div>
+
+    <div class="card hidden" id="historyCard">
+        <div class="card-header">
+            <div class="card-title">往期回顾</div>
+            <button class="secondary-btn" onclick="switchView('editor')">返回写日志</button>
+        </div>
+
+        <div class="history-list">
+            
+            <div class="history-item">
+                <div class="date-box">
+                    <span class="date-day">14</span>
+                    <span class="date-month">12月</span>
+                </div>
+                <div class="content-strip">
+                    <span class="text-ellipsis">完成首页改版，客户确认配色方案...</span>
+                </div>
+            </div>
+
+            <div class="history-item">
+                <div class="date-box">
+                    <span class="date-day">13</span>
+                    <span class="date-month">12月</span>
+                </div>
+                <div class="content-strip">
+                    <span class="text-ellipsis">服务器宕机排查，耗时3小时但解决了...</span>
+                </div>
+            </div>
+
+            <div class="history-item">
+                <div class="date-box">
+                    <span class="date-day">12</span>
+                    <span class="date-month">12月</span>
+                </div>
+                <div class="content-strip">
+                    <span class="text-ellipsis">与A客户深度沟通，确定合作意向...</span>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+</div>
+
+<script>
+    const editorCard = document.getElementById('editorCard');
+    const historyCard = document.getElementById('historyCard');
+
+    function switchView(viewName) {
+        if (viewName === 'history') {
+            editorCard.style.display = 'none';
+            historyCard.style.display = 'flex';
+            historyCard.classList.remove('hidden');
+        } else {
+            historyCard.style.display = 'none';
+            editorCard.style.display = 'flex';
+            editorCard.classList.remove('hidden');
+        }
+    }
+
+    function saveLog(btn) {
+        const originalText = btn.innerText;
+        btn.innerText = "已保存";
+        btn.style.background = "#10B981"; // 绿色反馈
+        setTimeout(() => {
+            btn.innerText = originalText;
+            btn.style.background = "linear-gradient(135deg, #8B5CF6, #7C3AED)";
+        }, 1500);
+    }
+</script>
+
+</body>
+</html>

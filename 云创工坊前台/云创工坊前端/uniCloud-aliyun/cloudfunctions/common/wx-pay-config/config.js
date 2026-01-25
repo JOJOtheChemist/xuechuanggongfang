@@ -1,0 +1,86 @@
+// 微信支付配置
+// 安全提示：生产环境建议使用 uniCloud 云端环境变量，不要直接写在代码中
+
+const config = {
+  // 小程序配置
+  appId: 'wxd7918f6ffc6e4234',
+  appSecret: '52ced0fa2c741ddd1d98aa16fd3db8d0',
+
+  // 微信支付商户配置
+  mchId: '1733684223', // 商户号
+  mchName: '崇文教育', // 商户名称
+
+  // APIv2密钥（用于V2统一下单 MD5 签名）
+  // 【重要】需要在微信商户平台设置：
+  // 1. 登录 https://pay.weixin.qq.com （商户号：1733684223）
+  // 2. 进入：账户中心 -> API安全 -> API密钥
+  // 3. 设置密钥（32位字符串，建议包含大小写字母和数字）
+  // 4. 设置后将密钥复制到下面的 apiKey 字段
+  apiKey: 'hmw777llp777hyy777hyc777wgy77799', // 【必填】32位API密钥（v2）- 临时占位，需替换为真实密钥
+
+  // 商户证书内容（Base64格式）
+  // 用于提现（企业付款到零钱）、退款等敏感操作
+  pfxBase64: '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',
+
+  // 动态获取 Buffer 格式的证书
+  get pfx() {
+    if (this.pfxBase64) {
+      return Buffer.from(this.pfxBase64, 'base64')
+    }
+    return null
+  },
+
+  // 支付回调地址（云函数URL化后的地址）
+  // 暂时可以填写占位地址，支付流程能走通，只是回调会失败
+  notifyUrl: 'https://fc-mp-8da32993-40ae-410e-8eec-3c8bebcab2bd.next.bspapp.com/payment-notify', // 临时占位
+
+  // 以下为APIv3相关
+  // 商户证书序列号 & APIv3密钥（V3用RSA签名）
+  serialNo: '5CF31CA845B1685EB457176ECBCEF5D26C43AD0A',
+  apiV3Key: 'hyy777llp777hyy777hyc777wgy77799',
+
+  // 商户API私钥（PEM格式，从 apiclient_key.pem 读取）
+  // 用于 V3 接口签名
+  privateKeyPem: `-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDHv+lmu2J1phjl
+C9Uio6CrHi4PlZVgKrp4uZqDWsNy3QbBiaZ/n2J19tJTSrJUPDCUsu9avHVzA4yn
+jpuw62b/mWMz0AWBYNg6Ix8LVEBQRTqnOmHVy35udo28Wd/6PQI/xcW2l6nxCRpu
+3YSdgkBFE6DlgGwhIccnSNXzUP1j8SSYfQGbZNDHChcUgbUBgt22mwbRnDg8kNOZ
+tUaE7lkE1qbpMByMhqzIFMq6Ru/tcY4lRJpcLnZtvzZTOKTDTJDYkw6EC/l0xLQX
+i5auWLKxF7z0KnibdZ+54z790zvgik0NU6AtWTlK2jJDCVVW37jHhfJmH6CDp5ht
+MptIK56JAgMBAAECggEAMgpPzF6xIcwEfIzkThMz0upym5DbpQXPRSMqJDH+uK3K
+XX3AakRhhC/bLOaPmi6h9P6Gm/KOccu31toRAtdWLD4e7gH0/x5lzNqzkkD/A5z0
+PqSPkeGywLWOeFsDk0rpX1SKXV3NQwcGyjNQX60bsLJkIlpzvDEcFSlX/+aQNBLp
+rsXuhH44Lb0qo6BWI4y2wcmlmqQD9guDPqJCNAv/ZiCSCwjS4xHaoWYSKUg9wimr
+8Mb5qbAQwTGBWXZrbBsxsmp6kx3agsMZYb/kkQfd2Jgihtmo9msp1FWoQXZqSNLp
+/XBPFZG9PUr0+tMis8bLrwmJKj/lbk2nBC2mMu2kqQKBgQDss72SDS4baHeDWo9w
+C9EjieV8iEWTxNlK2vk8Z1quvP1/ehox0N1sf3sGCpLaTRQl6l6HpNTYlzO36zAm
+u2QVylwsk0UkqiqzuADoH96BeNFRr1/WWbSkiF1NOue63cK/eTYKhvi+XujiJC7D
+kxnP9ilp7GD9VeJr+5IUKYhc9wKBgQDYCO3ByNSeyru8WTHEKpI5rva6FssEPJkL
+yIjR+i2qryJn1nOJT9eQ4MYe4l+OXpqfS9lnr47Xyri8M1VpoKTfwkaFq2n3naNy
+x15szbbdeusXTXVIWTQFFkZ5Hogmzb7u5wBbFfnmLtT+E1A9JRQ5XzxIzG53DGqP
+TcjoKMaAfwKBgQCDDxZ0ysVvuY0K9taa5IAdHFordMyJgCIMN2hu0I8+VzhJIBNm
+583iKEe21Z3wL2NrhvRmSJbtgfLJ7/gOSg2lnxEgQT60iV/xeH1QCW1K5NmJUABR
+kAPcYgC/JVFvfyA4omWQuKD7z1NE+2HFOiq9of/WPWKKgsZGodmFPmXZiwKBgDBG
+hoLYUxMM8LjdIa7ZaIW1YHMjJsjSlcy5SkHJ6yyKKGEV3gmgKua4I+3A3mOdJmZU
+d8egxoXYSkHcIskQ2ecardGvBWYM9vpuLN6ZdbS2hBRX/c5mCKbeXG8ycHBjZ7hR
+LJYuKgLTEkuYm0SepY9QhdMqw8CcqK9PTYb7nagXAoGAddXL6gEWdBBBWzxthGnl
+iF5RXmLZCNoIWGxOwVijEai5taxE1TnlrcW/vER7LxXrfX2U42MqRIhIxAejmiqn
+AiVcld//Bfewm3yCj9MEFqC1vLq6RCYvbzKLPv9ZQesxl9uoim1LaRch3L1eza+W
+xssRu1hmq49O7fE8lAH3pYI=
+-----END PRIVATE KEY-----`,
+
+  // 支付配置
+  tradeType: 'JSAPI', // 小程序支付类型
+  description: '学创工坊-报名费', // 商品描述
+
+  // 订单配置
+  orderExpireMinutes: 30, // 订单超时时间（分钟）
+
+  // 支付金额配置（单位：元）
+  testAmount: 0.1, // 测试时使用0.1元
+  productionAmount: 100, // 正式环境使用50元
+  isTestMode: false // true使用测试金额，false使用正式金额
+}
+
+module.exports = config

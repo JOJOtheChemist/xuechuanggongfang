@@ -1,0 +1,94 @@
+// 导入文章 - 简单版本  
+// ⚠️ 请先运行 import-categories-simple.jql
+// 按 Command+R 运行
+
+db.collection('articles').add([
+  {
+    "_id": "article_001",
+    "category_id": "cat_002",
+    "title": "2024年国考备考全攻略",
+    "summary": "详细解读国考报名流程、考试科目、复习方法",
+    "content": "<h2>国考备考指南</h2><p>系统的备考计划是成功的关键。</p>",
+    "cover_image": "https://picsum.photos/800/450?random=21",
+    "author_name": "云创管理员",
+    "stats": {"views": 1256, "likes": 89, "dislikes": 2},
+    "publish_time": 1732348800000
+  },
+  {
+    "_id": "article_002",
+    "category_id": "cat_002",
+    "title": "行测提分技巧大公开",
+    "summary": "资深培训师分享行测各模块的答题技巧",
+    "content": "<h2>行测提分</h2><p>掌握技巧快速提升正确率。</p>",
+    "cover_image": "https://picsum.photos/800/450?random=22",
+    "author_name": "云创管理员",
+    "stats": {"views": 987, "likes": 67, "dislikes": 1},
+    "publish_time": 1732435200000
+  },
+  {
+    "_id": "article_003",
+    "category_id": "cat_004",
+    "title": "考研择校指南",
+    "summary": "从专业实力、地理位置等维度教你科学择校",
+    "content": "<h2>择校技巧</h2><p>选对学校事半功倍。</p>",
+    "cover_image": "https://picsum.photos/800/450?random=24",
+    "author_name": "云创管理员",
+    "stats": {"views": 2134, "likes": 156, "dislikes": 4},
+    "publish_time": 1732608000000
+  },
+  {
+    "_id": "article_004",
+    "category_id": "cat_004",
+    "title": "英语一vs英语二备考策略",
+    "summary": "深度解析两类英语的题型差异与难度区别",
+    "content": "<h2>英语备考</h2><p>针对性复习更高效。</p>",
+    "cover_image": "https://picsum.photos/800/450?random=25",
+    "author_name": "云创管理员",
+    "stats": {"views": 1678, "likes": 98, "dislikes": 2},
+    "publish_time": 1732694400000
+  },
+  {
+    "_id": "article_005",
+    "category_id": "cat_005",
+    "title": "专升本报名流程及注意事项",
+    "summary": "详细解读报名时间、材料准备等关键信息",
+    "content": "<h2>报名指南</h2><p>避免错过重要节点。</p>",
+    "cover_image": "https://picsum.photos/800/450?random=26",
+    "author_name": "云创管理员",
+    "stats": {"views": 1890, "likes": 134, "dislikes": 3},
+    "publish_time": 1732780800000
+  },
+  {
+    "_id": "article_006",
+    "category_id": "cat_005",
+    "title": "专升本各科目备考攻略",
+    "summary": "系统梳理英语、高数、专业课等科目复习策略",
+    "content": "<h2>备考攻略</h2><p>高效备考事半功倍。</p>",
+    "cover_image": "https://picsum.photos/800/450?random=27",
+    "author_name": "云创管理员",
+    "stats": {"views": 1567, "likes": 89, "dislikes": 1},
+    "publish_time": 1732867200000
+  },
+  {
+    "_id": "article_007",
+    "category_id": "cat_008",
+    "title": "春节朋友圈文案100条",
+    "summary": "精选春节祝福语、拜年金句和新年愿望文案",
+    "content": "<h2>春节文案</h2><p>让朋友圈充满年味。</p>",
+    "cover_image": "https://picsum.photos/800/450?random=29",
+    "author_name": "云创管理员",
+    "stats": {"views": 3456, "likes": 267, "dislikes": 8},
+    "publish_time": 1733040000000
+  },
+  {
+    "_id": "article_008",
+    "category_id": "cat_008",
+    "title": "高颜值海报模板合集",
+    "summary": "节日海报、活动宣传、日常打卡等多种场景模板",
+    "content": "<h2>海报模板</h2><p>一键下载直接使用。</p>",
+    "cover_image": "https://picsum.photos/800/450?random=30",
+    "author_name": "云创管理员",
+    "stats": {"views": 2789, "likes": 198, "dislikes": 6},
+    "publish_time": 1733126400000
+  }
+])

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>带标签的金刚区卡片</title>
+    <style>
+        /* --- 基础设置 --- */
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, sans-serif; }
+        body { background-color: #F8F7FC; display: flex; justify-content: center; padding: 50px 20px; }
+
+        /* 模拟一行栅格 */
+        .grid-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr); /* 3列 */
+            gap: 10px;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        /* --- 卡片样式 --- */
+        .nav-card {
+            background: #ffffff;
+            border-radius: 18px;
+            padding: 14px 5px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            position: relative; /* 关键：为绝对定位的标签提供参照 */
+            box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+            overflow: hidden; /* 防止标签溢出圆角 */
+        }
+
+        /* --- 图标与文字 (保持之前的精致版) --- */
+        .icon-circle {
+            width: 38px; height: 38px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            margin-bottom: 8px;
+        }
+        .icon-circle svg { width: 20px; height: 20px; stroke-width: 2; stroke: currentColor; fill: none; }
+        
+        .main-title { font-size: 14px; font-weight: 700; color: #333; margin-bottom: 3px; }
+        .sub-title { font-size: 10px; color: #999; }
+
+        /* --- 配色 --- */
+        .theme-red { background: #FEF2F2; color: #EF4444; }
+        .theme-purple { background: #F3F0FF; color: #8B5CF6; }
+        .theme-blue { background: #EFF6FF; color: #3B82F6; }
+
+        /* --- ✨ 新增：角落标签样式 ✨ --- */
+        .corner-badge {
+            position: absolute;
+            top: 0;
+            right: 0;
+            font-size: 9px; /* 字号极小，显精致 */
+            color: white;
+            padding: 2px 6px 2px 8px; /* 左边稍微多留点空隙 */
+            
+            /* 形状魔法：右上角直角(贴合卡片)，左下角大圆角 */
+            border-radius: 0 18px 0 10px; 
+            
+            font-weight: 600;
+            z-index: 10;
+            box-shadow: -2px 2px 4px rgba(0,0,0,0.05);
+        }
+
+        /* 标签颜色变体 */
+        .badge-hot {
+            /* 渐变红，提示有干货/热门 */
+            background: linear-gradient(135deg, #FF6B6B, #FF4757);
+        }
+        
+        .badge-new {
+            /* 渐变绿，提示上新 */
+            background: linear-gradient(135deg, #2ED573, #10B981);
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="grid-row">
+
+        <a href="#" class="nav-card">
+            <div class="icon-circle theme-blue">
+                <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>
+            </div>
+            <div class="main-title">就业</div>
+            <div class="sub-title">定向就业</div>
+        </a>
+
+        <a href="#" class="nav-card">
+            <div class="corner-badge badge-hot">有干货</div>
+            
+            <div class="icon-circle theme-red">
+                <svg viewBox="0 0 24 24"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11m16-11v11M8 14v3m4-3v3m4-3v3"/></svg>
+            </div>
+            <div class="main-title">考公</div>
+            <div class="sub-title">公考培优</div>
+        </a>
+
+        <a href="#" class="nav-card">
+            <div class="corner-badge badge-new">New</div>
+            
+            <div class="icon-circle theme-purple">
+                <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+            </div>
+            <div class="main-title">考研</div>
+            <div class="sub-title">考研菁英</div>
+        </a>
+
+    </div>
+
+</body>
+</html>

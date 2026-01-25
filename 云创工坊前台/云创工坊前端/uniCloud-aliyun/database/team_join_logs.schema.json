@@ -1,0 +1,19 @@
+{
+  "bsonType": "object",
+  "required": [
+    "team_id",
+    "inviter_id",
+    "new_user_id",
+    "order_no",
+    "create_date"
+  ],
+  "properties": {
+    "team_id": { "bsonType": "string", "description": "团队ID" },
+    "inviter_id": { "bsonType": "string", "description": "邀请人UID" },
+    "new_user_id": { "bsonType": "string", "description": "被邀请人UID" },
+    "order_no": { "bsonType": "string", "description": "对应支付订单号" },
+    "status": { "bsonType": "string", "description": "状态 paid/pending/failed" },
+    "create_date": { "bsonType": "long", "description": "创建时间" },
+    "extras": { "bsonType": "object", "description": "附加字段" }
+  }
+}

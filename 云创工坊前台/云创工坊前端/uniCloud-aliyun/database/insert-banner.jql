@@ -1,0 +1,20 @@
+// 直接在 uniCloud 控制台数据库 banners 集合中新增记录
+// 复制下面的 JSON，在 uniCloud Web 控制台 -> 数据库 -> banners -> 新增 中粘贴
+
+{
+  "title": "星河回响 追逐同频",
+  "image_url": "https://mp-46bd4293-7b92-444c-b936-5777a228063a.cdn.bspapp.com/广告1_1764211622566_0.png",
+  "link_url": "",
+  "status": "online",
+  "sort_order": 1,
+  "create_date": 1732676400000
+}
+
+// 注意：
+// 1. image_url 需要替换成你实际上传的图片地址
+// 2. 在 uniCloud Web 控制台上传图片步骤：
+//    - 打开 uniCloud Web 控制台
+//    - 云存储 -> 上传文件 -> 选择你的粉色 banner 图
+//    - 上传后点击文件，复制「文件 URL」
+//    - 把上面的 image_url 替换成复制的 URL
+//    - 再到数据库 -> banners -> 新增，粘贴这段 JSON

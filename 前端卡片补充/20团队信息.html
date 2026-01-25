@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>销售概览弹窗</title>
+    <style>
+        /* --- 全局设置 --- */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: #F8F7FC;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        /* =========================================
+           1. 触发源：头像堆叠组 (Avatar Stack)
+           ========================================= */
+        .avatar-group-container {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .group-label {
+            font-size: 14px;
+            color: #6B7280;
+            margin-bottom: 10px;
+        }
+
+        .avatar-stack {
+            display: flex;
+            justify-content: center;
+            padding-left: 15px;
+            /* 修正重叠导致的视觉偏移 */
+        }
+
+        .stack-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: 3px solid #F8F7FC;
+            /* 与背景色同色，形成切割感 */
+            background: #E5E7EB;
+            margin-left: -15px;
+            /* 重叠关键 */
+            cursor: pointer;
+            transition: transform 0.2s, z-index 0s;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 700;
+            color: #fff;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        .stack-avatar:hover {
+            transform: translateY(-4px) scale(1.1);
+            z-index: 10;
+            /* 悬停时浮在最上层 */
+            border-color: #EDE9FE;
+        }
+
+        /* 模拟不同用户头像色 */
+        .av-1 {
+            background: #FCA5A5;
+        }
+
+        .av-2 {
+            background: #FCD34D;
+        }
+
+        .av-3 {
+            background: #6EE7B7;
+        }
+
+        .av-4 {
+            background: #93C5FD;
+        }
+
+        .av-5 {
+            background: #C4B5FD;
+        }
+
+        /* =========================================
+           2. 弹窗 (Modal)
+           ========================================= */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .user-card {
+            width: 320px;
+            background: #ffffff;
+            border-radius: 24px;
+            padding: 24px;
+            box-shadow: 0 20px 50px rgba(124, 58, 237, 0.15);
+            transform: scale(0.9);
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .modal-overlay.active .user-card {
+            transform: scale(1);
+        }
+
+        /* 关闭按钮 */
+        .close-btn {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #F3F4F6;
+            color: #9CA3AF;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .close-btn:hover {
+            background: #E5E7EB;
+            color: #6B7280;
+        }
+
+        /* --- 用户头部信息 --- */
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .big-avatar {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: #C4B5FD;
+            color: white;
+            font-size: 20px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);
+        }
+
+        .user-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .user-name {
+            font-size: 18px;
+            font-weight: 800;
+            color: #1F2937;
+        }
+
+        .user-tag {
+            font-size: 11px;
+            color: #D97706;
+            background: #FFF7ED;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-weight: 600;
+            width: fit-content;
+        }
+
+        /* --- 任务进度条 --- */
+        .progress-section {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .progress-labels {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+
+        .progress-title {
+            font-size: 12px;
+            color: #6B7280;
+            font-weight: 600;
+        }
+
+        .progress-percent {
+            font-size: 24px;
+            font-weight: 800;
+            color: #7C3AED;
+            line-height: 1;
+        }
+
+        .percent-unit {
+            font-size: 12px;
+            font-weight: 600;
+            color: #A78BFA;
+        }
+
+        .progress-track {
+            height: 10px;
+            background: #F3F4F6;
+            border-radius: 99px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 78%;
+            /* 进度 */
+            background: linear-gradient(90deg, #A78BFA, #7C3AED);
+            border-radius: 99px;
+            position: relative;
+        }
+
+        /* 进度条光效 */
+        .progress-bar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background-image: linear-gradient(45deg, rgba(255, 255, 255, .2) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, .2) 50%, rgba(255, 255, 255, .2) 75%, transparent 75%, transparent);
+            background-size: 16px 16px;
+        }
+
+        /* --- 最近开单列表 --- */
+        .sales-list {
+            background: #F9FAFB;
+            border-radius: 16px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .list-title {
+            font-size: 11px;
+            color: #9CA3AF;
+            font-weight: 600;
+            margin-bottom: 2px;
+            padding-left: 4px;
+        }
+
+        .sale-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: white;
+            border-radius: 10px;
+            padding: 10px;
+            border: 1px solid transparent;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+        }
+
+        .sale-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .sale-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            background: #ECFDF5;
+            color: #10B981;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .sale-icon svg {
+            width: 14px;
+            height: 14px;
+            stroke-width: 2.5;
+        }
+
+        .sale-detail {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sale-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .sale-time {
+            font-size: 10px;
+            color: #9CA3AF;
+        }
+
+        .sale-amount {
+            font-size: 14px;
+            font-weight: 700;
+            color: #1F2937;
+        }
+
+        /* 底部按钮 */
+        .action-btn {
+            width: 100%;
+            background: #F3F0FF;
+            color: #7C3AED;
+            border: none;
+            padding: 12px;
+            border-radius: 99px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .action-btn:hover {
+            background: #EDE9FE;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="avatar-group-container">
+        <div class="group-label">点击头像查看业绩</div>
+        <div class="avatar-stack">
+            <div class="stack-avatar av-1">A</div>
+            <div class="stack-avatar av-2">B</div>
+            <div class="stack-avatar av-3">C</div>
+            <div class="stack-avatar av-4">D</div>
+            <div class="stack-avatar av-5" onclick="openModal()">陈</div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="userModal" onclick="closeModal(event)">
+        <div class="modal-card" onclick="event.stopPropagation()">
+
+            <div class="close-btn" onclick="closeModalDirect()">×</div>
+
+            <div class="card-header">
+                <div class="big-avatar">陈</div>
+                <div class="user-meta">
+                    <div class="user-name">陈大发</div>
+                    <div class="user-tag">🔥 销售冠军</div>
+                </div>
+            </div>
+
+            <div class="progress-section">
+                <div class="progress-labels">
+                    <span class="progress-title">本月任务进度</span>
+                    <div>
+                        <span class="progress-percent">78</span><span class="percent-unit">%</span>
+                    </div>
+                </div>
+                <div class="progress-track">
+                    <div class="progress-bar" style="width: 78%;"></div>
+                </div>
+            </div>
+
+            <div class="sales-list">
+                <div class="list-title">最近成交 (3笔)</div>
+
+                <div class="sale-item">
+                    <div class="sale-info">
+                        <div class="sale-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                                <line x1="16" y1="13" x2="8" y2="13"></line>
+                                <line x1="16" y1="17" x2="8" y2="17"></line>
+                                <polyline points="10 9 9 9 8 9"></polyline>
+                            </svg>
+                        </div>
+                        <div class="sale-detail">
+                            <span class="sale-name">考研菁英班</span>
+                            <span class="sale-time">10分钟前</span>
+                        </div>
+                    </div>
+                    <div class="sale-amount">+ ¥398</div>
+                </div>
+
+                <div class="sale-item">
+                    <div class="sale-info">
+                        <div class="sale-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                                <line x1="16" y1="13" x2="8" y2="13"></line>
+                                <line x1="16" y1="17" x2="8" y2="17"></line>
+                                <polyline points="10 9 9 9 8 9"></polyline>
+                            </svg>
+                        </div>
+                        <div class="sale-detail">
+                            <span class="sale-name">驾校报名</span>
+                            <span class="sale-time">今天 09:30</span>
+                        </div>
+                    </div>
+                    <div class="sale-amount">+ ¥200</div>
+                </div>
+
+            </div>
+
+            <button class="action-btn">鼓励一下 🎉</button>
+
+        </div>
+    </div>
+
+    <script>
+        function openModal() {
+            document.getElementById('userModal').classList.add('active');
+        }
+
+        function closeModal(event) {
+            document.getElementById('userModal').classList.remove('active');
+        }
+
+        function closeModalDirect() {
+            document.getElementById('userModal').classList.remove('active');
+        }
+    </script>
+
+</body>
+
+</html>

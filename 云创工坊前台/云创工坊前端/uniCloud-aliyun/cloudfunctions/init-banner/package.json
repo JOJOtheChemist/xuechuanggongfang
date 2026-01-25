@@ -1,0 +1,6 @@
+{
+  "name": "init-banner",
+  "version": "1.0.0",
+  "description": "初始化 banner 数据",
+  "main": "index.js"
+}

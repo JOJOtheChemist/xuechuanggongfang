@@ -1,0 +1,41 @@
+// 检查数据库文章分布和分类存在性
+// 按 Command+R 运行
+
+const db = uniCloud.database();
+const $ = db.command.aggregate;
+
+// 1. 统计每个分类下的文章数量
+const articleCounts = await db.collection('articles')
+  .aggregate()
+  .group({
+    _id: '$category_id',
+    count: $.sum(1)
+  })
+  .end();
+
+console.log('--- 文章分布统计 ---');
+console.log(JSON.stringify(articleCounts.data, null, 2));
+
+// 2. 检查特定分类是否存在
+const categories = await db.collection('business_categories')
+  .where({
+    _id: db.command.in(['cat_002', 'cat_006', 'cat_015', 'cat_016'])
+  })
+  .get();
+
+console.log('--- 关键分类状态 ---');
+categories.data.forEach(cat => {
+    console.log(`${cat._id} (${cat.title}): has_articles=${cat.has_articles}, status=${cat.status}`);
+});
+
+// 3. 抽样检查教资文章的分类
+const sampleJiaoZi = await db.collection('articles')
+    .where({
+        title: /教资/
+    })
+    .limit(5)
+    .field({ title: true, category_id: true })
+    .get();
+
+console.log('--- "教资"文章抽样 ---');
+console.log(JSON.stringify(sampleJiaoZi.data, null, 2));

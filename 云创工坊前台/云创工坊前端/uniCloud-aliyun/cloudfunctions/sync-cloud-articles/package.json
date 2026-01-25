@@ -1,0 +1,7 @@
+{
+    "name": "sync-cloud-articles",
+    "version": "1.0.0",
+    "description": "Sync PDF files from cloud storage to articles collection",
+    "main": "index.obj.js",
+    "dependencies": {}
+}

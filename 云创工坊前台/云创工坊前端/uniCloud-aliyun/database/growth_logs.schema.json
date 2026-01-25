@@ -1,0 +1,50 @@
+{
+  "bsonType": "object",
+  "description": "成长日志表",
+  "required": ["user_id", "title", "content"],
+  "permission": {
+    "read": "auth.uid == doc.user_id",
+    "create": "auth.uid != null",
+    "update": "auth.uid == doc.user_id",
+    "delete": "auth.uid == doc.user_id"
+  },
+  "properties": {
+    "_id": {
+      "description": "日志ID"
+    },
+    "user_id": {
+      "bsonType": "string",
+      "description": "用户ID",
+      "foreignKey": "uni-id-users._id"
+    },
+    "title": {
+      "bsonType": "string",
+      "description": "日志标题",
+      "label": "标题",
+      "trim": "both"
+    },
+    "content": {
+      "bsonType": "string",
+      "description": "日志内容",
+      "label": "内容"
+    },
+    "log_date": {
+      "bsonType": "string",
+      "description": "日志日期 YYYY-MM-DD"
+    },
+    "create_date": {
+      "bsonType": "timestamp",
+      "description": "创建时间",
+      "forceDefaultValue": {
+        "$env": "now"
+      }
+    },
+    "update_date": {
+      "bsonType": "timestamp",
+      "description": "更新时间",
+      "forceDefaultValue": {
+        "$env": "now"
+      }
+    }
+  }
+}

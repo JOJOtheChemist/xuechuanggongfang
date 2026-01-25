@@ -1,0 +1,84 @@
+{
+  "bsonType": "object",
+  "description": "提现记录表",
+  "required": ["user_id", "amount"],
+  "permission": {
+    "read": "auth.uid == doc.user_id || 'admin' in auth.role",
+    "create": "auth.uid != null",
+    "update": "'admin' in auth.role",
+    "delete": "'admin' in auth.role"
+  },
+  "properties": {
+    "_id": {
+      "description": "提现ID"
+    },
+    "user_id": {
+      "bsonType": "string",
+      "description": "用户ID",
+      "foreignKey": "uni-id-users._id",
+      "forceDefaultValue": {
+        "$env": "uid"
+      }
+    },
+    "amount": {
+      "bsonType": "double",
+      "description": "提现金额"
+    },
+    "fee": {
+      "bsonType": "double",
+      "description": "手续费",
+      "default": 0
+    },
+    "actual_amount": {
+      "bsonType": "double",
+      "description": "实际到账金额"
+    },
+    "account_type": {
+      "bsonType": "string",
+      "description": "账户类型",
+      "enum": ["wechat", "alipay", "bank"]
+    },
+    "account_info": {
+      "bsonType": "object",
+      "description": "账户信息",
+      "properties": {
+        "account_name": {
+          "bsonType": "string",
+          "description": "账户名"
+        },
+        "account_number": {
+          "bsonType": "string",
+          "description": "账号"
+        }
+      }
+    },
+    "status": {
+      "bsonType": "string",
+      "description": "状态",
+      "enum": ["pending", "processing", "completed", "rejected"],
+      "default": "pending"
+    },
+    "reject_reason": {
+      "bsonType": "string",
+      "description": "拒绝理由"
+    },
+    "apply_time": {
+      "bsonType": "timestamp",
+      "description": "申请时间",
+      "forceDefaultValue": {
+        "$env": "now"
+      }
+    },
+    "complete_time": {
+      "bsonType": "timestamp",
+      "description": "完成时间"
+    },
+    "create_date": {
+      "bsonType": "timestamp",
+      "description": "创建时间",
+      "forceDefaultValue": {
+        "$env": "now"
+      }
+    }
+  }
+}

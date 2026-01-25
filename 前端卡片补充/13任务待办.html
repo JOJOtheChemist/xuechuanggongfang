@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>迷你待办卡片</title>
+    <style>
+        /* --- 全局设置 --- */
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background-color: #F8F7FC; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+
+        /* --- 卡片容器 --- */
+        .todo-card {
+            background: #ffffff;
+            width: 100%;
+            max-width: 320px; /* 宽度限制，保持小巧 */
+            border-radius: 24px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(139, 92, 246, 0.08);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        /* 1. 顶部 Tab 切换器 */
+        .tab-header {
+            display: flex;
+            background: #F3F4F6;
+            border-radius: 99px;
+            padding: 4px;
+            position: relative;
+        }
+
+        .tab-btn {
+            flex: 1;
+            text-align: center;
+            padding: 8px 0;
+            font-size: 13px;
+            font-weight: 600;
+            color: #9CA3AF;
+            cursor: pointer;
+            border-radius: 99px;
+            position: relative;
+            z-index: 2;
+            transition: color 0.3s;
+        }
+
+        .tab-btn.active {
+            color: #7C3AED;
+        }
+
+        /* 滑动的白色背景块 */
+        .tab-indicator {
+            position: absolute;
+            top: 4px; left: 4px; bottom: 4px;
+            width: calc(50% - 4px);
+            background: #ffffff;
+            border-radius: 99px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            z-index: 1;
+        }
+
+        /* 状态控制指示器位置 */
+        .tab-header[data-active="todo"] .tab-indicator { transform: translateX(0); }
+        .tab-header[data-active="done"] .tab-indicator { transform: translateX(100%); }
+
+        /* 2. 列表区域 */
+        .list-container {
+            min-height: 150px; /* 保持最小高度，防止切换时跳动 */
+            position: relative;
+        }
+
+        .task-list {
+            list-style: none;
+            display: none; /* 默认隐藏 */
+            flex-direction: column;
+            gap: 8px;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        .task-list.active { display: flex; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 单个任务项 */
+        .task-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 12px;
+            background: #FAFAFA;
+            border-radius: 12px;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .task-item:hover { background: #F3F0FF; }
+
+        /* 左侧复选框 (CSS模拟) */
+        .checkbox-circle {
+            width: 18px; height: 18px;
+            border-radius: 50%;
+            border: 2px solid #D1D5DB;
+            margin-right: 12px;
+            flex-shrink: 0;
+            position: relative;
+            transition: all 0.2s;
+        }
+
+        /* 待办文字 */
+        .task-text {
+            font-size: 13px;
+            color: #374151;
+            font-weight: 500;
+            flex-grow: 1;
+        }
+
+        /* --- 已完成状态样式 --- */
+        .task-item.done .checkbox-circle {
+            background: #10B981;
+            border-color: #10B981;
+            display: flex; align-items: center; justify-content: center;
+        }
+        
+        /* 对勾图标 */
+        .task-item.done .checkbox-circle::after {
+            content: '';
+            width: 5px; height: 9px;
+            border: solid white;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
+            margin-bottom: 2px;
+        }
+
+        .task-item.done .task-text {
+            color: #9CA3AF;
+            text-decoration: line-through;
+        }
+
+        /* 底部添加按钮 (装饰用) */
+        .add-btn-row {
+            margin-top: 5px;
+            text-align: center;
+        }
+        .add-mini-btn {
+            background: none;
+            border: 1px dashed #DDD6FE;
+            color: #8B5CF6;
+            border-radius: 99px;
+            padding: 8px 0;
+            width: 100%;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .add-mini-btn:hover { background: #F5F3FF; }
+
+    </style>
+</head>
+<body>
+
+<div class="todo-card">
+    
+    <div class="tab-header" id="tabHeader" data-active="todo">
+        <div class="tab-indicator"></div>
+        <div class="tab-btn active" onclick="switchTab('todo')">待处理</div>
+        <div class="tab-btn" onclick="switchTab('done')">已完成</div>
+    </div>
+
+    <div class="list-container">
+        
+        <ul class="task-list active" id="listTodo">
+            <li class="task-item" onclick="toggleItem(this)">
+                <div class="checkbox-circle"></div>
+                <span class="task-text">整理本周会议纪要</span>
+            </li>
+            <li class="task-item" onclick="toggleItem(this)">
+                <div class="checkbox-circle"></div>
+                <span class="task-text">联系 A 客户确认合同</span>
+            </li>
+            <li class="task-item" onclick="toggleItem(this)">
+                <div class="checkbox-circle"></div>
+                <span class="task-text">更新官网 Banner 图片</span>
+            </li>
+        </ul>
+
+        <ul class="task-list" id="listDone">
+            <li class="task-item done">
+                <div class="checkbox-circle"></div>
+                <span class="task-text">早会复盘</span>
+            </li>
+            <li class="task-item done">
+                <div class="checkbox-circle"></div>
+                <span class="task-text">提交报销单据</span>
+            </li>
+        </ul>
+
+    </div>
+
+    <div class="add-btn-row">
+        <button class="add-mini-btn">+ 添加新任务</button>
+    </div>
+
+</div>
+
+<script>
+    const tabHeader = document.getElementById('tabHeader');
+    const btns = document.querySelectorAll('.tab-btn');
+    const listTodo = document.getElementById('listTodo');
+    const listDone = document.getElementById('listDone');
+
+    function switchTab(type) {
+        // 1. 移动滑块 & 切换文字高亮
+        tabHeader.setAttribute('data-active', type);
+        
+        btns.forEach(btn => btn.classList.remove('active'));
+        if(type === 'todo') btns[0].classList.add('active');
+        else btns[1].classList.add('active');
+
+        // 2. 切换列表显示
+        if(type === 'todo') {
+            listTodo.classList.add('active');
+            listDone.classList.remove('active');
+        } else {
+            listDone.classList.add('active');
+            listTodo.classList.remove('active');
+        }
+    }
+
+    // 点击待办项模拟完成效果 (演示用)
+    function toggleItem(el) {
+        // 只是简单的视觉反馈，变绿一下，实际开发可以移动到另一个列表
+        el.classList.toggle('done');
+    }
+</script>
+
+</body>
+</html>

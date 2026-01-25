@@ -1,0 +1,102 @@
+{
+  "bsonType": "object",
+  "description": "业务板块表",
+  "required": [
+    "title",
+    "short_name"
+  ],
+  "permission": {
+    "read": true,
+    "create": "'admin' in auth.role",
+    "update": "'admin' in auth.role",
+    "delete": "'admin' in auth.role"
+  },
+  "properties": {
+    "_id": {
+      "description": "板块ID"
+    },
+    "title": {
+      "bsonType": "string",
+      "description": "板块标题",
+      "label": "标题",
+      "title": "标题"
+    },
+    "short_name": {
+      "bsonType": "string",
+      "description": "短名称",
+      "label": "短名称"
+    },
+    "bg_color": {
+      "bsonType": "string",
+      "description": "背景颜色",
+      "label": "背景色",
+      "default": "#dbeafe"
+    },
+    "description": {
+      "bsonType": "string",
+      "description": "板块描述",
+      "label": "描述"
+    },
+    "icon": {
+      "bsonType": "string",
+      "description": "图标URL",
+      "label": "图标"
+    },
+    "sort_order": {
+      "bsonType": "int",
+      "description": "排序",
+      "label": "排序",
+      "default": 0
+    },
+    "status": {
+      "bsonType": "string",
+      "description": "状态",
+      "label": "状态",
+      "enum": [
+        "active",
+        "inactive"
+      ],
+      "default": "active"
+    },
+    "has_articles": {
+      "bsonType": "bool",
+      "description": "是否有文章",
+      "label": "是否有文章",
+      "default": false
+    },
+    "tag": {
+      "bsonType": "string",
+      "description": "促销标签",
+      "label": "促销标签",
+      "enum": [
+        "热门推荐",
+        "官方认证",
+        "限时优惠",
+        "新上线",
+        ""
+      ]
+    },
+    "filter_tags": {
+      "bsonType": "array",
+      "description": "筛选标签列表",
+      "label": "筛选标签",
+      "items": {
+        "bsonType": "string"
+      }
+    },
+    "create_date": {
+      "bsonType": "timestamp",
+      "description": "创建时间",
+      "forceDefaultValue": {
+        "$env": "now"
+      }
+    },
+    "update_date": {
+      "bsonType": "timestamp",
+      "description": "更新时间",
+      "forceDefaultValue": {
+        "$env": "now"
+      }
+    }
+  }
+}

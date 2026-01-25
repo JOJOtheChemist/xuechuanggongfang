@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>利益刺激签到卡片</title>
+    <style>
+        /* --- 全局设置 --- */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: #F8F7FC;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 380px;
+        }
+
+        /* --- 签到卡片主体 --- */
+        .checkin-card-pro {
+            background: #ffffff;
+            border-radius: 24px;
+            padding: 20px;
+            box-shadow: 0 15px 40px rgba(139, 92, 246, 0.12);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* 1. 顶部：天数状态 */
+        .top-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .streak-info {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            font-weight: 700;
+            color: #4B5563;
+        }
+
+        .fire-icon {
+            color: #F59E0B;
+            animation: burn 1.5s infinite alternate;
+        }
+
+        @keyframes burn {
+            from {
+                opacity: 0.8;
+                transform: scale(1);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1.1);
+            }
+        }
+
+        .streak-days {
+            background: #EDE9FE;
+            color: #7C3AED;
+            padding: 2px 10px;
+            border-radius: 99px;
+            font-size: 12px;
+        }
+
+        /* 2. 核心：收益展示区 (利益刺激) */
+        .earnings-box {
+            background: linear-gradient(135deg, #F9FAFB, #F3F4F6);
+            border-radius: 16px;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            border: 1px solid #E5E7EB;
+            position: relative;
+        }
+
+        /* 中间分割线 */
+        .earnings-box::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 15%;
+            bottom: 15%;
+            width: 1px;
+            background: #E5E7EB;
+        }
+
+        .earning-item {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .earning-label {
+            font-size: 11px;
+            color: #6B7280;
+            font-weight: 500;
+        }
+
+        .earning-val {
+            font-size: 20px;
+            font-weight: 800;
+            color: #1F2937;
+            display: flex;
+            align-items: baseline;
+        }
+
+        /* 这里的金额如果没签到，可以加一个模糊滤镜或者锁图标，增加焦虑感 */
+        .earning-val.locked {
+            color: #9CA3AF;
+        }
+
+        .currency {
+            font-size: 12px;
+            margin-right: 2px;
+            color: #9CA3AF;
+        }
+
+        /* 3. 警示条 (损失厌恶) */
+        .warning-strip {
+            background: #FEF2F2;
+            border-radius: 8px;
+            padding: 10px 12px;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
+        .warning-icon {
+            color: #EF4444;
+            width: 14px;
+            height: 14px;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .warning-text {
+            font-size: 12px;
+            color: #B91C1C;
+            line-height: 1.4;
+            font-weight: 500;
+        }
+
+        /* 4. 签到按钮 */
+        .checkin-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #8B5CF6, #6D28D9);
+            color: white;
+            border: none;
+            padding: 14px;
+            border-radius: 999px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(124, 58, 237, 0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* 按钮光效动画 */
+        .checkin-btn::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 50%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transform: skewX(-20deg);
+            animation: shine 3s infinite;
+        }
+
+        @keyframes shine {
+            0% {
+                left: -100%;
+            }
+
+            20% {
+                left: 200%;
+            }
+
+            100% {
+                left: 200%;
+            }
+        }
+
+        .checkin-btn:active {
+            transform: scale(0.98);
+        }
+
+        /* --- 签到成功后的样式 (变身) --- */
+        .checkin-card-pro.checked .checkin-btn {
+            background: #ECFDF5;
+            color: #059669;
+            box-shadow: none;
+            cursor: default;
+        }
+
+        .checkin-card-pro.checked .checkin-btn::after {
+            display: none;
+        }
+
+        .checkin-card-pro.checked .warning-strip {
+            background: #F0FDF4;
+            /* 变绿背景 */
+        }
+
+        .checkin-card-pro.checked .warning-text {
+            color: #059669;
+        }
+
+        .checkin-card-pro.checked .warning-icon {
+            color: #10B981;
+        }
+
+        /* 数字高亮 */
+        .checkin-card-pro.checked .earning-val {
+            color: #D97706;
+            /* 变成金色 */
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+
+        <div class="checkin-card-pro" id="checkinCard">
+
+            <div class="top-row">
+                <div class="streak-info">
+                    <svg class="fire-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                        <path
+                            d="M12 23c6.075 0 11-4.925 11-11S18.075 1 12 1 1 5.925 1 12s4.925 11 11 11zm0-20c4.963 0 9 4.038 9 9s-4.037 9-9 9-9-4.038-9-9 4.037-9 9-9z" />
+                        <path
+                            d="M12 18c-2.5 0-4-2-4-4 0-2.5 2.5-5 2.5-5S13 11 13 12.5c0 .64-.225 1.088-.5 1.5.5-.5.5-1.5.5-2.5 1 1.5 2 3 2 4.5 0 2-1.5 3-3 3z" />
+                    </svg>
+                    连续签到
+                </div>
+                <div class="streak-days" id="dayCount">7 天</div>
+            </div>
+
+            <div class="earnings-box">
+                <div class="earning-item">
+                    <div class="earning-label">团队昨日收益</div>
+                    <div class="earning-val locked" id="teamMoney">
+                        <span class="currency">¥</span>1,240.5
+                    </div>
+                </div>
+                <div class="earning-item">
+                    <div class="earning-label">本人昨日收益</div>
+                    <div class="earning-val locked" id="myMoney">
+                        <span class="currency">¥</span>52.8
+                    </div>
+                </div>
+            </div>
+
+            <div class="warning-strip" id="warningBox">
+                <svg class="warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                <div class="warning-text" id="warningText">
+                    今日未打卡！若中断签到，上方<span style="font-weight:800; text-decoration: underline;">昨日收益将无法领取</span>并清零。
+                </div>
+            </div>
+
+            <button class="checkin-btn" onclick="doCheckIn(this)">
+                立即签到领钱
+            </button>
+
+        </div>
+
+    </div>
+
+    <script>
+        function doCheckIn(btn) {
+            const card = document.getElementById('checkinCard');
+            const warningText = document.getElementById('warningText');
+            const warningIcon = document.querySelector('.warning-icon');
+            const dayCount = document.getElementById('dayCount');
+            const teamMoney = document.getElementById('teamMoney');
+            const myMoney = document.getElementById('myMoney');
+
+            // 1. 改变卡片状态
+            card.classList.add('checked');
+
+            // 2. 按钮变化
+            btn.innerHTML = "已领取昨日收益 ✓";
+
+            // 3. 文案变化 (安抚用户)
+            warningText.innerHTML = "打卡成功！昨日收益已存入钱包，明天记得继续来哦～";
+
+            // 4. 图标变化 (警告 -> 对勾)
+            warningIcon.innerHTML = '<polyline points="20 6 9 17 4 12"></polyline>';
+
+            // 5. 收益数字变色 (激活感)
+            teamMoney.classList.remove('locked');
+            myMoney.classList.remove('locked');
+
+            // 6. 天数 +1
+            let days = parseInt(dayCount.innerText);
+            dayCount.innerText = (days + 1) + " 天";
+        }
+    </script>
+
+</body>
+
+</html>

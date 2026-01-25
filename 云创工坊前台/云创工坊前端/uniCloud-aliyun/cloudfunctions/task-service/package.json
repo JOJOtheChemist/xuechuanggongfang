@@ -1,0 +1,13 @@
+{
+  "name": "task-service",
+  "version": "1.0.0",
+  "description": "任务服务云对象",
+  "main": "index.obj.js",
+  "cloudfunction-config": {
+    "memorySize": 256,
+    "timeout": 60
+  },
+  "dependencies": {
+    "auth-utils": "file:../common/auth-utils"
+  }
+}

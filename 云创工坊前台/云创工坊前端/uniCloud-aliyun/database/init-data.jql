@@ -1,0 +1,158 @@
+// 初始化数据库数据
+// 先清空旧数据，再导入新数据
+
+// 1. 清空文章表（可选，如果想保留旧数据就注释掉）
+// db.collection('articles').where({}).remove()
+
+// 2. 清空业务板块表（可选）
+// db.collection('business_categories').where({}).remove()
+
+// 3. 导入业务板块数据
+db.collection('business_categories').add([
+  {
+    "_id": "cat_001",
+    "title": "志愿填报",
+    "short_name": "志愿",
+    "bg_color": "#dbeafe",
+    "description": "大数据精准匹配，专家一对一指导，为你的未来保驾护航，支持历年分数线查询与录取概率分析。",
+    "icon": "https://picsum.photos/100/100?random=1",
+    "sort_order": 1,
+    "status": "active",
+    "has_articles": false,
+    "tag": "热门推荐",
+    "create_date": 1732348800000,
+    "update_date": 1732348800000
+  },
+  {
+    "_id": "cat_002",
+    "title": "考公考编",
+    "short_name": "考公",
+    "bg_color": "#fee2e2",
+    "description": "最新公考资讯与题库，结合名师课程，帮助你高效备考，稳步上岸。",
+    "icon": "https://picsum.photos/100/100?random=2",
+    "sort_order": 2,
+    "status": "active",
+    "has_articles": true,
+    "tag": "官方认证"
+  },
+  {
+    "_id": "cat_003",
+    "title": "驾校",
+    "short_name": "驾校",
+    "bg_color": "#dcfce7",
+    "description": "严选本地优质驾校，课程透明，拿证更高效，支持分期缴费与一对一客服。",
+    "icon": "https://picsum.photos/100/100?random=3",
+    "sort_order": 3,
+    "status": "active",
+    "has_articles": false,
+    "tag": "限时优惠"
+  },
+  {
+    "_id": "cat_004",
+    "title": "考研",
+    "short_name": "考研",
+    "bg_color": "#e0e7ff",
+    "description": "提供全程备考规划、院校专业分析与复试指导，帮你构建系统化学习路径。",
+    "icon": "https://picsum.photos/100/100?random=4",
+    "sort_order": 4,
+    "status": "active",
+    "has_articles": true,
+    "tag": "新上线"
+  },
+  {
+    "_id": "cat_005",
+    "title": "专升本",
+    "short_name": "专升本",
+    "bg_color": "#fef3c7",
+    "description": "为专科生量身打造的升学路径，提供报考指南、备考资料与院校分析，助力升学梦想。",
+    "icon": "https://picsum.photos/100/100?random=5",
+    "sort_order": 5,
+    "status": "active",
+    "has_articles": true,
+    "tag": "热门推荐"
+  },
+  {
+    "_id": "cat_006",
+    "title": "新生棉被",
+    "short_name": "棉被",
+    "bg_color": "#ffe4e6",
+    "description": "为新生提供寝室必备用品直送服务，品质把控严格，免去开学采购奔波。",
+    "icon": "https://picsum.photos/100/100?random=6",
+    "sort_order": 6,
+    "status": "active",
+    "has_articles": false,
+    "tag": "官方认证"
+  },
+  {
+    "_id": "cat_007",
+    "title": "招人上班",
+    "short_name": "招人",
+    "bg_color": "#cffafe",
+    "description": "覆盖校内勤工俭学、校外兼职与企业实习，多重审核保障岗位真实可靠。",
+    "icon": "https://picsum.photos/100/100?random=7",
+    "sort_order": 7,
+    "status": "active",
+    "has_articles": false,
+    "tag": "限时优惠"
+  },
+  {
+    "_id": "cat_008",
+    "title": "朋友圈素材",
+    "short_name": "素材",
+    "bg_color": "#ede9fe",
+    "description": "节日海报、打卡配图与文案模板一站式获取，让你的社交内容持续有灵感。",
+    "icon": "https://picsum.photos/100/100?random=8",
+    "sort_order": 8,
+    "status": "active",
+    "has_articles": true,
+    "tag": "新上线"
+  },
+  {
+    "_id": "cat_009",
+    "title": "数据图表",
+    "short_name": "图表",
+    "bg_color": "#ccfbf1",
+    "description": "提供调研与统计场景下的可视化图表生成工具，支持多种主题与导出格式。",
+    "icon": "https://picsum.photos/100/100?random=9",
+    "sort_order": 9,
+    "status": "active",
+    "has_articles": false,
+    "tag": "热门推荐"
+  },
+  {
+    "_id": "cat_010",
+    "title": "相关动态",
+    "short_name": "动态",
+    "bg_color": "#ffedd5",
+    "description": "聚合校内活动、讲座通知与官方公告，重要信息不错过。",
+    "icon": "https://picsum.photos/100/100?random=10",
+    "sort_order": 10,
+    "status": "active",
+    "has_articles": false,
+    "tag": "官方认证"
+  },
+  {
+    "_id": "cat_011",
+    "title": "资源文件",
+    "short_name": "资源",
+    "bg_color": "#e0f2fe",
+    "description": "课件、真题与工具包集中管理与下载，支持分类检索与标签筛选。",
+    "icon": "https://picsum.photos/100/100?random=11",
+    "sort_order": 11,
+    "status": "active",
+    "has_articles": false,
+    "tag": "限时优惠"
+  },
+  {
+    "_id": "cat_012",
+    "title": "新人计划",
+    "short_name": "新人",
+    "bg_color": "#fee2ff",
+    "description": "为新同学设计的成长路径，涵盖社团体验、技能提升与校园攻略。",
+    "icon": "https://picsum.photos/100/100?random=12",
+    "sort_order": 12,
+    "status": "active",
+    "has_articles": false,
+    "tag": "新上线"
+  }
+])

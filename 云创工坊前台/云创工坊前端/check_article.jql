@@ -1,0 +1,6 @@
+db.collection('articles')
+  .where({
+    title: /Excel高频考点汇总/
+  })
+  .limit(1)
+  .get()

@@ -1,0 +1,93 @@
+// 修正数据库分类以匹配文件夹结构
+// 按 Command+R 运行此脚本
+
+const db = uniCloud.database();
+const collection = db.collection('business_categories');
+
+// 1. 修改 cat_002: 仅保留“考公”
+await collection.doc('cat_002').update({
+  title: "考公",
+  short_name: "考公",
+  description: "最新公考资讯与题库，结合名师课程，帮助你高效备考，稳步上岸。",
+  has_articles: true
+});
+
+// 2. 修改 cat_006: 从“新生棉被”改为“教资”
+await collection.doc('cat_006').update({
+  title: "教资",
+  short_name: "教资",
+  bg_color: "#ffe4e6",
+  description: "教师资格证报考指南、备考资料与面试技巧，覆盖笔试与面试全流程。",
+  icon: "https://picsum.photos/100/100?random=6",
+  has_articles: true,
+  tag: "官方认证"
+});
+
+// 3. 修改 cat_011: 从“资源文件”改为“计算机”
+await collection.doc('cat_011').update({
+  title: "计算机",
+  short_name: "计算机",
+  bg_color: "#e0f2fe",
+  description: "计算机一级、二级考试大纲解析、真题训练与高频考点梳理，适合零基础快速入门。",
+  icon: "https://picsum.photos/100/100?random=11",
+  has_articles: true,
+  tag: "热门推荐"
+});
+
+// 4. 新增 cat_015: “升学” (如果不存在则创建，如果存在则更新)
+const cat15 = await collection.doc('cat_015').get();
+if (cat15.data && cat15.data.length > 0) {
+    await collection.doc('cat_015').update({
+        title: "升学",
+        short_name: "升学",
+        bg_color: "#bae6fd",
+        description: "为有升学意向的同学提供测评、志愿规划与备考服务。",
+        has_articles: true,
+        status: "active"
+    });
+} else {
+    await collection.add({
+        _id: "cat_015",
+        title: "升学",
+        short_name: "升学",
+        bg_color: "#bae6fd",
+        description: "为有升学意向的同学提供测评、志愿规划与备考服务。",
+        icon: "https://picsum.photos/100/100?random=15",
+        sort_order: 15,
+        status: "active",
+        has_articles: true,
+        tag: "新上线",
+        create_date: Date.now(),
+        update_date: Date.now()
+    });
+}
+
+// 5. 新增 cat_016: “考编”
+const cat16 = await collection.doc('cat_016').get();
+if (cat16.data && cat16.data.length > 0) {
+    await collection.doc('cat_016').update({
+        title: "考编",
+        short_name: "考编",
+        bg_color: "#ffedd5", // 使用原动态的颜色或新颜色
+        description: "汇集各地事业编考试公告、岗位分析与备考资料，助你顺利入编。",
+        has_articles: true,
+        status: "active"
+    });
+} else {
+    await collection.add({
+        _id: "cat_016",
+        title: "考编",
+        short_name: "考编",
+        bg_color: "#ffedd5",
+        description: "汇集各地事业编考试公告、岗位分析与备考资料，助你顺利入编。",
+        icon: "https://picsum.photos/100/100?random=16",
+        sort_order: 16,
+        status: "active",
+        has_articles: true,
+        tag: "官方认证",
+        create_date: Date.now(),
+        update_date: Date.now()
+    });
+}
+
+console.log('数据库分类修正完成！请刷新前端页面查看。');

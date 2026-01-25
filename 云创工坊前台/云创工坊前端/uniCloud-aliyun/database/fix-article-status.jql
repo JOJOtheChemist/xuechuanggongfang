@@ -1,0 +1,10 @@
+// 批量修复文章状态
+// 将所有 status 字段为空或为 0 的文章，更新为 status = 1 (已发布)
+
+db.collection('articles')
+  .where({
+    status: db.command.neq(1) // 查找所有 status 不等于 1 的文章
+  })
+  .update({
+    status: 1
+  })

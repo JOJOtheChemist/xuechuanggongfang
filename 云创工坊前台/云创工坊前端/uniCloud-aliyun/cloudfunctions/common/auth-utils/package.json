@@ -1,0 +1,6 @@
+{
+  "name": "auth-utils",
+  "version": "1.0.0",
+  "description": "认证工具模块",
+  "main": "index.js"
+}

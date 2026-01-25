@@ -1,0 +1,48 @@
+{
+  "bsonType": "object",
+  "description": "用户积分账户表",
+  "required": ["user_id"],
+  "permission": {
+    "read": "auth.uid == doc.user_id || 'admin' in auth.role",
+    "create": "auth.uid != null",
+    "update": "auth.uid == doc.user_id || 'admin' in auth.role",
+    "delete": "'admin' in auth.role"
+  },
+  "properties": {
+    "_id": {
+      "description": "记录ID"
+    },
+    "user_id": {
+      "bsonType": "string",
+      "description": "用户ID",
+      "foreignKey": "uni-id-users._id",
+      "forceDefaultValue": {
+        "$env": "uid"
+      }
+    },
+    "balance": {
+      "bsonType": "int",
+      "description": "当前可用积分余额",
+      "default": 0
+    },
+    "total_points": {
+      "bsonType": "int",
+      "description": "历史累计获得积分（只增不减，用于徽章等级计算）",
+      "default": 0
+    },
+    "create_date": {
+      "bsonType": "timestamp",
+      "description": "创建时间",
+      "forceDefaultValue": {
+        "$env": "now"
+      }
+    },
+    "update_date": {
+      "bsonType": "timestamp",
+      "description": "更新时间",
+      "forceDefaultValue": {
+        "$env": "now"
+      }
+    }
+  }
+}

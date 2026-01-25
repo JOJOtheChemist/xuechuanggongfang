@@ -1,0 +1,63 @@
+// 迁移旧数据到新分类
+// 用于修复之前同步产生的 cat_009(考编旧) -> cat_016(考编新) 等问题
+// 按 Command+R 运行
+
+const db = uniCloud.database();
+const dbCmd = db.command;
+
+// 1. 迁移“考编”文章 (原 cat_009 且包含“考编”标签或标题)
+// 注意：cat_009 可能也包含“就业”，所以要加条件限制
+const res1 = await db.collection('articles')
+  .where(dbCmd.and([
+    { category_id: 'cat_009' },
+    dbCmd.or([
+      { tags: '考编' },
+      { title: /考编/ },
+      { title: /事业单位/ },
+      { title: /综合应用/ }
+    ])
+  ]))
+  .update({
+    category_id: 'cat_016'
+  });
+console.log(`迁移考编文章 (cat_009 -> cat_016): 更新 ${res1.updated} 条`);
+
+// 2. 迁移“教资”文章 (原 cat_002 且包含“教资”标签)
+// cat_002 主要是考公，但也混了教资
+const res2 = await db.collection('articles')
+  .where(dbCmd.and([
+    { category_id: 'cat_002' },
+    dbCmd.or([
+        { tags: '教资' },
+        { title: /教资/ },
+        { title: /教师资格/ }
+    ])
+  ]))
+  .update({
+    category_id: 'cat_006'
+  });
+console.log(`迁移教资文章 (cat_002 -> cat_006): 更新 ${res2.updated} 条`);
+
+// 3. 迁移“计算机”文章 (原 cat_007 -> cat_011)
+const res3 = await db.collection('articles')
+  .where({
+      category_id: 'cat_007'
+  })
+  .update({
+    category_id: 'cat_011'
+  });
+console.log(`迁移计算机文章 (cat_007 -> cat_011): 更新 ${res3.updated} 条`);
+
+// 4. 迁移“升学”文章 (原 cat_001/005 -> cat_015)
+const res4 = await db.collection('articles')
+  .where(dbCmd.and([
+    { category_id: dbCmd.in(['cat_001', 'cat_005']) },
+     dbCmd.or([
+        { tags: '升学' },
+        { title: /升学/ }
+    ])
+  ]))
+  .update({
+    category_id: 'cat_015'
+  });
+console.log(`迁移升学文章 (-> cat_015): 更新 ${res4.updated} 条`);

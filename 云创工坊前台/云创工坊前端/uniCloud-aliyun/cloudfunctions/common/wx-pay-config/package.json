@@ -1,0 +1,6 @@
+{
+  "name": "wx-pay-config",
+  "version": "1.0.0",
+  "description": "微信支付配置模块",
+  "main": "index.js"
+}

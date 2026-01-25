@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>学创工坊 Dashboard</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Noto Sans SC -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Noto Sans SC"', 'sans-serif'],
+                    },
+                    colors: {
+                        // Pantone Very Peri inspired (主色调)
+                        primary: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            400: '#818cf8',
+                            500: '#6366f1', 
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        },
+                        // Pantone Peach Fuzz inspired (强调色 - 用于新增/高亮)
+                        accent: {
+                            50: '#fff7ed',
+                            100: '#ffedd5',
+                            400: '#fb923c',
+                            500: '#f97316',
+                            600: '#ea580c',
+                        },
+                        // Red for specific sketch highlights (利润/红色数据)
+                        danger: {
+                            500: '#ef4444', 
+                        },
+                        surface: '#f8fafc',
+                    },
+                    animation: {
+                        'scroll-up': 'scrollUp 10s linear infinite',
+                    },
+                    keyframes: {
+                        scrollUp: {
+                            '0%': { transform: 'translateY(0)' },
+                            '100%': { transform: 'translateY(-50%)' },
+                        }
+                    },
+                    boxShadow: {
+                        'soft': '0 4px 20px -2px rgba(0, 0, 0, 0.05)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #f1f5f9;
+            -webkit-font-smoothing: antialiased;
+        }
+        .hide-scroll::-webkit-scrollbar { display: none; }
+        .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .glass-nav {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-top: 1px solid rgba(255, 255, 255, 0.5);
+        }
+        
+        /* Grid Border Utility */
+        .bento-grid > div {
+            position: relative;
+        }
+        /* Add subtle borders to grid items to mimic the table look but softer */
+        .bento-grid .border-r-custom {
+            border-right: 1px solid #f1f5f9;
+        }
+        .bento-grid .border-b-custom {
+            border-bottom: 1px solid #f1f5f9;
+        }
+    </style>
+</head>
+<body class="text-slate-800 flex justify-center min-h-screen bg-slate-100">
+
+    <!-- App Container -->
+    <div class="w-full max-w-md bg-surface min-h-screen relative shadow-2xl flex flex-col pb-24">
+        
+        <!-- Header -->
+        <header class="px-5 pt-10 pb-4 flex justify-between items-center bg-surface sticky top-0 z-20">
+            <h1 class="text-xl font-black text-slate-800 tracking-tight">学创工坊</h1>
+            <div class="flex gap-3 items-center">
+                <div class="text-right">
+                   <p class="text-[10px] text-slate-400 font-medium">2023.10.24</p>
+                   <p class="text-[10px] text-slate-400 font-medium">星期二</p>
+                </div>
+                <img src="https://api.dicebear.com/7.x/notionists/svg?seed=Felix" alt="User" class="w-9 h-9 rounded-full border-2 border-white shadow-sm bg-indigo-100">
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-1 px-5 space-y-5 overflow-y-auto hide-scroll">
+
+            <!-- 1. The Big Bento Grid (Sketch Implementation) -->
+            <section class="bg-white rounded-2xl shadow-soft overflow-hidden border border-slate-100">
+                <!-- Flex container to split Left (Main) and Right (Grid) -->
+                <div class="flex h-48">
+                    
+                    <!-- Left: Main Data (Profit/User Data) -->
+                    <div class="w-5/12 p-4 flex flex-col justify-center border-r border-slate-100 relative bg-slate-50/30">
+                        <h3 class="text-slate-400 text-xs font-medium mb-3 flex items-center gap-1">
+                            <i class="fa-solid fa-wallet text-primary-400"></i> 综合数据
+                        </h3>
+                        
+                        <div class="mb-3">
+                            <p class="text-[10px] text-slate-400 mb-0.5">当月活跃</p>
+                            <!-- Red text as per sketch highlights -->
+                            <p class="text-2xl font-black text-slate-700 tracking-tight">7,500</p>
+                        </div>
+                        
+                        <div>
+                            <p class="text-[10px] text-slate-400 mb-0.5">当日新增</p>
+                            <p class="text-xl font-bold text-danger-500">500 <span class="text-[10px] font-normal text-slate-400">↑</span></p>
+                        </div>
+                    </div>
+
+                    <!-- Right: 2x2 Grid -->
+                    <div class="w-7/12 grid grid-cols-2 grid-rows-2">
+                        <!-- Cell 1: New Users -->
+                        <div class="border-b border-r border-slate-100 p-3 flex flex-col justify-center hover:bg-slate-50 transition">
+                            <p class="text-[10px] text-slate-400 mb-1">新增用户</p>
+                            <div class="flex items-center gap-1">
+                                <span class="font-bold text-slate-700 text-lg">11</span>
+                                <span class="text-[9px] bg-emerald-100 text-emerald-600 px-1 rounded-full">+1</span>
+                            </div>
+                        </div>
+
+                        <!-- Cell 2: New Partners -->
+                        <div class="border-b border-slate-100 p-3 flex flex-col justify-center hover:bg-slate-50 transition">
+                            <p class="text-[10px] text-slate-400 mb-1">新增伙伴</p>
+                            <div class="flex items-center gap-1">
+                                <span class="font-bold text-slate-700 text-lg">7</span>
+                                <span class="text-[9px] bg-accent-100 text-accent-600 px-1 rounded-full">+1</span>
+                            </div>
+                        </div>
+
+                        <!-- Cell 3: Orders -->
+                        <div class="border-r border-slate-100 p-3 flex flex-col justify-center hover:bg-slate-50 transition">
+                            <p class="text-[10px] text-slate-400 mb-1">订单量</p>
+                            <div class="flex items-center gap-1">
+                                <span class="font-bold text-slate-700 text-lg">120</span>
+                                <span class="text-[9px] bg-primary-100 text-primary-600 px-1 rounded-full">+3</span>
+                            </div>
+                        </div>
+
+                        <!-- Cell 4: Hot/Points -->
+                        <div class="p-3 flex flex-col justify-center hover:bg-slate-50 transition cursor-pointer group">
+                            <div class="flex justify-between items-start">
+                                <p class="text-[10px] text-slate-400 mb-1">热门板块</p>
+                                <i class="fa-solid fa-fire text-[10px] text-accent-400 group-hover:scale-110 transition"></i>
+                            </div>
+                            <div class="flex items-center">
+                                <span class="text-xs font-medium text-primary-500">查看更多</span>
+                                <i class="fa-solid fa-chevron-right text-[8px] text-primary-400 ml-1"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2. Target Progress Section (Sketch: Middle Band) -->
+            <section class="bg-gradient-to-r from-primary-600 to-primary-500 rounded-xl p-4 text-white shadow-lg shadow-primary-500/20 relative overflow-hidden">
+                <!-- Background decoration -->
+                <div class="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-8 -mt-8 blur-2xl"></div>
+                
+                <div class="flex justify-between items-center mb-3 relative z-10">
+                    <div class="flex items-center gap-2">
+                        <div class="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center text-white backdrop-blur-sm">
+                            <i class="fa-solid fa-bullseye"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-sm font-bold">目标完成进度</h3>
+                            <p class="text-[10px] text-primary-100 opacity-90">本月销售业绩 KPI</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-2xl font-black tracking-tight">75%</span>
+                    </div>
+                </div>
+
+                <!-- Custom Progress Bar -->
+                <div class="relative z-10">
+                    <div class="flex justify-between text-[10px] text-primary-100 mb-1.5 font-medium">
+                        <span>已完成: 7,500单</span>
+                        <span>目标: 10,000单</span>
+                    </div>
+                    <div class="w-full bg-black/20 h-2.5 rounded-full overflow-hidden backdrop-blur-sm">
+                        <div class="bg-accent-400 h-full rounded-full w-3/4 shadow-[0_0_8px_rgba(251,146,60,0.8)] relative">
+                            <div class="absolute top-0 left-0 h-full w-full bg-gradient-to-r from-transparent via-white/40 to-transparent animate-[shimmer_2s_infinite]"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 3. Todo List (Sketch: List area) -->
+            <section>
+                <div class="flex justify-between items-center mb-2 px-1">
+                    <h3 class="font-bold text-slate-700 text-sm">待办事项</h3>
+                    <div class="w-5 h-5 bg-white rounded-full flex items-center justify-center text-[10px] text-slate-400 shadow-sm">3</div>
+                </div>
+                
+                <div class="bg-white rounded-xl shadow-soft border border-slate-100 overflow-hidden">
+                    <!-- Item 1 -->
+                    <div class="p-3 border-b border-slate-50 flex items-center gap-3 hover:bg-slate-50 transition">
+                        <div class="w-8 h-8 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center text-xs flex-shrink-0">
+                            1
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-sm font-medium text-slate-700">新用户注册审核</p>
+                        </div>
+                        <button class="px-3 py-1 rounded-full bg-white border border-slate-200 text-[10px] text-slate-500 font-medium">处理</button>
+                    </div>
+                    <!-- Item 2 -->
+                    <div class="p-3 border-b border-slate-50 flex items-center gap-3 hover:bg-slate-50 transition">
+                        <div class="w-8 h-8 rounded-full bg-orange-50 text-orange-500 flex items-center justify-center text-xs flex-shrink-0">
+                            2
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-sm font-medium text-slate-700">工坊物料更新</p>
+                        </div>
+                        <button class="px-3 py-1 rounded-full bg-white border border-slate-200 text-[10px] text-slate-500 font-medium">处理</button>
+                    </div>
+                    <!-- Item 3 -->
+                    <div class="p-3 flex items-center gap-3 hover:bg-slate-50 transition">
+                        <div class="w-8 h-8 rounded-full bg-purple-50 text-purple-500 flex items-center justify-center text-xs flex-shrink-0">
+                            3
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-sm font-medium text-slate-700">整理财务报表</p>
+                        </div>
+                        <button class="px-3 py-1 rounded-full bg-white border border-slate-200 text-[10px] text-slate-500 font-medium">处理</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4. Team Updates (Sketch: Bottom circular scroll) -->
+            <section class="pb-6">
+                <div class="flex items-center gap-2 mb-2 px-1">
+                    <h3 class="font-bold text-slate-700 text-sm">团队动态</h3>
+                    <span class="px-1.5 py-0.5 bg-primary-50 text-primary-600 text-[9px] rounded font-bold uppercase tracking-wider">Live</span>
+                </div>
+                
+                <div class="bg-white rounded-xl p-4 shadow-soft border border-slate-100">
+                    <div class="h-20 overflow-hidden relative">
+                         <!-- Gradient mask -->
+                         <div class="absolute top-0 left-0 w-full h-4 bg-gradient-to-b from-white to-transparent z-10"></div>
+                         <div class="absolute bottom-0 left-0 w-full h-4 bg-gradient-to-t from-white to-transparent z-10"></div>
+
+                        <div class="animate-scroll-up space-y-4">
+                            <!-- Dynamic Items -->
+                            <div class="flex items-center gap-3">
+                                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Alex" class="w-8 h-8 rounded-full bg-slate-100 border border-white shadow-sm">
+                                <div class="text-xs text-slate-600">
+                                    <span class="font-bold text-slate-800">Alex</span> 完成了 <span class="text-primary-600">7500 单</span> 目标冲刺
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah" class="w-8 h-8 rounded-full bg-slate-100 border border-white shadow-sm">
+                                <div class="text-xs text-slate-600">
+                                    <span class="font-bold text-slate-800">Sarah</span> 新增了 <span class="text-accent-500">3 位</span> 合作伙伴
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Mike" class="w-8 h-8 rounded-full bg-slate-100 border border-white shadow-sm">
+                                <div class="text-xs text-slate-600">
+                                    <span class="font-bold text-slate-800">Mike</span> 上传了新的 <span class="text-slate-800">会议记录</span>
+                                </div>
+                            </div>
+                            
+                             <!-- Duplicates for Loop -->
+                            <div class="flex items-center gap-3">
+                                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Alex" class="w-8 h-8 rounded-full bg-slate-100 border border-white shadow-sm">
+                                <div class="text-xs text-slate-600">
+                                    <span class="font-bold text-slate-800">Alex</span> 完成了 <span class="text-primary-600">7500 单</span> 目标冲刺
+                                </div>
+                            </div>
+                             <div class="flex items-center gap-3">
+                                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah" class="w-8 h-8 rounded-full bg-slate-100 border border-white shadow-sm">
+                                <div class="text-xs text-slate-600">
+                                    <span class="font-bold text-slate-800">Sarah</span> 新增了 <span class="text-accent-500">3 位</span> 合作伙伴
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- Navigation -->
+        <nav class="absolute bottom-0 w-full glass-nav px-6 py-3 rounded-t-3xl flex justify-between items-center z-30">
+            <button class="flex flex-col items-center gap-1 text-primary-600">
+                <i class="fa-solid fa-grid-2 text-xl"></i>
+                <span class="text-[10px] font-bold">概览</span>
+            </button>
+            <button class="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 transition">
+                <i class="fa-solid fa-chart-simple text-xl"></i>
+                <span class="text-[10px] font-medium">报表</span>
+            </button>
+            <!-- Main Action -->
+            <button class="w-12 h-12 bg-primary-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-primary-500/40 -mt-6 border-4 border-surface hover:scale-105 transition">
+                <i class="fa-solid fa-plus text-lg"></i>
+            </button>
+            <button class="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 transition">
+                <i class="fa-regular fa-comment-dots text-xl"></i>
+                <span class="text-[10px] font-medium">消息</span>
+            </button>
+            <button class="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 transition">
+                <i class="fa-regular fa-user text-xl"></i>
+                <span class="text-[10px] font-medium">我的</span>
+            </button>
+        </nav>
+    </div>
+</body>
+</html>

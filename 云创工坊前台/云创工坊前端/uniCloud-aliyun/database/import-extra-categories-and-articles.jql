@@ -1,0 +1,117 @@
+// 初始化 四六级 / 教师资格证 / 计算机一二级 的业务分类和示例文章
+// 使用方法：在 HBuilderX 中打开本文件，按 Command+R（或 Fn+F5）运行一次，之后可以删除本文件
+
+// 1. 添加新的业务分类到 business_categories
+await db.collection('business_categories').add([
+  {
+    _id: 'cat_001',
+    title: '四六级',
+    short_name: '四六级',
+    bg_color: '#dbeafe',
+    description: '大学英语四、六级备考规划、真题解析与高分技巧，配套词汇与听力练习资料。',
+    icon: 'https://picsum.photos/100/100?random=1',
+    sort_order: 1,
+    status: 'active',
+    has_articles: true,
+    tag: '热门推荐'
+  },
+  {
+    _id: 'cat_006',
+    title: '教师资格证',
+    short_name: '教资',
+    bg_color: '#ffe4e6',
+    description: '教师资格证报考指南、备考资料与面试技巧，覆盖笔试与面试全流程。',
+    icon: 'https://picsum.photos/100/100?random=6',
+    sort_order: 6,
+    status: 'active',
+    has_articles: true,
+    tag: '官方认证'
+  },
+  {
+    _id: 'cat_007',
+    title: '计算机一二级',
+    short_name: '计一二级',
+    bg_color: '#e0f2fe',
+    description: '计算机一级、二级考试大纲解析、真题训练与高频考点梳理，适合零基础快速入门。',
+    icon: 'https://picsum.photos/100/100?random=7',
+    sort_order: 7,
+    status: 'active',
+    has_articles: true,
+    tag: '新上线'
+  }
+])
+
+// 2. 为这三个分类添加示例文章到 articles
+await db.collection('articles').add([
+  // 四六级
+  {
+    _id: 'article_cet_001',
+    category_id: 'cat_001',
+    title: '四六级高分备考全攻略',
+    summary: '从备考规划、刷题节奏到考前冲刺，手把手教你稳过四六级。',
+    content: '<h2>备考规划</h2><p>建议至少提前3个月开始系统复习，结合真题和模拟题进行训练。</p>',
+    cover_image: 'https://picsum.photos/800/450?random=41',
+    author_name: '云创学习助手',
+    stats: { views: 0, likes: 0, dislikes: 0 },
+    publish_time: Date.now()
+  },
+  {
+    _id: 'article_cet_002',
+    category_id: 'cat_001',
+    title: '四六级真题使用技巧：如何刷题才有效',
+    summary: '不是多刷题，而是会刷题，教你利用真题吃透考试套路。',
+    content: '<h2>真题的重要性</h2><p>真题是最贴近真实考试难度和题型的练习资料。</p>',
+    cover_image: 'https://picsum.photos/800/450?random=42',
+    author_name: '云创学习助手',
+    stats: { views: 0, likes: 0, dislikes: 0 },
+    publish_time: Date.now()
+  },
+
+  // 教师资格证
+  {
+    _id: 'article_jsz_001',
+    category_id: 'cat_006',
+    title: '教资笔试高频考点速记',
+    summary: '教育知识与能力模块高频考点梳理，配套口诀帮助快速记忆。',
+    content: '<h2>高频考点</h2><p>从教育学、心理学到法律法规，整理出历年真题高频出现的知识点。</p>',
+    cover_image: 'https://picsum.photos/800/450?random=43',
+    author_name: '教资辅导老师',
+    stats: { views: 0, likes: 0, dislikes: 0 },
+    publish_time: Date.now()
+  },
+  {
+    _id: 'article_jsz_002',
+    category_id: 'cat_006',
+    title: '教资面试结构化答题模板',
+    summary: '常见结构化面试题型与高分答题模板，帮助你理清思路、稳定发挥。',
+    content: '<h2>答题思路</h2><p>采用“总-分-总”的结构，先给结论，再分点阐述理由。</p>',
+    cover_image: 'https://picsum.photos/800/450?random=44',
+    author_name: '教资辅导老师',
+    stats: { views: 0, likes: 0, dislikes: 0 },
+    publish_time: Date.now()
+  },
+
+  // 计算机一二级
+  {
+    _id: 'article_cs_001',
+    category_id: 'cat_007',
+    title: '计算机二级考试内容一览与备考建议',
+    summary: '详细拆解计算机二级各科目考试内容与备考重点，适合零基础同学。',
+    content: '<h2>考试模块</h2><p>根据考试大纲，逐一介绍公共基础、程序设计和上机操作等模块。</p>',
+    cover_image: 'https://picsum.photos/800/450?random=45',
+    author_name: '计算机基础讲师',
+    stats: { views: 0, likes: 0, dislikes: 0 },
+    publish_time: Date.now()
+  },
+  {
+    _id: 'article_cs_002',
+    category_id: 'cat_007',
+    title: '计算机一级常见题型与刷题策略',
+    summary: '通过典型题型示例，教你掌握选择题和操作题的解题思路。',
+    content: '<h2>选择题刷题策略</h2><p>以题带点，总结每一类题型背后的知识点。</p>',
+    cover_image: 'https://picsum.photos/800/450?random=46',
+    author_name: '计算机基础讲师',
+    stats: { views: 0, likes: 0, dislikes: 0 },
+    publish_time: Date.now()
+  }
+])

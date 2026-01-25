@@ -1,0 +1,92 @@
+{
+  "bsonType": "object",
+  "required": ["order_no", "user_id", "business_id", "amount", "status"],
+  "permission": {
+    "read": "doc.user_id == auth.uid",
+    "create": false,
+    "update": false,
+    "delete": false
+  },
+  "properties": {
+    "_id": {
+      "description": "ID，系统自动生成"
+    },
+    "order_no": {
+      "bsonType": "string",
+      "title": "订单号",
+      "description": "商户订单号，全局唯一"
+    },
+    "user_id": {
+      "bsonType": "string",
+      "title": "用户ID",
+      "description": "下单用户的UID"
+    },
+    "business_id": {
+      "bsonType": "string",
+      "title": "业务ID",
+      "description": "关联的业务板块ID"
+    },
+    "business_name": {
+      "bsonType": "string",
+      "title": "业务名称",
+      "description": "业务板块名称"
+    },
+    "signup_id": {
+      "bsonType": "string",
+      "title": "报名记录ID",
+      "description": "关联的 business_signups 记录ID（若有）"
+    },
+    "referrer_reward_sent": {
+      "bsonType": "bool",
+      "title": "推荐人奖励是否已发放",
+      "description": "标记是否已给推荐人发放新币奖励，防止重复发放",
+      "default": false
+    },
+    "amount": {
+      "bsonType": "number",
+      "title": "订单金额（元）",
+      "description": "订单金额，单位：元"
+    },
+    "total_fee": {
+      "bsonType": "int",
+      "title": "订单金额（分）",
+      "description": "订单金额，单位：分"
+    },
+    "status": {
+      "bsonType": "string",
+      "title": "订单状态",
+      "description": "订单状态",
+      "enum": ["created", "paid", "failed", "cancelled", "refunded"]
+    },
+    "openid": {
+      "bsonType": "string",
+      "title": "用户OpenID",
+      "description": "微信用户的OpenID"
+    },
+    "prepay_id": {
+      "bsonType": "string",
+      "title": "预支付ID",
+      "description": "微信返回的预支付交易会话标识"
+    },
+    "transaction_id": {
+      "bsonType": "string",
+      "title": "微信订单号",
+      "description": "微信支付订单号"
+    },
+    "pay_time": {
+      "bsonType": "timestamp",
+      "title": "支付时间",
+      "description": "用户实际支付时间"
+    },
+    "create_date": {
+      "bsonType": "timestamp",
+      "title": "创建时间",
+      "description": "订单创建时间"
+    },
+    "update_date": {
+      "bsonType": "timestamp",
+      "title": "更新时间",
+      "description": "订单更新时间"
+    }
+  }
+}

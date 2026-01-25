@@ -1,0 +1,61 @@
+{
+  "bsonType": "object",
+  "description": "合伙人/伙伴表",
+  "required": ["user_id", "inviter_id"],
+  "permission": {
+    "read": "'partner' in auth.role || 'admin' in auth.role",
+    "create": "'partner' in auth.role || 'admin' in auth.role",
+    "update": "'admin' in auth.role",
+    "delete": "'admin' in auth.role"
+  },
+  "properties": {
+    "_id": {
+      "description": "伙伴ID"
+    },
+    "user_id": {
+      "bsonType": "string",
+      "description": "用户ID",
+      "foreignKey": "uni-id-users._id"
+    },
+    "inviter_id": {
+      "bsonType": "string",
+      "description": "邀请人ID",
+      "foreignKey": "uni-id-users._id"
+    },
+    "name": {
+      "bsonType": "string",
+      "description": "伙伴姓名"
+    },
+    "avatar": {
+      "bsonType": "string",
+      "description": "头像URL"
+    },
+    "level": {
+      "bsonType": "int",
+      "description": "层级（1=直属，2=二级...）",
+      "default": 1
+    },
+    "total_contribution": {
+      "bsonType": "double",
+      "description": "总贡献额",
+      "default": 0
+    },
+    "status": {
+      "bsonType": "string",
+      "description": "状态",
+      "enum": ["active", "inactive"],
+      "default": "active"
+    },
+    "join_date": {
+      "bsonType": "timestamp",
+      "description": "加入时间"
+    },
+    "create_date": {
+      "bsonType": "timestamp",
+      "description": "创建时间",
+      "forceDefaultValue": {
+        "$env": "now"
+      }
+    }
+  }
+}

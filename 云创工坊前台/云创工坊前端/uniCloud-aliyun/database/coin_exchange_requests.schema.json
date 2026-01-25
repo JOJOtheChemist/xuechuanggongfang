@@ -1,0 +1,56 @@
+{
+  "bsonType": "object",
+  "description": "新币兑换积分申请表",
+  "required": ["user_id", "coins_amount", "points_amount"],
+  "permission": {
+    "read": "auth.uid == doc.user_id || 'admin' in auth.role",
+    "create": false,
+    "update": "'admin' in auth.role",
+    "delete": "'admin' in auth.role"
+  },
+  "properties": {
+    "_id": {
+      "description": "申请ID"
+    },
+    "user_id": {
+      "bsonType": "string",
+      "description": "用户ID",
+      "foreignKey": "uni-id-users._id"
+    },
+    "coins_amount": {
+      "bsonType": "double",
+      "description": "兑换的新币数量"
+    },
+    "points_amount": {
+      "bsonType": "double",
+      "description": "兑换得到的积分数量"
+    },
+    "status": {
+      "bsonType": "string",
+      "description": "审核状态",
+      "enum": ["processing", "approved", "rejected", "cancelled"],
+      "default": "processing"
+    },
+    "reject_reason": {
+      "bsonType": "string",
+      "description": "拒绝理由（仅当状态为rejected时）"
+    },
+    "admin_id": {
+      "bsonType": "string",
+      "description": "审核管理员ID",
+      "foreignKey": "uni-id-users._id"
+    },
+    "create_date": {
+      "bsonType": "timestamp",
+      "description": "申请时间"
+    },
+    "update_date": {
+      "bsonType": "timestamp",
+      "description": "更新时间"
+    },
+    "process_date": {
+      "bsonType": "timestamp",
+      "description": "审核时间"
+    }
+  }
+}

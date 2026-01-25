@@ -1,0 +1,9 @@
+{
+    "name": "team-join-service",
+    "dependencies": {
+        "auth-utils": "file:../common/auth-utils"
+    },
+    "extensions": {
+        "uni-cloud-jql": {}
+    }
+}

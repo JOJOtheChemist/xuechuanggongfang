@@ -1,0 +1,13 @@
+{
+  "name": "user-center",
+  "version": "1.0.0",
+  "description": "用户中心云对象",
+  "main": "index.obj.js",
+  "cloudfunction-config": {
+    "memorySize": 256,
+    "timeout": 60
+  },
+  "dependencies": {
+    "auth-utils": "file:../common/auth-utils"
+  }
+}

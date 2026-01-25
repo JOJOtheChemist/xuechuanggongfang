@@ -1,0 +1,42 @@
+{
+  "bsonType": "object",
+  "required": [
+    "inviter_id",
+    "new_user_id",
+    "create_date"
+  ],
+  "properties": {
+    "inviter_id": {
+      "bsonType": "string",
+      "description": "邀请人的用户 UID"
+    },
+    "new_user_id": {
+      "bsonType": "string",
+      "description": "被邀请的新用户 UID"
+    },
+    "new_user_nickname": {
+      "bsonType": "string",
+      "description": "新用户昵称"
+    },
+    "new_user_avatar": {
+      "bsonType": "string",
+      "description": "新用户头像"
+    },
+    "source": {
+      "bsonType": "string",
+      "description": "拉新来源标识（如 weixin_qr）"
+    },
+    "status": {
+      "bsonType": "string",
+      "description": "状态：registered / paid / etc"
+    },
+    "create_date": {
+      "bsonType": "long",
+      "description": "记录创建时间戳"
+    },
+    "extra": {
+      "bsonType": "object",
+      "description": "附加信息"
+    }
+  }
+}

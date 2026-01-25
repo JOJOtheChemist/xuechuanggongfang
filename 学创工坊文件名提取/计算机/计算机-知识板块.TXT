@@ -1,0 +1,15 @@
+excel 错误信息.pdf
+Excel高频考点汇总.pdf
+LIST.TXT
+PPT高频考点汇总.pdf
+Word高频考点.pdf
+公共基础知识点汇总.pdf
+提取文档名称.bat
+数据库考前复习资料.pdf
+网络知识复习提纲.pdf
+考点自查清单（Excel专题）.pdf
+考点自查清单（ppt专题）.pdf
+考点自查清单（word专题）.pdf
+计算机基础知识点汇总.pdf
+计算机文化基础考前复习.pdf
+计算机等级.pdf

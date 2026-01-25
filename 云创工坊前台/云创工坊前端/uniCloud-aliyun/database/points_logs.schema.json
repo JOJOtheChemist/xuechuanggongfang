@@ -1,0 +1,55 @@
+{
+  "bsonType": "object",
+  "description": "用户积分流水表",
+  "required": ["user_id", "change", "reason"],
+  "permission": {
+    "read": "auth.uid == doc.user_id || 'admin' in auth.role",
+    "create": "auth.uid != null",
+    "update": "'admin' in auth.role",
+    "delete": "'admin' in auth.role"
+  },
+  "properties": {
+    "_id": {
+      "description": "流水ID"
+    },
+    "user_id": {
+      "bsonType": "string",
+      "description": "用户ID",
+      "foreignKey": "uni-id-users._id",
+      "forceDefaultValue": {
+        "$env": "uid"
+      }
+    },
+    "change": {
+      "bsonType": "int",
+      "description": "本次变动的积分值，正数为增加，负数为减少"
+    },
+    "balance_after": {
+      "bsonType": "int",
+      "description": "本次变动后的积分余额"
+    },
+    "reason": {
+      "bsonType": "string",
+      "description": "变动原因，如 daily_checkin / read_article / invite_new_user 等"
+    },
+    "source": {
+      "bsonType": "string",
+      "description": "来源模块/服务名称，如 checkin-service / article-service 等"
+    },
+    "ref_id": {
+      "bsonType": "string",
+      "description": "关联的业务记录ID，如文章ID/任务ID等"
+    },
+    "remark": {
+      "bsonType": "string",
+      "description": "备注说明"
+    },
+    "create_date": {
+      "bsonType": "timestamp",
+      "description": "创建时间",
+      "forceDefaultValue": {
+        "$env": "now"
+      }
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "bsonType": "object",
+  "description": "文章互动表",
+  "required": ["article_id", "user_id", "type"],
+  "permission": {
+    "read": true,
+    "create": "auth.uid != null",
+    "update": false,
+    "delete": "auth.uid == doc.user_id"
+  },
+  "properties": {
+    "_id": {
+      "description": "互动ID"
+    },
+    "article_id": {
+      "bsonType": "string",
+      "description": "文章ID",
+      "foreignKey": "articles._id"
+    },
+    "user_id": {
+      "bsonType": "string",
+      "description": "用户ID",
+      "foreignKey": "uni-id-users._id",
+      "forceDefaultValue": {
+        "$env": "uid"
+      }
+    },
+    "type": {
+      "bsonType": "string",
+      "description": "互动类型",
+      "enum": ["like", "dislike", "share", "view", "unlock"]
+    },
+    "create_date": {
+      "bsonType": "timestamp",
+      "description": "创建时间",
+      "forceDefaultValue": {
+        "$env": "now"
+      }
+    }
+  }
+}

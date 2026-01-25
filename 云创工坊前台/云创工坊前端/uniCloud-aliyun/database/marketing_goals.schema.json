@@ -1,0 +1,81 @@
+{
+    "bsonType": "object",
+    "description": "用户月度营销目标表",
+    "required": [
+        "user_id",
+        "month",
+        "year"
+    ],
+    "permission": {
+        "read": "doc.user_id == auth.uid",
+        "create": "auth.uid != null",
+        "update": "doc.user_id == auth.uid",
+        "delete": "doc.user_id == auth.uid"
+    },
+    "properties": {
+        "_id": {
+            "description": "ID"
+        },
+        "user_id": {
+            "bsonType": "string",
+            "description": "用户ID",
+            "foreignKey": "uni-id-users._id"
+        },
+        "year": {
+            "bsonType": "int",
+            "description": "年份"
+        },
+        "month": {
+            "bsonType": "int",
+            "description": "月份 (1-12)"
+        },
+        "goals": {
+            "bsonType": "array",
+            "description": "目标列表",
+            "items": {
+                "bsonType": "object",
+                "description": "单个目标",
+                "required": [
+                    "category_id",
+                    "target_value"
+                ],
+                "properties": {
+                    "category_id": {
+                        "bsonType": "string",
+                        "description": "关联的板块ID",
+                        "foreignKey": "business_categories._id"
+                    },
+                    "target_value": {
+                        "bsonType": "int",
+                        "description": "目标单量"
+                    }
+                }
+            }
+        },
+        "create_date": {
+            "bsonType": "timestamp",
+            "description": "创建时间",
+            "forceDefaultValue": {
+                "$env": "now"
+            }
+        },
+        "update_date": {
+            "bsonType": "timestamp",
+            "description": "更新时间",
+            "forceDefaultValue": {
+                "$env": "now"
+            }
+        }
+    },
+    "indexes": [
+        {
+            "name": "idx_user_year_month",
+            "unique": true,
+            "key": {
+                "user_id": 1,
+                "year": 1,
+                "month": 1
+            }
+        }
+    ]
+}

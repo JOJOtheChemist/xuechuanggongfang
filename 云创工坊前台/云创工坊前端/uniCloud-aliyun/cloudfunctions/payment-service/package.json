@@ -1,0 +1,10 @@
+{
+  "name": "payment-service",
+  "version": "1.0.0",
+  "description": "微信支付服务",
+  "main": "index.obj.js",
+  "dependencies": {
+    "auth-utils": "file:../common/auth-utils",
+    "wx-pay-config": "file:../common/wx-pay-config"
+  }
+}

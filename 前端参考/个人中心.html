@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>学创工坊 - 个人中心</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Noto Sans SC -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Noto Sans SC"', 'sans-serif'],
+                    },
+                    colors: {
+                        // Pantone Very Peri (2022)
+                        primary: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            400: '#818cf8',
+                            500: '#6667AB', // Adjusted specifically for Very Peri feel
+                            600: '#4f46e5',
+                        },
+                        // Pantone Peach Fuzz (2024)
+                        accent: {
+                            50: '#fff7ed',
+                            100: '#ffedd5',
+                            300: '#fdba74',
+                            400: '#FFBE98', // Adjusted specifically for Peach Fuzz feel
+                            500: '#f97316',
+                        },
+                        surface: '#f8fafc',
+                    },
+                    boxShadow: {
+                        'card': '0 10px 30px -10px rgba(102, 103, 171, 0.15)', // Very Peri tinted shadow
+                        'float': '0 10px 40px -10px rgba(0,0,0,0.1)',
+                    },
+                    backgroundImage: {
+                        'pattern-grid': "url(\"data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.1' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='1'/%3E%3Ccircle cx='13' cy='13' r='1'/%3E%3C/g%3E%3C/svg%3E\")",
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #f1f5f9;
+            -webkit-font-smoothing: antialiased;
+        }
+        .hide-scroll::-webkit-scrollbar { display: none; }
+        
+        /* Glassmorphism Nav */
+        .glass-nav {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(16px);
+            border-top: 1px solid rgba(255, 255, 255, 0.5);
+        }
+
+        /* Mesh Gradient for Wallet Card */
+        .mesh-gradient {
+            background-color: #6667AB;
+            background-image: 
+                radial-gradient(at 88% 0%, hsla(28,100%,74%,1) 0px, transparent 50%),
+                radial-gradient(at 0% 0%, hsla(245,58%,73%,1) 0px, transparent 50%),
+                radial-gradient(at 80% 100%, hsla(270,50%,40%,0.5) 0px, transparent 50%),
+                radial-gradient(at 0% 100%, hsla(240,100%,70%,0.8) 0px, transparent 50%);
+        }
+    </style>
+</head>
+<body class="text-slate-800 flex justify-center min-h-screen bg-slate-200">
+
+    <!-- App Container -->
+    <div class="w-full max-w-md bg-surface min-h-screen relative shadow-2xl flex flex-col pb-24">
+        
+        <!-- 1. Header: Profile Info -->
+        <header class="px-6 pt-12 pb-4 bg-white sticky top-0 z-20 border-b border-slate-50">
+            <div class="flex items-center gap-4">
+                <div class="relative">
+                    <img src="https://api.dicebear.com/7.x/notionists/svg?seed=Felix" alt="Avatar" class="w-16 h-16 rounded-full border-4 border-slate-50 bg-indigo-50">
+                    <div class="absolute bottom-0 right-0 w-5 h-5 bg-green-500 border-2 border-white rounded-full"></div>
+                </div>
+                <div class="flex-1">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h1 class="text-xl font-black text-slate-800">林学创</h1>
+                            <div class="flex items-center gap-2 mt-1">
+                                <span class="px-2 py-0.5 bg-primary-100 text-primary-600 text-[10px] font-bold rounded-full uppercase tracking-wide">
+                                    高级合伙人
+                                </span>
+                                <span class="text-[10px] text-slate-400">ID: 883920</span>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-[10px] text-slate-400">加入时间</p>
+                            <p class="text-xs font-medium text-slate-600">2023.04.12</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-1 px-5 py-6 space-y-5 overflow-y-auto hide-scroll">
+
+            <!-- 2. Main Visual: Wallet (Beautiful Pattern) -->
+            <!-- 使用了网格纹理和渐变，突出主视觉 -->
+            <section class="mesh-gradient rounded-2xl p-6 text-white shadow-card relative overflow-hidden group">
+                <!-- Abstract Pattern Overlay -->
+                <div class="absolute inset-0 bg-pattern-grid opacity-20"></div>
+                <!-- Decorative Circles -->
+                <div class="absolute -top-10 -right-10 w-40 h-40 bg-white opacity-10 rounded-full blur-3xl"></div>
+                
+                <div class="relative z-10">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-indigo-100 text-sm font-medium flex items-center gap-2">
+                            <i class="fa-solid fa-wallet"></i> 我的钱包
+                        </h3>
+                        <button class="px-4 py-1.5 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-full text-xs font-medium transition border border-white/10 flex items-center gap-1 group-hover:pl-3 group-hover:pr-5">
+                            去提现 <i class="fa-solid fa-arrow-right text-[10px] opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-1 transition-all duration-300"></i>
+                        </button>
+                    </div>
+                    
+                    <div>
+                        <p class="text-xs text-indigo-200 mb-1">总资产 (CNY)</p>
+                        <div class="flex items-baseline gap-2">
+                            <span class="text-4xl font-black tracking-tight">24,580.00</span>
+                            <i class="fa-regular fa-eye-slash text-indigo-300 text-xs cursor-pointer"></i>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 3. Stats Grid: Team & Orders -->
+            <section class="grid grid-cols-2 gap-4">
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden">
+                    <div class="absolute top-0 right-0 p-3 opacity-5">
+                        <i class="fa-solid fa-users text-5xl"></i>
+                    </div>
+                    <p class="text-xs text-slate-400 font-medium mb-2">团队数量</p>
+                    <div class="flex items-end gap-2">
+                        <span class="text-2xl font-bold text-slate-800">61</span>
+                        <span class="text-[10px] text-slate-400 mb-1.5">+0</span>
+                    </div>
+                </div>
+                
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden">
+                    <div class="absolute top-0 right-0 p-3 opacity-5">
+                         <i class="fa-solid fa-box-open text-5xl"></i>
+                    </div>
+                    <p class="text-xs text-slate-400 font-medium mb-2">我的订单</p>
+                    <div class="flex items-end gap-2">
+                        <span class="text-2xl font-bold text-slate-800">1,211</span>
+                        <span class="text-[10px] text-slate-400 mb-1.5">+0</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4. Achievements: Points & Badges -->
+            <section class="grid grid-cols-2 gap-4">
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
+                    <div>
+                        <p class="text-xs text-slate-400 font-medium">现有积分</p>
+                        <div class="flex items-center gap-1 mt-1">
+                            <span class="text-xl font-bold text-slate-800">520</span>
+                            <i class="fa-solid fa-coins text-accent-400 text-xs"></i>
+                        </div>
+                    </div>
+                    <button class="w-8 h-8 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center hover:bg-slate-100 transition">
+                        <i class="fa-solid fa-chevron-right text-xs"></i>
+                    </button>
+                </div>
+
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
+                    <div>
+                        <p class="text-xs text-slate-400 font-medium">我的徽章</p>
+                        <div class="flex -space-x-2 mt-1.5">
+                            <div class="w-6 h-6 rounded-full bg-yellow-100 border border-white flex items-center justify-center text-[10px]">🥇</div>
+                            <div class="w-6 h-6 rounded-full bg-blue-100 border border-white flex items-center justify-center text-[10px]">🚀</div>
+                            <div class="w-6 h-6 rounded-full bg-slate-100 border border-white flex items-center justify-center text-[10px] text-slate-400">+2</div>
+                        </div>
+                    </div>
+                    <button class="w-8 h-8 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center hover:bg-slate-100 transition">
+                        <i class="fa-solid fa-chevron-right text-xs"></i>
+                    </button>
+                </div>
+            </section>
+
+            <!-- 5. Sales Volume (Segmented Stats) -->
+            <section class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                <h3 class="text-sm font-bold text-slate-800 mb-4 border-l-4 border-primary-500 pl-2">销售额统计</h3>
+                <div class="flex divide-x divide-slate-100">
+                    <div class="flex-1 text-center px-1">
+                        <p class="text-[10px] text-slate-400 mb-1">个人</p>
+                        <p class="text-sm font-bold text-slate-700">¥2.4w</p>
+                    </div>
+                    <div class="flex-1 text-center px-1">
+                        <p class="text-[10px] text-slate-400 mb-1">团队</p>
+                        <p class="text-sm font-bold text-primary-600">¥12.8w</p>
+                    </div>
+                    <div class="flex-1 text-center px-1">
+                        <p class="text-[10px] text-slate-400 mb-1">公司</p>
+                        <p class="text-sm font-bold text-slate-700">¥98.2w</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 6. My Log / Feed (Timeline Style) -->
+            <section>
+                <div class="flex items-center justify-between mb-3 px-1">
+                    <h3 class="text-sm font-bold text-slate-800">我的日志</h3>
+                    <span class="text-[10px] text-slate-400">最近更新</span>
+                </div>
+                
+                <div class="space-y-4">
+                    <!-- Feed Item 1 -->
+                    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex gap-3">
+                        <div class="flex flex-col items-center gap-1">
+                             <div class="w-10 h-10 rounded-full bg-primary-50 text-primary-500 flex items-center justify-center font-bold text-sm">
+                                 24
+                             </div>
+                             <span class="text-[9px] text-slate-400">10月</span>
+                        </div>
+                        <div class="flex-1 pb-2 border-b border-slate-50 last:border-0">
+                            <p class="text-xs font-medium text-slate-700 mb-1">完成了“学创工坊”第一阶段目标 🎉</p>
+                            <div class="flex gap-2 mt-2">
+                                <img src="https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=100&h=100&q=80" class="w-16 h-16 rounded-lg object-cover">
+                                <img src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=100&h=100&q=80" class="w-16 h-16 rounded-lg object-cover">
+                            </div>
+                            <div class="flex items-center gap-3 mt-2 text-[10px] text-slate-400">
+                                <span><i class="fa-regular fa-heart mr-1"></i> 24</span>
+                                <span><i class="fa-regular fa-comment mr-1"></i> 5</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Feed Item 2 -->
+                    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex gap-3">
+                         <div class="flex flex-col items-center gap-1">
+                             <div class="w-10 h-10 rounded-full bg-slate-50 text-slate-500 flex items-center justify-center font-bold text-sm">
+                                 22
+                             </div>
+                             <span class="text-[9px] text-slate-400">10月</span>
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-xs font-medium text-slate-700 mb-1">分享了新的产品海报到朋友圈。</p>
+                             <div class="p-2 bg-slate-50 rounded-lg mt-2 flex items-center gap-2">
+                                <div class="w-8 h-8 bg-accent-100 rounded flex items-center justify-center text-accent-500">
+                                    <i class="fa-solid fa-image"></i>
+                                </div>
+                                <span class="text-[10px] text-slate-500">海报_v2.png</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- Navigation (Consistent with Index) -->
+        <nav class="absolute bottom-0 w-full glass-nav px-6 py-3 rounded-t-3xl flex justify-between items-center z-30">
+            <button class="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 transition">
+                <i class="fa-solid fa-grid-2 text-xl"></i>
+                <span class="text-[10px] font-medium">概览</span>
+            </button>
+            <button class="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 transition">
+                <i class="fa-solid fa-chart-simple text-xl"></i>
+                <span class="text-[10px] font-medium">报表</span>
+            </button>
+            <!-- Main Action -->
+            <button class="w-12 h-12 bg-slate-800 text-white rounded-full flex items-center justify-center shadow-lg shadow-slate-500/40 -mt-6 border-4 border-surface hover:scale-105 transition">
+                <i class="fa-solid fa-plus text-lg"></i>
+            </button>
+            <button class="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 transition">
+                <i class="fa-regular fa-comment-dots text-xl"></i>
+                <span class="text-[10px] font-medium">消息</span>
+            </button>
+            <button class="flex flex-col items-center gap-1 text-primary-600 transition">
+                <i class="fa-solid fa-user text-xl"></i>
+                <span class="text-[10px] font-bold">我的</span>
+            </button>
+        </nav>
+    </div>
+</body>
+</html>

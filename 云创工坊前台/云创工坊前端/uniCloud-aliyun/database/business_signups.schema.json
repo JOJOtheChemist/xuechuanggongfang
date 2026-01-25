@@ -1,0 +1,90 @@
+{
+  "bsonType": "object",
+  "required": [
+    "user_id",
+    "business_id",
+    "business_name",
+    "name",
+    "mobile",
+    "status",
+    "create_date"
+  ],
+  "properties": {
+    "_id": {
+      "description": "报名记录ID",
+      "bsonType": "string"
+    },
+    "user_id": {
+      "description": "uni-id 用户ID",
+      "bsonType": "string"
+    },
+    "business_id": {
+      "description": "业务板块ID（前端传入，如 1,2,3）",
+      "bsonType": "string"
+    },
+    "business_name": {
+      "description": "业务板块名称",
+      "bsonType": "string"
+    },
+    "category": {
+      "description": "报名类别文案（例如 勤工俭学）",
+      "bsonType": "string"
+    },
+    "signup_wechat": {
+      "description": "招聘人微信 / 报名微信号（例如 优薪途5战队 黄有员）",
+      "bsonType": "string"
+    },
+    "referrer": {
+      "description": "推荐人",
+      "bsonType": "string"
+    },
+    "name": {
+      "description": "报名人姓名",
+      "bsonType": "string"
+    },
+    "mobile": {
+      "description": "报名人手机号",
+      "bsonType": "string"
+    },
+    "nation": {
+      "description": "民族",
+      "bsonType": "string"
+    },
+    "work_duration": {
+      "description": "工作期限",
+      "bsonType": "string"
+    },
+    "school": {
+      "description": "学校",
+      "bsonType": "string"
+    },
+    "entry_year": {
+      "description": "入学年份",
+      "bsonType": "string"
+    },
+    "wechat_id": {
+      "description": "学生本人微信号（选填）",
+      "bsonType": "string"
+    },
+    "contact_info": {
+      "description": "最终用于联系的方式（冗余字段，通常等于 mobile）",
+      "bsonType": "string"
+    },
+    "remark": {
+      "description": "备注",
+      "bsonType": "string"
+    },
+    "user_nickname": {
+      "description": "用户昵称（冗余，方便后台查看）",
+      "bsonType": "string"
+    },
+    "status": {
+      "description": "报名状态：pending/handled/rejected",
+      "bsonType": "string"
+    },
+    "create_date": {
+      "description": "创建时间戳",
+      "bsonType": "number"
+    }
+  }
+}

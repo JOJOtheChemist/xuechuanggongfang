@@ -1,0 +1,49 @@
+{
+  "bsonType": "object",
+  "description": "团队动态表",
+  "required": ["user_id", "user_name", "action_type"],
+  "permission": {
+    "read": true,
+    "create": "auth.uid != null",
+    "update": "'admin' in auth.role",
+    "delete": "'admin' in auth.role"
+  },
+  "properties": {
+    "_id": {
+      "description": "动态ID"
+    },
+    "user_id": {
+      "bsonType": "string",
+      "description": "用户ID",
+      "foreignKey": "uni-id-users._id"
+    },
+    "user_name": {
+      "bsonType": "string",
+      "description": "用户姓名"
+    },
+    "avatar": {
+      "bsonType": "string",
+      "description": "头像URL"
+    },
+    "action_type": {
+      "bsonType": "string",
+      "description": "动作类型",
+      "enum": ["upload", "update", "complete", "share"]
+    },
+    "action_desc": {
+      "bsonType": "string",
+      "description": "动作描述"
+    },
+    "related_id": {
+      "bsonType": "string",
+      "description": "关联ID（如文件ID、任务ID等）"
+    },
+    "create_date": {
+      "bsonType": "timestamp",
+      "description": "创建时间",
+      "forceDefaultValue": {
+        "$env": "now"
+      }
+    }
+  }
+}

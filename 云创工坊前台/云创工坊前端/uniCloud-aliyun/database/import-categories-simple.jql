@@ -1,0 +1,53 @@
+// 导入业务分类 - 简单版本
+// 按 Command+R 运行
+
+db.collection('business_categories').add([
+  {
+    "_id": "cat_002",
+    "title": "考公考编",
+    "short_name": "考公",
+    "bg_color": "#fee2e2",
+    "description": "最新公考资讯与题库，结合名师课程，帮助你高效备考，稳步上岸。",
+    "icon": "https://picsum.photos/100/100?random=2",
+    "sort_order": 2,
+    "status": "active",
+    "has_articles": true,
+    "tag": "官方认证"
+  },
+  {
+    "_id": "cat_004",
+    "title": "考研",
+    "short_name": "考研",
+    "bg_color": "#e0e7ff",
+    "description": "提供全程备考规划、院校专业分析与复试指导，帮你构建系统化学习路径。",
+    "icon": "https://picsum.photos/100/100?random=4",
+    "sort_order": 4,
+    "status": "active",
+    "has_articles": true,
+    "tag": "新上线"
+  },
+  {
+    "_id": "cat_005",
+    "title": "专升本",
+    "short_name": "专升本",
+    "bg_color": "#fef3c7",
+    "description": "为专科生量身打造的升学路径，提供报考指南、备考资料与院校分析，助力升学梦想。",
+    "icon": "https://picsum.photos/100/100?random=5",
+    "sort_order": 5,
+    "status": "active",
+    "has_articles": true,
+    "tag": "热门推荐"
+  },
+  {
+    "_id": "cat_008",
+    "title": "朋友圈素材",
+    "short_name": "素材",
+    "bg_color": "#ede9fe",
+    "description": "节日海报、打卡配图与文案模板一站式获取，让你的社交内容持续有灵感。",
+    "icon": "https://picsum.photos/100/100?random=8",
+    "sort_order": 8,
+    "status": "active",
+    "has_articles": true,
+    "tag": "新上线"
+  }
+])

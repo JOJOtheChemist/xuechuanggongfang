@@ -1,0 +1,56 @@
+{
+  "bsonType": "object",
+  "required": ["title", "image_url", "status"],
+  "permission": {
+    "read": true,
+    "create": "auth.uid != null",
+    "update": false,
+    "delete": "auth.uid != null"
+  },
+  "properties": {
+    "_id": {
+      "description": "ID，系统自动生成"
+    },
+    "title": {
+      "bsonType": "string",
+      "title": "标题",
+      "description": "banner 标题"
+    },
+    "image_url": {
+      "bsonType": "string",
+      "title": "图片地址",
+      "description": "banner 图片的 URL 地址"
+    },
+    "link_url": {
+      "bsonType": "string",
+      "title": "跳转链接",
+      "description": "点击 banner 后跳转的链接（可选）"
+    },
+    "status": {
+      "bsonType": "string",
+      "title": "状态",
+      "description": "banner 状态",
+      "enum": ["online", "offline"],
+      "default": "online"
+    },
+    "sort_order": {
+      "bsonType": "int",
+      "title": "排序",
+      "description": "数字越小越靠前",
+      "default": 0
+    },
+    "create_date": {
+      "bsonType": "timestamp",
+      "title": "创建时间",
+      "description": "创建时间",
+      "forceDefaultValue": {
+        "$env": "now"
+      }
+    },
+    "update_date": {
+      "bsonType": "timestamp",
+      "title": "更新时间",
+      "description": "更新时间"
+    }
+  }
+}

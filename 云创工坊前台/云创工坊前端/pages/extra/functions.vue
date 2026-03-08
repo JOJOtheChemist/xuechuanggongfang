@@ -80,16 +80,29 @@
 			</view>
 		</view>
 		
+		<admin-password-dialog
+			:visible="showAdminDialog"
+			@close="closeAdminDialog"
+			@confirm="handleAdminConfirm"
+		/>
+
 		<!-- Footer Spacer -->
 		<view class="footer-spacer"></view>
 	</view>
 </template>
 
 <script>
+import AdminPasswordDialog from '@/components/common/AdminPasswordDialog.vue'
+import { verifyAdminPassword } from '@/common/admin-auth'
+
 export default {
+	components: {
+		AdminPasswordDialog
+	},
 	data() {
 		return {
-			ADMIN_PASSWORD: 'hyy199877'
+			showAdminDialog: false,
+			pendingAdminAction: null
 		}
 	},
 	methods: {
@@ -109,20 +122,22 @@ export default {
 			})
 		},
 		checkAdmin(callback) {
-			uni.showModal({
-				title: '管理员验证',
-				editable: true,
-				placeholderText: '请输入管理员密码',
-				success: (res) => {
-					if (res.confirm) {
-						if (res.content === this.ADMIN_PASSWORD) {
-							callback && callback()
-						} else {
-							uni.showToast({ title: '密码错误', icon: 'none' })
-						}
-					}
-				}
-			})
+			this.pendingAdminAction = callback || null
+			this.showAdminDialog = true
+		},
+		closeAdminDialog() {
+			this.showAdminDialog = false
+			this.pendingAdminAction = null
+		},
+		handleAdminConfirm(password) {
+			if (!verifyAdminPassword(password)) {
+				uni.showToast({ title: '密码错误', icon: 'none' })
+				return
+			}
+			const action = this.pendingAdminAction
+			this.showAdminDialog = false
+			this.pendingAdminAction = null
+			action && action()
 		}
 	}
 }

@@ -35,27 +35,6 @@
 						<view class="hero-bg-glow"></view>
 					</view>
 
-					<bento-stats-card ref="statsCard" />
-					<plan-progress ref="planProgress" />
-					
-					<!-- Order Management Entry -->
-					<view class="order-mgmt-card" @tap="goToOrderManagement">
-						<view class="mgmt-content">
-							<view class="mgmt-icon-box">
-								<text class="mgmt-icon-text">订</text>
-							</view>
-							<view class="mgmt-text">
-								<text class="mgmt-title">订单管理</text>
-								<text class="mgmt-desc">查看团队报名与详细资料</text>
-							</view>
-						</view>
-						<view class="mgmt-action">
-							<text class="mgmt-arrow">></text>
-						</view>
-					</view>
-
-					<team-updates ref="teamUpdates" />
-					<new-partners ref="newPartners" />
 					<!-- 广告 banner 区域 -->
 					<view class="ad-banner-container">
 						<!-- Corrupted block removed -->
@@ -75,8 +54,6 @@
 							</swiper-item>
 						</swiper>
 					</view>
-					<month-plan ref="monthPlan" />
-
                     <!-- Unified Debug Footer (Inside Scroll) -->
                     <!-- Hidden recruitment debug tags
                     <view class="global-debug" style="margin-top: 40rpx; padding-bottom: 60rpx; font-size: 20rpx; color: #ccc; text-align: center; display: flex; flex-direction: column; gap: 6rpx;">
@@ -95,25 +72,12 @@
 
 <script>
 	import DashboardHeader from '@/components/dashboard/DashboardHeader.vue'
-	import BentoStatsCard from '@/components/dashboard/BentoStatsCard.vue'
-	import PlanProgress from '@/components/dashboard/PlanProgress.vue'
 	import TargetProgressCard from '@/components/dashboard/TargetProgressCard.vue'
-	import TeamUpdates from '@/components/dashboard/TeamUpdates.vue'
-	import NewPartners from '@/components/dashboard/NewPartners.vue'
-
-	import MonthPlan from '@/components/dashboard/MonthPlan.vue'
-	import CheckInCard from '@/components/dashboard/CheckInCard.vue'
 
 export default {
 		components: {
 			DashboardHeader,
-			BentoStatsCard,
-			PlanProgress,
-			TargetProgressCard,
-			TeamUpdates,
-			NewPartners,
-
-			MonthPlan
+			TargetProgressCard
 		},
 	data() {
 		return {
@@ -126,36 +90,13 @@ export default {
 	onShow() {
 		this.loadUserInfo()
 		this.loadBanners()
-		this.refreshDashboardWidgets()
 		if (typeof this.$mp.page.getTabBar === 'function' && this.$mp.page.getTabBar()) {
 			this.$mp.page.getTabBar().setData({
-				selected: 0
+				selected: 2
 			})
 		}
 	},
 	methods: {
-		refreshDashboardWidgets() {
-		const token = uni.getStorageSync('token')
-		console.log('[dashboard] Refreshing widgets with token:', token ? 'exists' : 'empty')
-		
-		this.$nextTick(() => {
-			if (this.$refs.statsCard && this.$refs.statsCard.loadStats) {
-				this.$refs.statsCard.loadStats()
-			}
-			if (this.$refs.planProgress && this.$refs.planProgress.loadTaskStats) {
-				this.$refs.planProgress.loadTaskStats()
-			}
-			if (this.$refs.monthPlan && this.$refs.monthPlan.loadGoals) {
-				this.$refs.monthPlan.loadGoals()
-			}
-			if (this.$refs.teamUpdates && this.$refs.teamUpdates.loadData) {
-				this.$refs.teamUpdates.loadData()
-			}
-			if (this.$refs.newPartners && this.$refs.newPartners.loadTeamMembers) {
-				this.$refs.newPartners.loadTeamMembers()
-			}
-		})
-	},
 		async loadUserInfo() {
 		try {
 			// 1. Try generic storage first
@@ -309,7 +250,6 @@ export default {
 		uni.showLoading({ title: '刷新数据...' })
 		this.loadUserInfo()
 		this.loadBanners()
-		this.refreshDashboardWidgets()
 		setTimeout(() => {
 			uni.hideLoading()
 			uni.showToast({ title: '刷新成功', icon: 'none' })
@@ -318,11 +258,6 @@ export default {
 	goToIntro() {
 		uni.navigateTo({
 			url: '/pages/extra/functions'
-		})
-	},
-	goToOrderManagement() {
-		uni.navigateTo({
-			url: '/pages/admin/order-management'
 		})
 	}
 	}

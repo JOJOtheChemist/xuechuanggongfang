@@ -1,0 +1,35 @@
+{
+  "bsonType": "object",
+  "description": "Campus forum school options",
+  "required": [
+    "name"
+  ],
+  "permission": {
+    "read": true,
+    "create": false,
+    "update": false,
+    "delete": false
+  },
+  "properties": {
+    "_id": {
+      "description": "School option id"
+    },
+    "name": {
+      "bsonType": "string",
+      "description": "School name"
+    },
+    "status": {
+      "bsonType": "int",
+      "description": "Status: 1 means active",
+      "defaultValue": 1
+    },
+    "create_date": {
+      "bsonType": "long",
+      "description": "Created at (ms timestamp)"
+    },
+    "update_date": {
+      "bsonType": "long",
+      "description": "Updated at (ms timestamp)"
+    }
+  }
+}

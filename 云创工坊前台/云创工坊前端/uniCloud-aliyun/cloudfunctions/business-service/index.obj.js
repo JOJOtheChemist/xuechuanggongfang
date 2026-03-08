@@ -152,5 +152,135 @@ module.exports = {
       return { code: -1, message: '请先登录', data: null }
     }
     return await signupHelper.getSignupDetail(this.currentUser.uid, signupId)
+  },
+
+  /**
+   * [TEST] 批量更新业务价格 (供测试页面使用)
+   */
+  async batchUpdatePrices({ price = 1 } = {}) {
+    try {
+      const db = uniCloud.database()
+      const dbCmd = db.command
+      const targetIds = [3, 7, 13]
+      const targetPrice = Number(price)
+
+      // 1. 获取所有业务板块
+      const res = await db.collection('business_categories')
+        .where(dbCmd.or([
+          { id: dbCmd.in(targetIds) },
+          { id: dbCmd.in(targetIds.map(String)) },
+          { _id: dbCmd.in(targetIds.map(String)) }
+        ]))
+        .get()
+
+      let successCount = 0
+      let updatedNames = []
+
+      // 2. 逐个更新
+      for (const item of res.data) {
+        await db.collection('business_categories')
+          .doc(item._id)
+          .update({
+            signup_price: targetPrice,
+            update_date: Date.now()
+          })
+        successCount++
+        updatedNames.push(`${item.title}(ID:${item.id})`)
+      }
+
+      return {
+        code: 0,
+        message: `更新成功 ${successCount} 条`,
+        data: {
+          successCount,
+          updatedNames,
+          price: targetPrice
+        }
+      }
+    } catch (e) {
+      return {
+        code: -1,
+        message: e.message || '更新失败',
+        data: null
+      }
+    }
+  },
+
+  /**
+   * [TEST] 初始化缺失的报名类业务数据 (供测试页面使用)
+   */
+  async initMissingCategories() {
+    try {
+      const db = uniCloud.database()
+      const items = [
+        {
+          id: 3,
+          _id: "cat_signup_003",
+          title: '驾校',
+          short_name: '驾校',
+          bg_color: '#dcfce7',
+          description: '提供专业驾考咨询服务，在学创工坊报名咨询，省心报考，高效拿证。',
+          signup_price: 1.0,
+          sort_order: 103,
+          status: 'active',
+          has_articles: false,
+          tag: '报名'
+        },
+        {
+          id: 7,
+          _id: "cat_signup_007",
+          title: '勤工俭学',
+          short_name: '勤工',
+          bg_color: '#cffafe',
+          description: '覆盖校内勤工俭学、校外兼职与企业实习，多重审核保障岗位真实可靠。',
+          signup_price: 1.0,
+          sort_order: 107,
+          status: 'active',
+          has_articles: false,
+          tag: '报名'
+        },
+        {
+          id: 13,
+          _id: "cat_signup_013",
+          title: '考证',
+          short_name: '考证',
+          bg_color: '#f3e8ff',
+          description: '应急人社考证一站式服务，提供报名咨询、考前培训与证书领取全流程支持。',
+          signup_price: 1.0,
+          sort_order: 113,
+          status: 'active',
+          has_articles: true,
+          tag: '报名'
+        }
+      ]
+
+      let successCount = 0
+      let skipCount = 0
+      let details = []
+
+      for (const item of items) {
+        // 检查是否存在
+        const checkRes = await db.collection('business_categories')
+          .where({ id: item.id })
+          .get()
+
+        if (checkRes.data && checkRes.data.length > 0) {
+          skipCount++
+          details.push(`跳过:${item.title}`)
+        } else {
+          await db.collection('business_categories').add(item)
+          successCount++
+          details.push(`新增:${item.title}`)
+        }
+      }
+
+      return {
+        code: 0,
+        message: `初始化完成: 新增${successCount}, 跳过${skipCount}`,
+        data: details
+      }
+    } catch (e) {
+      return { code: -1, message: e.message, data: null }
+    }
   }
 }

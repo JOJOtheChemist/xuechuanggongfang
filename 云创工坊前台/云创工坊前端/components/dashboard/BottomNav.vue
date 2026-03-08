@@ -7,7 +7,7 @@
 			</view>
 			<view class="nav-item" :class="{ 'nav-item-active': active === 'tasks' }" @tap="goTasks">
 				<image class="nav-icon-img" src="/static/icons/nav-chart.svg" mode="aspectFit" />
-				<text class="nav-text" :class="{ 'nav-text-active': active === 'tasks' }">任务</text>
+				<text class="nav-text" :class="{ 'nav-text-active': active === 'tasks' }">创业中心</text>
 			</view>
 			<view class="nav-center-btn">
 				<image class="nav-center-icon-img" src="/static/icons/nav-plus.svg" mode="aspectFit" />

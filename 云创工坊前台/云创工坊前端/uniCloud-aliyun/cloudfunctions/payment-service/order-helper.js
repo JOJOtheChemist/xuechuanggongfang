@@ -7,19 +7,26 @@ const payUtils = require('wx-pay-config/utils')
  * @param {number} amount - 传入的金额
  * @returns {number} 最终金额（元）
  */
-function calculateAmount(businessId, amount) {
-    // 使用配置的金额
-    // 如果传入了 specific amount，则优先使用传入金额；否则根据 testMode 使用配置金额
-    console.log('[order-helper] calculateAmount incoming:', amount, 'isTestMode:', payConfig.isTestMode)
-    let finalAmount = amount || (payConfig.isTestMode ? payConfig.testAmount : payConfig.productionAmount)
+function calculateAmount(businessId, amount, dbPrice) {
+    console.log('[order-helper] calculateAmount incoming:', amount, 'dbPrice:', dbPrice, 'isTestMode:', payConfig.isTestMode)
 
-    // 强制特定业务板块金额为 1 元 (3=驾校, 7=勤工, 9=就业, 13=考证)
-    const fixedPriceBusinessIds = ['3', 3, '7', 7, '9', 9, '13', 13]
-    if (fixedPriceBusinessIds.includes(businessId)) {
-        finalAmount = 1.0
+    // 1. 如果有数据库配置的价格，优先级最高
+    if (dbPrice !== null && dbPrice !== undefined && !payConfig.isTestMode) {
+        return Number(dbPrice)
     }
 
-    return finalAmount
+    // 2. 如果 payConfig 强制了测试模式金额，则使用测试金额
+    if (payConfig.isTestMode) {
+        return payConfig.testAmount
+    }
+
+    // 3. 传入的 amount (前端传来的)
+    if (amount) {
+        return Number(amount)
+    }
+
+    // 4. 默认兜底
+    return payConfig.productionAmount
 }
 
 /**

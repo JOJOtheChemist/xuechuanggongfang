@@ -45,11 +45,35 @@ module.exports = {
         throw new Error('支付配置未完成，请先在 wx-pay-config/config.js 填写 apiKey (v2)')
       }
 
-      // 1. 计算金额
-      const finalAmount = orderHelper.calculateAmount(businessId, amount)
+      // 1. 获取业务板块配置（获取动态价格）
+      const db = uniCloud.database()
+      const dbCmd = db.command
+
+      // 尝试通过 id 字段查询 (前端传来的 businessId 通常是数字，如 7)
+      // 为了兼容性，同时查询 id 字段和 _id 字段
+      const categoryRes = await db.collection('business_categories')
+        .where(dbCmd.or([
+          { id: Number(businessId) },
+          { id: String(businessId) },
+          { _id: String(businessId) }
+        ]))
+        .get()
+
+      let dbPrice = null
+      if (categoryRes.data && categoryRes.data.length > 0) {
+        const categoryData = categoryRes.data[0]
+        if (categoryData.signup_price !== undefined && categoryData.signup_price !== null) {
+          dbPrice = Number(categoryData.signup_price)
+        }
+      }
+
+      console.log('[payment-service][createOrder] 业务ID:', businessId, 'DB价格:', dbPrice)
+
+      // 2. 计算金额 (传入 dbPrice)
+      const finalAmount = orderHelper.calculateAmount(businessId, amount, dbPrice)
       const totalFee = payUtils.yuanToFen(finalAmount) // 转换为分
 
-      // 2. 创建订单记录
+      // 3. 创建订单记录
       const orderResult = await orderHelper.createOrderRecord({
         uid,
         businessId,
@@ -61,7 +85,7 @@ module.exports = {
         extraData
       })
 
-      // 3. 调用微信统一下单接口
+      // 4. 调用微信统一下单接口
       const unifiedOrderResult = await wechatPayHelper.unifiedOrder({
         outTradeNo: orderResult.order_no,
         totalFee,

@@ -1,0 +1,81 @@
+{
+  "bsonType": "object",
+  "description": "Campus forum posts",
+  "required": [
+    "user_id",
+    "user_name",
+    "school",
+    "content"
+  ],
+  "permission": {
+    "read": true,
+    "create": false,
+    "update": false,
+    "delete": false
+  },
+  "properties": {
+    "_id": {
+      "description": "Post id"
+    },
+    "user_id": {
+      "bsonType": "string",
+      "description": "Author user id",
+      "foreignKey": "uni-id-users._id"
+    },
+    "user_name": {
+      "bsonType": "string",
+      "description": "Author display name"
+    },
+    "user_avatar": {
+      "bsonType": "string",
+      "description": "Author avatar"
+    },
+    "school": {
+      "bsonType": "string",
+      "description": "School name"
+    },
+    "title": {
+      "bsonType": "string",
+      "description": "Post title"
+    },
+    "content": {
+      "bsonType": "string",
+      "description": "Post text content"
+    },
+    "images": {
+      "bsonType": "array",
+      "description": "Post image list",
+      "items": {
+        "bsonType": "string"
+      }
+    },
+    "like_count": {
+      "bsonType": "int",
+      "description": "Like count",
+      "defaultValue": 0
+    },
+    "comment_count": {
+      "bsonType": "int",
+      "description": "Comment count",
+      "defaultValue": 0
+    },
+    "view_count": {
+      "bsonType": "int",
+      "description": "View count",
+      "defaultValue": 0
+    },
+    "status": {
+      "bsonType": "int",
+      "description": "Publish status: 1 means active",
+      "defaultValue": 1
+    },
+    "create_date": {
+      "bsonType": "long",
+      "description": "Created at (ms timestamp)"
+    },
+    "update_date": {
+      "bsonType": "long",
+      "description": "Updated at (ms timestamp)"
+    }
+  }
+}

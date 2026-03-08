@@ -175,8 +175,8 @@
     <view class="bottom-action" v-if="!isReadonly">
       <button
         class="submit-btn"
-        :loading="submitting || payProcessing"
-        :disabled="submitting || payProcessing"
+        :loading="submitting || payProcessing || categoryConfigLoading"
+        :disabled="isSubmitDisabled"
         @click="handleSignup"
       >
         {{ submitButtonText }}
@@ -229,6 +229,9 @@ export default {
       entryYearOptions: [],
       payProcessing: false,
       currentOrderNo: '', // 当前订单号
+      signupPrice: 0,
+      categoryConfigLoading: false,
+      categoryConfigLoaded: false,
       // 这里直接复用 pages/business/index.vue 里的静态配置，保持一致
       // 实际开发中建议抽取到 common/constants.js 或 store 中
       businessItems: [
@@ -353,19 +356,30 @@ export default {
       return this.business && this.business.type === 'consult'
     },
     // 是否需要支付
-    // [MOD] 2025-01-06 全面关闭支付逻辑，直接提交报名
     isPaymentRequired() {
-      return false
+      return !!(this.business && this.business.type === 'signup' && this.signupPrice > 0)
+    },
+    isSubmitDisabled() {
+      if (this.submitting || this.payProcessing || this.categoryConfigLoading) {
+        return true
+      }
+      return !!(this.business && this.business.type === 'signup' && !this.categoryConfigLoaded)
     },
     // 底部按钮文案
     submitButtonText() {
+      if (this.categoryConfigLoading) {
+        return '加载报名配置中...'
+      }
       if (this.submitting || this.payProcessing) {
         return this.isPaymentRequired ? '处理中...' : '提交中...'
       }
       if (this.isConsult) {
         return '立即咨询'
       }
-      return this.isPaymentRequired ? '报名并支付（¥1）' : '立即报名'
+      if (this.business && this.business.type === 'signup' && !this.categoryConfigLoaded) {
+        return '加载报名配置中...'
+      }
+      return this.isPaymentRequired ? `报名并支付（¥${this.formatPrice(this.signupPrice)}）` : '立即报名'
     }
   },
   onLoad(options) {
@@ -390,10 +404,11 @@ export default {
     if (options.id) {
       this.businessId = Number(options.id)
       this.loadBusinessInfo()
+      this.loadBusinessPricingConfig({ silent: true })
     } else {
-			// [FIX] 只读模式下可能没有 id 参数（已从 fetchSignupDetail 获取），不应跳转
-			if (!this.isReadonly) {
-				uni.showToast({ title: '缺少业务参数', icon: 'none' })
+				// [FIX] 只读模式下可能没有 id 参数（已从 fetchSignupDetail 获取），不应跳转
+				if (!this.isReadonly) {
+					uni.showToast({ title: '缺少业务参数', icon: 'none' })
 				setTimeout(() => uni.switchTab({ url: '/pages/dashboard/index' }), 1500)
 			}
     }
@@ -456,6 +471,13 @@ export default {
     // 处理报名（包含支付流程）
     async handleSignup() {
       if (this.submitting || this.payProcessing) return
+
+      if (this.business && this.business.type === 'signup' && !this.categoryConfigLoaded) {
+        await this.loadBusinessPricingConfig()
+        if (!this.categoryConfigLoaded) {
+          return
+        }
+      }
 
       if (this.isPaymentRequired) {
         // 先验证表单
@@ -527,7 +549,7 @@ export default {
           _token: token,
           businessId: String(this.businessId),
           businessName: this.business.title,
-          amount: 1, // 测试金额
+          amount: this.signupPrice,
           signupId: signupId
         })
 
@@ -607,6 +629,61 @@ export default {
     onEntryYearChange(e) {
       const index = e.detail.value
       this.form.entryYear = this.entryYearOptions[index]
+    },
+    formatPrice(value) {
+      const amount = Number(value)
+      if (!Number.isFinite(amount)) return '0'
+      return Number.isInteger(amount) ? String(amount) : amount.toFixed(2)
+    },
+    async loadBusinessPricingConfig({ silent = false } = {}) {
+      if (!this.businessId || this.categoryConfigLoading) return
+
+      this.categoryConfigLoading = true
+      this.categoryConfigLoaded = false
+
+      try {
+        const businessService = uniCloud.importObject('business-service')
+        const res = await businessService.getCategoryList({ status: 'active' })
+        if (!res || res.code !== 0 || !Array.isArray(res.data)) {
+          throw new Error((res && res.message) || '业务配置加载失败')
+        }
+
+        const matched = res.data.find(item => {
+          return String(item.id) === String(this.businessId) || String(item._id) === String(this.businessId)
+        })
+
+        if (!matched) {
+          if (this.business && this.business.type === 'signup') {
+            throw new Error('未找到当前业务的价格配置')
+          }
+          this.signupPrice = 0
+          this.categoryConfigLoaded = true
+          return
+        }
+
+        const parsedPrice = Number(matched.signup_price)
+        this.signupPrice = Number.isFinite(parsedPrice) && parsedPrice > 0 ? parsedPrice : 0
+        this.categoryConfigLoaded = true
+
+        this.business = Object.assign({}, this.business, {
+          title: matched.title || this.business.title,
+          short: matched.short_name || this.business.short,
+          desc: matched.description || this.business.desc,
+          bgColor: matched.bg_color || this.business.bgColor
+        })
+        if (this.business && this.business.title) {
+          uni.setNavigationBarTitle({ title: `报名 - ${this.business.title}` })
+        }
+      } catch (e) {
+        this.signupPrice = 0
+        this.categoryConfigLoaded = false
+        console.error('[signup] 加载业务配置失败:', e)
+        if (!silent && this.business && this.business.type === 'signup') {
+          uni.showToast({ title: e.message || '加载业务配置失败', icon: 'none' })
+        }
+      } finally {
+        this.categoryConfigLoading = false
+      }
     },
     loadBusinessInfo() {
       const item = this.businessItems.find(b => b.id === this.businessId)
@@ -772,12 +849,13 @@ export default {
 					this.referrerUid = d.referrer_uid || ''
 					this.remark = d.remark || ''
 					
-					// 如果有 business_id，也可以同步更新页面状态
-					if (d.business_id) {
-						this.businessId = Number(d.business_id)
-						this.loadBusinessInfo()
-					}
-				} else if (res && res.code === -403) {
+						// 如果有 business_id，也可以同步更新页面状态
+						if (d.business_id) {
+							this.businessId = Number(d.business_id)
+							this.loadBusinessInfo()
+              this.loadBusinessPricingConfig({ silent: true })
+						}
+					} else if (res && res.code === -403) {
           // 无权限处理
           this.permissionDenied = true
           uni.showToast({ title: '无权限查看详情', icon: 'none' })

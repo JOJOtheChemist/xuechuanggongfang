@@ -11,8 +11,10 @@
 			<scroll-view class="app-main" scroll-y="true">
 				<view class="section-list">
 					<team-card ref="teamCard" />
+					<new-partners ref="newPartners" class="new-partners-tight-top" />
 
 					<wallet-card ref="walletCard" @showHistory="navigateToWalletHistory" />
+					<incentive-system ref="incentiveSystem" class="profile-incentive" />
 					
 					<!-- 简易版成就/积分卡片 (点击跳转详情) -->
 					<view class="achievements-simple-card" @tap="navigateToAchievements">
@@ -67,6 +69,8 @@
 import ProfileHeader from '../../components/profile/ProfileHeader.vue'
 import TeamCard from '../../components/profile/TeamCard.vue'
 import WalletCard from '../../components/profile/WalletCard.vue'
+import NewPartners from '../../components/dashboard/NewPartners.vue'
+import IncentiveSystem from '../../components/tasks/IncentiveSystem.vue'
 // import ProfileAchievements from '../../components/profile/ProfileAchievements.vue'
 import AnnualCoinStats from '../../components/profile/AnnualCoinStats.vue'
 import ActivityFeed from '../../components/profile/ActivityFeed.vue'
@@ -77,7 +81,9 @@ export default {
 	components: {
 		ProfileHeader,
 		TeamCard,
+		NewPartners,
 		WalletCard,
+		IncentiveSystem,
 		ProfileStatsGrid,
 		// ProfileAchievements,
 		// SalesSummary,
@@ -101,15 +107,21 @@ export default {
             if (this.$refs.teamCard && typeof this.$refs.teamCard.refresh === 'function') {
                 this.$refs.teamCard.refresh()
             }
+            if (this.$refs.newPartners && typeof this.$refs.newPartners.loadTeamMembers === 'function') {
+                this.$refs.newPartners.loadTeamMembers()
+            }
             if (this.$refs.walletCard && typeof this.$refs.walletCard.loadBalance === 'function') {
                 this.$refs.walletCard.loadBalance()
+            }
+            if (this.$refs.incentiveSystem && typeof this.$refs.incentiveSystem.loadBadgeData === 'function') {
+                this.$refs.incentiveSystem.loadBadgeData()
             }
 			this.loadSimplePoints()
         })
 		
 		if (typeof this.$mp.page.getTabBar === 'function' && this.$mp.page.getTabBar()) {
 			this.$mp.page.getTabBar().setData({
-				selected: 3
+				selected: 4
 			})
 		}
 	},
@@ -232,6 +244,15 @@ export default {
 		display: flex;
 		flex-direction: column;
 		gap: 24rpx;
+	}
+
+	.new-partners-tight-top {
+		margin-top: -12rpx;
+	}
+
+	.profile-incentive {
+		margin-top: -10rpx !important;
+		margin-bottom: -10rpx !important;
 	}
 
 	.brand-claim-footer {

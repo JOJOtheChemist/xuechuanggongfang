@@ -135,8 +135,9 @@ async function loginByWeixin({ code, inviterId }) {
                 try {
                     console.log('[user-center][loginByWeixin] 处理推荐奖励，推荐人:', inviterId)
 
-                    // 1. 直推奖励：给推荐人发放 1 新币 (无条件，只要成功拉新)
-                    const rewardCoins = 1
+                    // 1. 直推奖励：给推荐人发放 0.01 新币 (无条件，只要成功拉新)
+                    // [MOD] Updated from 1 to 0.01
+                    const rewardCoins = 0.01 // Original: 1
 
                     // [Deduplication Check]
                     const existingReward = await db.collection('coin_logs').where({
@@ -192,8 +193,9 @@ async function loginByWeixin({ code, inviterId }) {
 
                 // 2. 发放奖励 (发放给推荐人)
                 try {
-                    // 给推荐人发放 1 新币
-                    const rewardCoins = 1
+                    // 给推荐人发放 0.01 新币
+                    // [MOD] Updated from 1 to 0.01
+                    const rewardCoins = 0.01 // Original: 1
 
                     // [Deduplication Check]
                     const existingReward = await db.collection('coin_logs').where({

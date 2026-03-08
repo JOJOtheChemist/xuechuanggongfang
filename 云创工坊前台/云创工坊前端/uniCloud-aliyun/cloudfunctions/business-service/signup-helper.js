@@ -95,7 +95,8 @@ async function submitSignup(uid, signupData = {}) {
                     console.log(`[business-service] 忽略重复奖励: 推荐人 ${referrerUid} 已经获得过针对用户 ${uid} 的奖励`)
                 } else {
                     // 3. 发放奖励 (给推荐人)
-                    const rewardCoins = 1
+                    // [MOD] Updated from 1 to 0.01
+                    const rewardCoins = 0.01 // Original: 1
                     await db.collection('uni-id-users').doc(referrerUid).update({
                         'wallet.coins': dbCmd.inc(rewardCoins)
                     })

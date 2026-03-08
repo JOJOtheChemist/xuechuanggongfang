@@ -1,15 +1,21 @@
 <view class="nav">
   <view class="nav-inner">
-    <!-- Home -->
-    <view class="nav-item {{selected === 0 ? 'nav-item-active' : ''}}" data-path="/pages/dashboard/index" data-index="{{0}}" bindtap="switchTab">
-      <image class="nav-icon-img" src="/static/icons/nav-home.svg" />
-      <text class="nav-text {{selected === 0 ? 'nav-text-active' : ''}}">首页</text>
+    <!-- Forum -->
+    <view class="nav-item {{selected === 0 ? 'nav-item-active' : ''}}" data-path="/subpackages/forum/index" data-index="{{0}}" bindtap="switchTab">
+      <image class="nav-icon-img" src="/static/icons/bell.svg" />
+      <text class="nav-text {{selected === 0 ? 'nav-text-active' : ''}}">论坛</text>
+    </view>
+
+    <!-- Learning (Business) -->
+    <view class="nav-item {{selected === 1 ? 'nav-item-active' : ''}}" data-path="/pages/business/index" data-index="{{1}}" bindtap="switchTab">
+      <image class="nav-icon-img" src="/static/icons/nav-chat.svg" />
+      <text class="nav-text {{selected === 1 ? 'nav-text-active' : ''}}">学习</text>
     </view>
     
-    <!-- Tasks -->
-    <view class="nav-item {{selected === 1 ? 'nav-item-active' : ''}}" data-path="/pages/task-center/index" data-index="{{1}}" bindtap="switchTab">
-      <image class="nav-icon-img" src="/static/icons/nav-chart.svg" />
-      <text class="nav-text {{selected === 1 ? 'nav-text-active' : ''}}">任务</text>
+    <!-- Home -->
+    <view class="nav-item {{selected === 2 ? 'nav-item-active' : ''}}" data-path="/pages/dashboard/index" data-index="{{2}}" bindtap="switchTab">
+      <image class="nav-icon-img" src="/static/icons/nav-home.svg" />
+      <text class="nav-text {{selected === 2 ? 'nav-text-active' : ''}}">首页</text>
     </view>
 
     <!-- Center Plus Button -->
@@ -17,16 +23,16 @@
        <image class="nav-center-icon-img" src="/static/icons/nav-plus.svg" mode="aspectFit" />
     </view>
 
-    <!-- Learning (Business) -->
-    <view class="nav-item {{selected === 2 ? 'nav-item-active' : ''}}" data-path="/pages/business/index" data-index="{{2}}" bindtap="switchTab">
-      <image class="nav-icon-img" src="/static/icons/nav-chat.svg" />
-      <text class="nav-text {{selected === 2 ? 'nav-text-active' : ''}}">学习</text>
+    <!-- Startup -->
+    <view class="nav-item {{selected === 3 ? 'nav-item-active' : ''}}" data-path="/pages/task-center/index" data-index="{{3}}" bindtap="switchTab">
+      <image class="nav-icon-img" src="/static/icons/nav-chart.svg" />
+      <text class="nav-text {{selected === 3 ? 'nav-text-active' : ''}}">创业中心</text>
     </view>
 
     <!-- Profile -->
-    <view class="nav-item {{selected === 3 ? 'nav-item-active' : ''}}" data-path="/pages/profile/index" data-index="{{3}}" bindtap="switchTab">
+    <view class="nav-item {{selected === 4 ? 'nav-item-active' : ''}}" data-path="/pages/profile/index" data-index="{{4}}" bindtap="switchTab">
       <image class="nav-icon-img" src="/static/icons/nav-user.svg" />
-      <text class="nav-text {{selected === 3 ? 'nav-text-active' : ''}}">我的</text>
+      <text class="nav-text {{selected === 4 ? 'nav-text-active' : ''}}">我的</text>
     </view>
   </view>
 </view>

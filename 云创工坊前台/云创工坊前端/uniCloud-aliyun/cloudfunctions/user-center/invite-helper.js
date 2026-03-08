@@ -40,7 +40,8 @@ async function bindInviter(uid, inviterId) {
 
         // 2.2 发放奖励 (发放给推荐人)
         try {
-            const rewardCoins = 1
+            // [MOD] Updated from 1 to 0.01
+            const rewardCoins = 0.01 // Original: 1
 
             // [Deduplication Check]
             const existingReward = await db.collection('coin_logs').where({

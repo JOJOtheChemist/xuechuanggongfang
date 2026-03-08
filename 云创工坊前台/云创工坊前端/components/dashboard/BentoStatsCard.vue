@@ -44,7 +44,10 @@
 					
 					<!-- 第3格：订单量 -->
 					<view class="grid-item border-right" @tap="goToMyOrders">
-						<text class="item-label">本人促成订单</text>
+						<view class="item-header">
+							<text class="item-label">本人促成订单</text>
+							<text class="item-more" @tap.stop="goToMyOrders">更多</text>
+						</view>
 						<view class="item-content">
 							<text class="item-value">{{ orderCount }}</text>
 							<view class="badge badge-blue">+{{ todayNewOrders }}</view>
@@ -287,7 +290,19 @@ export default {
 	display: block;
 	font-size: 22rpx;
 	color: #94a3b8;
+}
+
+.item-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
 	margin-bottom: 4rpx;
+}
+
+.item-more {
+	font-size: 22rpx;
+	color: #4f46e5;
+	font-weight: 500;
 }
 
 .item-content {

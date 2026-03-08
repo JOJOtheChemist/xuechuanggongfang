@@ -16,7 +16,7 @@
 				<view class="section-list">
 					<bento-stats-card ref="statsCard" />
 					<plan-progress ref="planProgress" />
-					<view class="order-mgmt-card" @tap="goToOrderManagement">
+					<view v-if="showOrderManagementCard" class="order-mgmt-card" @tap="goToOrderManagement">
 						<view class="mgmt-content">
 							<view class="mgmt-icon-box">
 								<text class="mgmt-icon-text">订</text>
@@ -74,7 +74,8 @@ export default {
 		return {
 			userAvatar: 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png',
 			userNickname: '',
-			userUid: ''
+			userUid: '',
+			showOrderManagementCard: false
 		}
 	},
 	onShow() {

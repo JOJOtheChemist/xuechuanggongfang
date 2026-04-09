@@ -3,7 +3,12 @@ import App from './App'
 // #ifndef VUE3
 import Vue from 'vue'
 import './uni.promisify.adaptor'
+import { apiSwitch, installApiSwitch } from './utils/api-switch'
+
+installApiSwitch()
+
 Vue.config.productionTip = false
+Vue.prototype.$apiSwitch = apiSwitch
 App.mpType = 'app'
 
 // [Global Mixin] 自动注入全局用户ID，方便页面调试和逻辑判断

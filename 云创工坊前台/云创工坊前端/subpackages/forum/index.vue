@@ -28,6 +28,7 @@
             :key="item.id"
             :post="item"
             @open="goDetail"
+            @longpress="handlePostLongPress"
           />
         </view>
         <view class="column">
@@ -36,6 +37,7 @@
             :key="item.id"
             :post="item"
             @open="goDetail"
+            @longpress="handlePostLongPress"
           />
         </view>
       </view>
@@ -63,25 +65,43 @@
       @add-school="handleAddSchool"
       @delete-school="handleDeleteSchool"
     />
+
+    <admin-password-dialog
+      :visible="showDeletePostDialog"
+      title="删除动态"
+      placeholder="请输入管理员密码"
+      confirm-text="验证并删除"
+      @close="closeDeletePostDialog"
+      @confirm="handleDeletePostConfirm"
+    >
+      <template #extra>
+        <text class="delete-post-tip">将删除：{{ pendingDeletePostTitle }}</text>
+      </template>
+    </admin-password-dialog>
   </view>
 </template>
 
 <script>
-import ForumHeader from './components/ForumHeader.vue'
-import ForumPostCard from './components/ForumPostCard.vue'
-import ForumSchoolPopup from './components/ForumSchoolPopup.vue'
+import ForumHeader from '@/components/forum/ForumHeader.vue'
+import ForumPostCard from '@/components/forum/ForumPostCard.vue'
+import ForumSchoolPopup from '@/components/forum/ForumSchoolPopup.vue'
+import AdminPasswordDialog from '@/components/common/AdminPasswordDialog.vue'
 import { verifyAdminPassword } from '@/common/admin-auth'
+
+const DEFAULT_HOME_SCHOOL = '云南大学'
+const MYSTERY_SCHOOL = '神秘学校'
 
 export default {
   components: {
     ForumHeader,
     ForumPostCard,
-    ForumSchoolPopup
+    ForumSchoolPopup,
+    AdminPasswordDialog
   },
   data() {
     return {
       activeTab: 'local',
-      currentSchool: '',
+      currentSchool: DEFAULT_HOME_SCHOOL,
       schoolOptions: [],
       showSchoolPopup: false,
       posts: [],
@@ -90,7 +110,10 @@ export default {
       hasMore: true,
       loading: false,
       loadingMore: false,
-      refreshingFromEvent: false
+      refreshingFromEvent: false,
+      showDeletePostDialog: false,
+      deletingPost: false,
+      pendingDeletePost: null
     }
   },
   computed: {
@@ -98,7 +121,7 @@ export default {
       if (this.activeTab !== 'local') {
         return this.posts
       }
-      const targetSchool = this.normalizeSchoolDisplay(this.currentSchool || '神秘学校')
+      const targetSchool = this.normalizeSchoolDisplay(this.currentSchool || DEFAULT_HOME_SCHOOL)
       return this.posts.filter((item) => {
         return this.normalizeSchoolDisplay(item && item.school) === targetSchool
       })
@@ -108,6 +131,9 @@ export default {
     },
     rightColumnPosts() {
       return this.visiblePosts.filter((item, index) => index % 2 === 1)
+    },
+    pendingDeletePostTitle() {
+      return this.getPostDisplayTitle(this.pendingDeletePost)
     }
   },
   onLoad() {
@@ -115,8 +141,13 @@ export default {
     this.refreshList()
   },
   onShow() {
-    if (typeof this.$mp.page.getTabBar === 'function' && this.$mp.page.getTabBar()) {
-      this.$mp.page.getTabBar().setData({
+    const page =
+      (this.$mp && this.$mp.page) ||
+      (typeof getCurrentPages === 'function' ? getCurrentPages().slice(-1)[0] : null)
+    const tabBar = page && typeof page.getTabBar === 'function' ? page.getTabBar() : null
+
+    if (tabBar && typeof tabBar.setData === 'function') {
+      tabBar.setData({
         selected: 0
       })
     }
@@ -133,7 +164,7 @@ export default {
     normalizeSchoolDisplay(name) {
       const safe = String(name || '').trim()
       if (!safe) return ''
-      if (safe.toLowerCase() === 'campus' || safe === '其他') return '神秘学校'
+      if (safe.toLowerCase() === 'campus' || safe === '其他') return MYSTERY_SCHOOL
       return safe
     },
     getToken() {
@@ -165,9 +196,12 @@ export default {
     async fetchPosts(reset) {
       try {
         const forumService = uniCloud.importObject('forum-service')
+        const requestedSchool = this.activeTab === 'local'
+          ? this.normalizeSchoolDisplay(this.currentSchool)
+          : ''
         const params = {
           tab: this.activeTab,
-          school: this.activeTab === 'local' ? this.currentSchool : '',
+          school: requestedSchool,
           page: this.page,
           pageSize: this.pageSize
         }
@@ -175,12 +209,54 @@ export default {
         const token = this.getToken()
         if (token) params._token = token
 
-        const res = await forumService.getPostList(params)
+        const applySchoolMeta = (payload = {}) => {
+          const rawOptions = Array.isArray(payload.school_options) ? payload.school_options : []
+          if (rawOptions.length > 0) {
+            const mapped = []
+            const set = new Set()
+            rawOptions.forEach((item) => {
+              const school = this.normalizeSchoolDisplay(item)
+              if (!school || set.has(school)) return
+              set.add(school)
+              mapped.push(school)
+            })
+            this.schoolOptions = mapped
+          }
+
+          if (this.activeTab === 'local') {
+            if (!this.currentSchool && payload.current_school) {
+              this.currentSchool = this.normalizeSchoolDisplay(payload.current_school)
+            }
+            if (!this.currentSchool && this.schoolOptions.length > 0) {
+              this.currentSchool = this.normalizeSchoolDisplay(this.schoolOptions[0])
+            }
+          }
+        }
+
+        let res = await forumService.getPostList(params)
         if (!res || res.code !== 0) {
           throw new Error((res && res.message) || '加载失败')
         }
 
-        const data = res.data || {}
+        let data = res.data || {}
+        applySchoolMeta(data)
+
+        const shouldRetryLocalInitialFetch = reset &&
+          this.activeTab === 'local' &&
+          !requestedSchool &&
+          !!this.currentSchool
+
+        // 首次本校请求 school 为空时，拿到 current_school 后立即补拉一次列表，避免首屏空白。
+        if (shouldRetryLocalInitialFetch) {
+          const retryParams = Object.assign({}, params, { school: this.currentSchool })
+          res = await forumService.getPostList(retryParams)
+          if (!res || res.code !== 0) {
+            throw new Error((res && res.message) || '加载失败')
+          }
+          data = res.data || {}
+          applySchoolMeta(data)
+        }
+
         const rawList = Array.isArray(data.list) ? data.list : []
         const normalizedList = rawList.map((item) => {
           const nextItem = Object.assign({}, item)
@@ -191,7 +267,7 @@ export default {
         let nextList = normalizedList
         if (this.activeTab === 'local') {
           const targetSchool = this.normalizeSchoolDisplay(
-            this.currentSchool || data.current_school || '神秘学校'
+            this.currentSchool || data.current_school || DEFAULT_HOME_SCHOOL
           )
           nextList = normalizedList.filter((item) => {
             return this.normalizeSchoolDisplay(item && item.school) === targetSchool
@@ -200,28 +276,6 @@ export default {
 
         this.posts = reset ? nextList : this.posts.concat(nextList)
         this.hasMore = !!data.has_more
-
-        const rawOptions = Array.isArray(data.school_options) ? data.school_options : []
-        if (rawOptions.length > 0) {
-          const mapped = []
-          const set = new Set()
-          rawOptions.forEach((item) => {
-            const school = this.normalizeSchoolDisplay(item)
-            if (!school || set.has(school)) return
-            set.add(school)
-            mapped.push(school)
-          })
-          this.schoolOptions = mapped
-        }
-
-        if (this.activeTab === 'local') {
-          if (!this.currentSchool && data.current_school) {
-            this.currentSchool = this.normalizeSchoolDisplay(data.current_school)
-          }
-          if (!this.currentSchool && this.schoolOptions.length > 0) {
-            this.currentSchool = this.normalizeSchoolDisplay(this.schoolOptions[0])
-          }
-        }
       } catch (error) {
         console.error('[forum] fetchPosts failed:', error)
         if (reset) {
@@ -314,8 +368,8 @@ export default {
       const target = this.normalizeSchoolDisplay(payload.name)
       const password = String(payload.password || '').trim()
       if (!target) return
-      if (target === '神秘学校' || target === '其他' || target.toLowerCase() === 'campus') {
-        uni.showToast({ title: '“神秘学校”不可删除', icon: 'none' })
+      if (target === MYSTERY_SCHOOL || target === '其他' || target.toLowerCase() === 'campus') {
+        uni.showToast({ title: `“${MYSTERY_SCHOOL}”不可删除`, icon: 'none' })
         return
       }
       if (!password) {
@@ -346,7 +400,7 @@ export default {
         }
 
         if (this.currentSchool === target) {
-          this.currentSchool = '神秘学校'
+          this.currentSchool = DEFAULT_HOME_SCHOOL
         }
 
         this.activeTab = 'local'
@@ -358,6 +412,78 @@ export default {
           title: error.message || '删除学校失败',
           icon: 'none'
         })
+      }
+    },
+    getPostDisplayTitle(post) {
+      if (!post) return '该动态'
+      const title = String(post.title || '').trim()
+      if (title) return title
+      const content = String(post.content || '').trim().replace(/\s+/g, ' ')
+      if (!content) return '该动态'
+      return content.length > 20 ? `${content.slice(0, 20)}...` : content
+    },
+    handlePostLongPress(post) {
+      if (!post || !post.id) return
+      uni.showActionSheet({
+        itemList: ['删除'],
+        itemColor: '#ef4444',
+        success: (res) => {
+          if (res.tapIndex === 0) {
+            this.pendingDeletePost = post
+            this.showDeletePostDialog = true
+          }
+        }
+      })
+    },
+    closeDeletePostDialog() {
+      if (this.deletingPost) return
+      this.showDeletePostDialog = false
+      this.pendingDeletePost = null
+    },
+    async handleDeletePostConfirm(password) {
+      if (this.deletingPost) return
+
+      const safePassword = String(password || '').trim()
+      if (!safePassword) {
+        uni.showToast({ title: '请输入管理员密码', icon: 'none' })
+        return
+      }
+      if (!verifyAdminPassword(safePassword)) {
+        uni.showToast({ title: '密码错误', icon: 'none' })
+        return
+      }
+
+      const pendingPost = this.pendingDeletePost
+      if (!pendingPost || !pendingPost.id) {
+        uni.showToast({ title: '动态不存在', icon: 'none' })
+        this.closeDeletePostDialog()
+        return
+      }
+
+      this.deletingPost = true
+      try {
+        const forumService = uniCloud.importObject('forum-service')
+        const token = this.getToken()
+        const params = { postId: pendingPost.id, adminPassword: safePassword }
+        if (token) params._token = token
+
+        const result = await forumService.deletePost(params)
+        if (!result || result.code !== 0) {
+          throw new Error((result && result.message) || '删除动态失败')
+        }
+
+        this.showDeletePostDialog = false
+        this.pendingDeletePost = null
+        uni.showToast({ title: '删除成功', icon: 'success' })
+        await this.refreshList()
+      } catch (error) {
+        console.error('[forum] deletePost failed:', error)
+        uni.showToast({
+          title: error.message || '删除动态失败',
+          icon: 'none'
+        })
+      } finally {
+        this.deletingPost = false
       }
     },
     goDetail(post) {
@@ -384,6 +510,15 @@ export default {
         return
       }
 
+      uni.showActionSheet({
+        itemList: ['快速发布动态'],
+        success: (res) => {
+          if (res.tapIndex !== 0) return
+          this.navigateToPublish()
+        }
+      })
+    },
+    navigateToPublish() {
       uni.navigateTo({
         url: '/subpackages/forum/publish'
       })
@@ -455,11 +590,12 @@ export default {
   width: 94rpx;
   height: 94rpx;
   border-radius: 50%;
-  background: #2563eb;
+  background: #0f172a;
+  border: 4rpx solid #f1f5f9;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 14rpx 32rpx rgba(37, 99, 235, 0.35);
+  box-shadow: 0 14rpx 32rpx rgba(15, 23, 42, 0.35);
   z-index: 50;
 }
 
@@ -472,5 +608,12 @@ export default {
 
 .bottom-space {
   height: 180rpx;
+}
+
+.delete-post-tip {
+  display: block;
+  font-size: 24rpx;
+  color: #64748b;
+  margin-bottom: 8rpx;
 }
 </style>

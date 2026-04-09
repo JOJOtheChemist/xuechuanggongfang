@@ -2,53 +2,59 @@
 	<view class="bento-section">
 		<view class="bento-card">
 			<view class="bento-flex">
-				<!-- 左侧：综合数据 (5/12 宽度) -->
+				<!-- 左侧：复制右侧样式，先展示拉新用户+团队伙伴 -->
 				<view class="left-panel">
-					<view class="data-block">
-						<text class="data-label">当月拉新利润</text>
-						<text class="data-value-main">
-							{{ formatNumber(monthProfit) }}
-							<text class="currency-unit">新币</text>
-						</text>
-					</view>
-					
-					<view class="data-block">
-						<text class="data-label">今日拉新利润</text>
-						<text class="data-value-danger">
-							{{ formatNumber(todayProfit) }}
-							<text class="currency-unit">新币</text>
-							<text class="trend-icon">↑</text>
-						</text>
-					</view>
-				</view>
-				
-				<!-- 右侧：2x2 网格 (7/12 宽度) -->
-				<view class="right-grid">
-					<!-- 第1格：新增用户（占位，使用后端 newUsers 字段） -->
-					<view class="grid-item border-bottom border-right">
-						<text class="item-label">本人拉新用户</text>
+					<view class="left-stat-item">
+						<text class="item-label">拉新用户</text>
 						<view class="item-content">
 							<text class="item-value">{{ newUsers }}</text>
 							<view class="badge badge-green">+{{ newUsers }}</view>
 						</view>
 					</view>
-					
-					<!-- 第2格：团队伙伴（当前所在团队的人数 & 昨日新增） -->
-					<view class="grid-item border-bottom">
+
+					<view class="left-stat-item">
 						<text class="item-label">团队伙伴</text>
 						<view class="item-content">
 							<text class="item-value">{{ teamCount }}</text>
 							<view class="badge badge-orange">+{{ yesterdayNewPartners }}</view>
 						</view>
 					</view>
+				</view>
+				
+				<!-- 右侧：2x2 网格 (7/12 宽度) -->
+				<view class="right-grid">
+					<!-- 顶部：签到组件（精简版） -->
+					<view class="grid-item checkin-item border-bottom">
+						<view class="checkin-top">
+							<text class="checkin-title">签到</text>
+							<text class="checkin-streak">连签{{ streakDays }}天</text>
+						</view>
+						<view class="checkin-mid">
+							<text class="checkin-mini">签到奖励 {{ checkinRewardPoints }} 积分</text>
+							<text class="checkin-mini">{{ isChecked ? '今日已到账' : '签到后到账' }}</text>
+						</view>
+						<view class="checkin-bottom">
+							<text class="checkin-status" :class="{ checked: isChecked }">{{ isChecked ? '今日已签' : '今日未签' }}</text>
+							<view
+								class="checkin-btn"
+								:class="{ checked: isChecked, loading: checkInLoading }"
+								@tap.stop="handleCheckIn"
+							>
+								{{ checkInLoading ? '签到中...' : (isChecked ? '已签到' : '签到领5积分') }}
+							</view>
+						</view>
+					</view>
 					
 					<!-- 第3格：订单量 -->
 					<view class="grid-item border-right" @tap="goToMyOrders">
 						<view class="item-header">
-							<text class="item-label">本人促成订单</text>
-							<text class="item-more" @tap.stop="goToMyOrders">更多</text>
+							<text class="item-label">促成订单</text>
 						</view>
-						<view class="item-content">
+						<view class="item-link order-more" @tap.stop="goToMyOrders">
+							<text class="link-text">查看更多</text>
+							<text class="arrow">›</text>
+						</view>
+						<view class="item-content order-content">
 							<text class="item-value">{{ orderCount }}</text>
 							<view class="badge badge-blue">+{{ todayNewOrders }}</view>
 						</view>
@@ -84,17 +90,17 @@ export default {
 				// 订单统计
 				orderCount: 0, // 成功报名的订单总量
 				todayNewOrders: 0, // 今日新增订单
+				// 签到统计（精简版）
+				isChecked: false,
+				streakDays: 0,
+				checkinRewardPoints: 5,
+				checkInLoading: false,
 				loading: false
 			}
 		},
 	methods: {
 		getToken() {
 			return uni.getStorageSync('token')
-		},
-		formatNumber(value) {
-			const num = Number(value) || 0
-			// 简单千分位格式化，例如 12580 -> 12,580
-			return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 		},
 		async loadStats() {
 			const token = this.getToken()
@@ -107,6 +113,8 @@ export default {
 				this.yesterdayNewPartners = 0
 				this.orderCount = 0
 				this.todayNewOrders = 0
+				this.isChecked = false
+				this.streakDays = 0
 				return
 			}
 
@@ -153,10 +161,60 @@ export default {
 					this.orderCount = Number(goalRes.data.stats.total_completed) || 0
 				}
 
+				await this.loadCheckInSummary(token)
 			} catch (e) {
 				console.error('[BentoStatsCard] 加载统计数据失败', e)
 			} finally {
 				this.loading = false
+			}
+		},
+		async loadCheckInSummary(token) {
+			if (!token) return
+			try {
+				const checkinService = uniCloud.importObject('checkin-service')
+				const statusRes = await checkinService.getCheckInStatus({ _token: token })
+
+				if (statusRes && statusRes.code === 0 && statusRes.data) {
+					this.isChecked = !!statusRes.data.is_checked_in
+					const savedStreak = Number(uni.getStorageSync('daily_checkin_streak')) || 0
+					this.streakDays = Number(statusRes.data.streak_days) || savedStreak
+				}
+			} catch (e) {
+				console.error('[BentoStatsCard] 加载签到摘要失败', e)
+			}
+		},
+		async handleCheckIn() {
+			if (this.isChecked || this.checkInLoading) return
+			const token = this.getToken()
+			if (!token) {
+				uni.showToast({ title: '请先登录', icon: 'none' })
+				return
+			}
+
+			this.checkInLoading = true
+			uni.showLoading({ title: '签到中...' })
+			try {
+				const checkinService = uniCloud.importObject('checkin-service')
+				const res = await checkinService.checkIn({ _token: token })
+				uni.hideLoading()
+				if (res && res.code === 0) {
+					this.isChecked = true
+					const streakFromRes = res.data ? Number(res.data.streak_days) : 0
+					this.streakDays = streakFromRes || (this.streakDays + 1)
+					uni.setStorageSync('daily_checkin_streak', this.streakDays)
+					uni.setStorageSync('daily_checkin_date', new Date().toISOString().split('T')[0])
+					await this.loadCheckInSummary(token)
+					uni.$emit('wallet-refresh')
+					uni.showToast({ title: res.message || '签到成功', icon: 'none' })
+				} else {
+					uni.showToast({ title: res.message || '签到失败', icon: 'none' })
+				}
+			} catch (e) {
+				uni.hideLoading()
+				console.error('[BentoStatsCard] 签到失败', e)
+				uni.showToast({ title: '签到失败', icon: 'none' })
+			} finally {
+				this.checkInLoading = false
 			}
 		},
 	goToHotSections() {
@@ -199,8 +257,8 @@ export default {
 
 /* ========== 左侧面板 (5/12 = 41.67%) ========== */
 .left-panel {
-	width: 41.67%;
-	padding: 24rpx 20rpx;
+	width: 34%;
+	padding: 20rpx 14rpx;
 	background: linear-gradient(135deg, #fafafa 0%, #f8f9fa 100%);
 	border-right: 1rpx solid #e5e7eb;
 	display: flex;
@@ -208,48 +266,26 @@ export default {
 	justify-content: center;
 }
 
-.data-block {
-	margin-bottom: 16rpx;
+.left-stat-item {
+	padding: 10rpx 0;
 }
 
-.data-block:last-child {
-	margin-bottom: 0;
+.left-stat-item + .left-stat-item {
+	margin-top: 16rpx;
 }
 
-.data-label {
-	display: block;
-	font-size: 22rpx;
-	color: #94a3b8;
-	margin-bottom: 6rpx;
+.left-panel .item-value {
+	font-size: 36rpx;
 }
 
-.data-value-main {
-	display: block;
-	font-size: 56rpx;
-	font-weight: 900;
-	color: #1e293b;
-	line-height: 1.1;
-	letter-spacing: -0.02em;
+.left-panel .item-label,
+.left-panel .item-content {
+	margin-left: 10rpx;
 }
 
-.data-value-danger {
-	display: block;
-	font-size: 48rpx;
-	font-weight: 700;
-	color: #ef4444;
-	line-height: 1.1;
-}
-
-.trend-icon {
-	font-size: 20rpx;
-	color: #94a3b8;
-	font-weight: 400;
-}
-
-.currency-unit {
-	font-size: 26rpx;
-	color: #64748b;
-	margin-left: 6rpx;
+.left-panel .badge {
+	font-size: 16rpx;
+	padding: 2rpx 8rpx;
 }
 
 /* ========== 右侧网格 (7/12 = 58.33%) ========== */
@@ -270,6 +306,89 @@ export default {
 	justify-content: center;
 	background-color: #ffffff;
 	box-sizing: border-box;
+}
+
+.checkin-item {
+	width: 100%;
+	padding: 14rpx 18rpx;
+	background: linear-gradient(135deg, #f5f3ff 0%, #eef2ff 100%);
+}
+
+.checkin-top,
+.checkin-mid,
+.checkin-bottom {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 8rpx;
+}
+
+.checkin-mid {
+	margin-top: 6rpx;
+}
+
+.checkin-bottom {
+	margin-top: 8rpx;
+}
+
+.checkin-title {
+	font-size: 24rpx;
+	font-weight: 700;
+	color: #312e81;
+	margin-left: 6rpx;
+}
+
+.checkin-streak {
+	font-size: 20rpx;
+	color: #4338ca;
+	background-color: rgba(79, 70, 229, 0.12);
+	padding: 2rpx 10rpx;
+	border-radius: 999rpx;
+	margin-right: 6rpx;
+}
+
+.checkin-mini {
+	font-size: 20rpx;
+	color: #4b5563;
+	margin-left: 6rpx;
+}
+
+.checkin-status {
+	font-size: 22rpx;
+	color: #4f46e5;
+	font-weight: 600;
+	margin-left: 6rpx;
+}
+
+.checkin-status.checked {
+	color: #059669;
+}
+
+.checkin-btn {
+	min-width: 128rpx;
+	padding: 6rpx 18rpx;
+	border-radius: 999rpx;
+	background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+	color: #ffffff;
+	font-size: 20rpx;
+	font-weight: 700;
+	text-align: center;
+	box-shadow: 0 4rpx 12rpx rgba(79, 70, 229, 0.28);
+	margin-right: 6rpx;
+}
+
+.checkin-btn:active {
+	opacity: 0.9;
+}
+
+.checkin-btn.checked {
+	background: #dcfce7;
+	color: #059669;
+	box-shadow: none;
+}
+
+.checkin-btn.loading {
+	opacity: 0.75;
 }
 
 .grid-item:active {
@@ -303,6 +422,23 @@ export default {
 	font-size: 22rpx;
 	color: #4f46e5;
 	font-weight: 500;
+}
+
+.order-more {
+	margin-top: 0;
+	margin-bottom: 6rpx;
+}
+
+.order-more .link-text {
+	font-size: 22rpx;
+}
+
+.order-more .arrow {
+	font-size: 24rpx;
+}
+
+.order-content {
+	margin-top: 2rpx;
 }
 
 .item-content {

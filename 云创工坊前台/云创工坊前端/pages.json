@@ -6,16 +6,14 @@
 			"^bento-stats-card$": "@/components/dashboard/BentoStatsCard.vue",
 			"^team-updates$": "@/components/dashboard/TeamUpdates.vue",
 			"^new-partners$": "@/components/dashboard/NewPartners.vue",
-			"^profile-header$": "@/components/profile/ProfileHeader.vue",
-			"^team-card$": "@/components/profile/TeamCard.vue",
-			"^wallet-card$": "@/components/profile/WalletCard.vue",
-			"^profile-stats-grid$": "@/components/profile/ProfileStatsGrid.vue",
-			"^profile-achievements$": "@/components/profile/ProfileAchievements.vue",
-			"^sales-summary$": "@/components/profile/SalesSummary.vue",
-			"^activity-feed$": "@/components/profile/ActivityFeed.vue",
-			"^business-header$": "@/components/business/BusinessHeader.vue",
-			"^business-grid$": "@/components/business/BusinessGrid.vue",
-			"^business-detail-card$": "@/components/business/BusinessDetailCard.vue",
+				"^profile-header$": "@/components/profile/ProfileHeader.vue",
+				"^team-card$": "@/components/profile/TeamCard.vue",
+				"^wallet-card$": "@/components/profile/WalletCard.vue",
+				"^profile-achievements$": "@/components/profile/ProfileAchievements.vue",
+				"^sales-summary$": "@/components/profile/SalesSummary.vue",
+				"^activity-feed$": "@/components/profile/ActivityFeed.vue",
+				"^business-header$": "@/components/business/BusinessHeader.vue",
+				"^business-detail-card$": "@/components/business/BusinessDetailCard.vue",
 			"^article-list$": "@/components/business/ArticleList.vue",
 			"^check-in-card-compact$": "@/components/tasks/CheckInCardCompact.vue",
 			"^knowledge-section$": "@/components/tasks/KnowledgeSection.vue",
@@ -26,28 +24,17 @@
 		{
 			"path": "pages/dashboard/index",
 			"style": {
-				"navigationBarTitleText": "学创工坊"
-			}
-		},
-		{
-			"path": "subpackages/forum/index",
-			"style": {
 				"navigationBarTitleText": "校园动态",
 				"navigationStyle": "custom"
 			}
 		},
-		{
-			"path": "subpackages/forum/detail",
-			"style": {
-				"navigationBarTitleText": "动态详情"
-			}
-		},
-		{
-			"path": "subpackages/forum/publish",
-			"style": {
-				"navigationBarTitleText": "发布动态"
-			}
-		},
+			{
+				"path": "pages/volunteer/index",
+				"style": {
+					"navigationBarTitleText": "志愿",
+					"navigationStyle": "custom"
+				}
+			},
 		{
 			"path": "pages/business/index",
 			"style": {
@@ -69,6 +56,30 @@
 		}
 	],
 	"subPackages": [
+		{
+			"root": "subpackages/forum",
+			"pages": [
+				{
+					"path": "index",
+					"style": {
+						"navigationBarTitleText": "校园动态",
+						"navigationStyle": "custom"
+					}
+				},
+				{
+					"path": "detail",
+					"style": {
+						"navigationBarTitleText": "动态详情"
+					}
+				},
+				{
+					"path": "publish",
+					"style": {
+						"navigationBarTitleText": "发布动态"
+					}
+				}
+			]
+		},
 		{
 			"root": "pages/extra",
 			"pages": [
@@ -306,20 +317,20 @@
 		"backgroundColor": "#ffffff",
 		"list": [
 			{
-				"pagePath": "subpackages/forum/index",
-				"text": "论坛"
+				"pagePath": "pages/dashboard/index",
+				"text": "广场"
 			},
 			{
 				"pagePath": "pages/business/index",
 				"text": "学习"
 			},
 			{
-				"pagePath": "pages/dashboard/index",
-				"text": "首页"
+				"pagePath": "pages/volunteer/index",
+				"text": "志愿"
 			},
 			{
 				"pagePath": "pages/task-center/index",
-				"text": "创业中心"
+				"text": "创业"
 			},
 			{
 				"pagePath": "pages/profile/index",

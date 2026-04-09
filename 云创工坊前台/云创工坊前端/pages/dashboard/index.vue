@@ -1,502 +1,619 @@
 <template>
-	<view class="page">
-		<!-- 顶部用户信息 -->
-		<view class="user-header">
-			<image class="user-avatar" :src="userAvatar" mode="aspectFill" />
-			<view class="user-info">
-				<text class="user-nickname">{{ userNickname || '未登录用户' }}</text>
-				<view v-if="userUid" class="brand-tagline-badge" @tap="goToIntro">
-					<text class="tagline-text">学在校园 · 创在工坊</text>
-					<text class="tagline-arrow">></text>
-				</view>
-				<text v-if="userUid" class="user-uid">UID: {{ userUid }}</text>
-			</view>
-			<!-- 临时入口：数据更新 -->
-			<view style="margin-left: auto; background: #ff4d4f; padding: 4px 8px; border-radius: 4px;" @tap="goToUpdate">
-				<text style="color: #fff; font-size: 10px; font-weight: bold;">修复数据</text>
-			</view>
-		</view>
-	<view class="page-body">
-			<!-- <dashboard-header /> -->
-			<scroll-view class="main-scroll" scroll-y="true">
-			<view class="section-list">
-					<!-- Brand Hero Section -->
-					<view class="brand-hero-card" @tap="goToIntro">
-						<view class="hero-card-content">
-							<view class="hero-main-title">
-								<text class="hero-tagline">学在校园 · 创在工坊</text>
-								<view class="hero-arrow-box">
-									<text class="hero-arrow">进入简介</text>
-									<text class="hero-arrow-icon">></text>
-								</view>
-							</view>
-							<text class="hero-subtext">连接菁英，开启你的校园学创之旅</text>
-						</view>
-						<view class="hero-bg-glow"></view>
-					</view>
+  <view class="forum-page">
+    <forum-header
+      :active-tab="activeTab"
+      :current-school="currentSchool"
+      @change-tab="handleTabChange"
+      @open-school-popup="openSchoolPopup"
+    />
 
-					<!-- 广告 banner 区域 -->
-					<view class="ad-banner-container">
-						<!-- Corrupted block removed -->
-						<swiper
-							class="ad-banner-swiper"
-							:indicator-dots="banners.length > 1"
-							:autoplay="banners.length > 0"
-							:interval="3000"
-							:circular="true"
-						>
-							<swiper-item v-for="item in banners" :key="item._id">
-								<image
-									class="ad-banner-image"
-									:src="item.image_url"
-									mode="widthFix"
-								/>
-							</swiper-item>
-						</swiper>
-					</view>
-                    <!-- Unified Debug Footer (Inside Scroll) -->
-                    <!-- Hidden recruitment debug tags
-                    <view class="global-debug" style="margin-top: 40rpx; padding-bottom: 60rpx; font-size: 20rpx; color: #ccc; text-align: center; display: flex; flex-direction: column; gap: 6rpx;">
-                        <text>UID: {{ global_uid || '未登录' }}</text>
-                        <text>终身: {{ global_lifetime_inviter }}</text>
-                        <text>团队: {{ global_team_inviter }}</text>
-                        <text>业务: {{ global_business_inviter }}</text>
-                    </view>
-                    -->
+    <scroll-view
+      class="post-scroll"
+      scroll-y
+      @scrolltolower="handleReachBottom"
+    >
+      <view v-if="loading && posts.length === 0" class="state-card">
+        <text class="state-text">加载中...</text>
+      </view>
 
-				</view>
-			</scroll-view>
-		</view>
-	</view>
+      <view v-else-if="posts.length === 0" class="state-card">
+        <text class="state-title">暂无动态</text>
+        <text class="state-text">发布第一条校园动态，和同学一起交流吧</text>
+      </view>
+
+      <view v-else class="waterfall">
+        <view class="column">
+          <forum-post-card
+            v-for="item in leftColumnPosts"
+            :key="item.id"
+            :post="item"
+            @open="goDetail"
+            @longpress="handlePostLongPress"
+          />
+        </view>
+        <view class="column">
+          <forum-post-card
+            v-for="item in rightColumnPosts"
+            :key="item.id"
+            :post="item"
+            @open="goDetail"
+            @longpress="handlePostLongPress"
+          />
+        </view>
+      </view>
+
+      <view v-if="loadingMore" class="loading-more">
+        <text>加载更多中...</text>
+      </view>
+      <view v-else-if="posts.length > 0 && !hasMore" class="loading-more done">
+        <text>已经到底了</text>
+      </view>
+
+      <view class="bottom-space"></view>
+    </scroll-view>
+
+    <view class="fab-btn" @tap="goPublish">
+      <text class="fab-icon">+</text>
+    </view>
+
+    <forum-school-popup
+      :visible="showSchoolPopup"
+      :current-school="currentSchool"
+      :schools="schoolOptions"
+      @close="closeSchoolPopup"
+      @select-school="handleSchoolSelect"
+      @add-school="handleAddSchool"
+      @delete-school="handleDeleteSchool"
+    />
+
+    <admin-password-dialog
+      :visible="showDeletePostDialog"
+      title="删除动态"
+      placeholder="请输入管理员密码"
+      confirm-text="验证并删除"
+      @close="closeDeletePostDialog"
+      @confirm="handleDeletePostConfirm"
+    >
+      <template #extra>
+        <text class="delete-post-tip">将删除：{{ pendingDeletePostTitle }}</text>
+      </template>
+    </admin-password-dialog>
+  </view>
 </template>
 
 <script>
-	import DashboardHeader from '@/components/dashboard/DashboardHeader.vue'
-	import TargetProgressCard from '@/components/dashboard/TargetProgressCard.vue'
+import ForumHeader from '@/components/forum/ForumHeader.vue'
+import ForumPostCard from '@/components/forum/ForumPostCard.vue'
+import ForumSchoolPopup from '@/components/forum/ForumSchoolPopup.vue'
+import AdminPasswordDialog from '@/components/common/AdminPasswordDialog.vue'
+import { verifyAdminPassword } from '@/common/admin-auth'
+
+const DEFAULT_HOME_SCHOOL = '云南大学'
+const MYSTERY_SCHOOL = '神秘学校'
 
 export default {
-		components: {
-			DashboardHeader,
-			TargetProgressCard
-		},
-	data() {
-		return {
-			userAvatar: 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png',
-			userNickname: '',
-			userUid: '',
-			banners: [] // Banner 图片列表
-		}
-	},
-	onShow() {
-		this.loadUserInfo()
-		this.loadBanners()
-		if (typeof this.$mp.page.getTabBar === 'function' && this.$mp.page.getTabBar()) {
-			this.$mp.page.getTabBar().setData({
-				selected: 2
-			})
-		}
-	},
-	methods: {
-		async loadUserInfo() {
-		try {
-			// 1. Try generic storage first
-			let cached = uni.getStorageSync('userInfo') || {}
-			let userId = uni.getStorageSync('userId') || uni.getStorageSync('uni_id') || ''
-			
-			// 2. Try fetching fresh info from cloud (like ProfileHeader does)
-			const token = uni.getStorageSync('token') || uni.getStorageSync('uni_id_token')
-			if (token) {
-				try {
-					const userCenter = uniCloud.importObject('user-center')
-					const res = await userCenter.getUserInfo({ _token: token })
-					if (res && res.code === 0 && res.data) {
-						cached = res.data
-						// Update storage for consistency
-						uni.setStorageSync('userInfo', cached) 
-						if (cached.uid) userId = cached.uid
-					}
-				} catch (err) {
-					console.error('[dashboard] fetch user info failed', err)
-					// Handle token expiration - clear invalid tokens
-					if (err.message && (err.message.includes('需要重新登录') || err.message.includes('TokenExpired') || err.message.includes('token已过期'))) {
-						console.log('[dashboard] Token expired, clearing...')
-						uni.removeStorageSync('token')
-						uni.removeStorageSync('uni_id_token')
-						// Clear cached user info as well
-						cached = {}
-						userId = ''
-					}
-				}
-			} else {
-				console.log('[dashboard] No token found, running in guest mode')
-			}
+  components: {
+    ForumHeader,
+    ForumPostCard,
+    ForumSchoolPopup,
+    AdminPasswordDialog
+  },
+  data() {
+    return {
+      activeTab: 'local',
+      currentSchool: DEFAULT_HOME_SCHOOL,
+      schoolOptions: [],
+      showSchoolPopup: false,
+      posts: [],
+      page: 1,
+      pageSize: 10,
+      hasMore: true,
+      loading: false,
+      loadingMore: false,
+      refreshingFromEvent: false,
+      showDeletePostDialog: false,
+      deletingPost: false,
+      pendingDeletePost: null
+    }
+  },
+  computed: {
+    visiblePosts() {
+      if (this.activeTab !== 'local') {
+        return this.posts
+      }
+      const targetSchool = this.normalizeSchoolDisplay(this.currentSchool || DEFAULT_HOME_SCHOOL)
+      return this.posts.filter((item) => {
+        return this.normalizeSchoolDisplay(item && item.school) === targetSchool
+      })
+    },
+    leftColumnPosts() {
+      return this.visiblePosts.filter((item, index) => index % 2 === 0)
+    },
+    rightColumnPosts() {
+      return this.visiblePosts.filter((item, index) => index % 2 === 1)
+    },
+    pendingDeletePostTitle() {
+      return this.getPostDisplayTitle(this.pendingDeletePost)
+    }
+  },
+  onLoad() {
+    this.registerEvents()
+    this.refreshList()
+  },
+  onShow() {
+    const page =
+      (this.$mp && this.$mp.page) ||
+      (typeof getCurrentPages === 'function' ? getCurrentPages().slice(-1)[0] : null)
+    const tabBar = page && typeof page.getTabBar === 'function' ? page.getTabBar() : null
 
-			this.userAvatar = cached.avatar || this.userAvatar
-			this.userNickname = cached.nickname || cached.username || ''
-			this.userUid = cached.uid || cached._id || userId
-			
-			console.log('[dashboard] Final userUid:', this.userUid)
-		} catch (e) {
-			console.error('[dashboard] loadUserInfo failed:', e)
-		}
-	},
-		async loadBanners() {
-		console.log('[dashboard] 开始加载 banners...')
-		// Safely get token
-		let token = ''
-		try {
-			token = uni.getStorageSync('token')
-		} catch(e) { console.error('Storage error', e) }
-		
-		console.log('[dashboard] token:', token ? '已登录' : '未登录')
-		
-		let bannerList = []
-		
-		try {
-			if (!token) {
-				// 没有登录时也尝试加载 banner，但是用数据库直接查询
-				console.log('[dashboard] 未登录，使用数据库直接查询')
-				const db = uniCloud.database()
-				try {
-					const res = await db
-						.collection('banners')
-						.where({
-							status: 'online'
-						})
-						.orderBy('sort_order', 'asc')
-						.limit(10)
-						.get()
-	
-					console.log('[dashboard] 数据库查询结果:', res)
-					bannerList = (res.result && res.result.data) || []
-				} catch (e) {
-					console.error('[dashboard] 加载 banner 失败（未登录）', e)
-					// Fallback: If DB query fails, show fail-safe defaults if needed, or just empty
-					bannerList = []
-				}
-			} else {
-				// 登录后使用云函数加载
-				console.log('[dashboard] 已登录，使用云函数加载')
-				try {
-					const dashboardService = uniCloud.importObject('dashboard-service')
-					const res = await dashboardService.getBanners({ _token: token, limit: 10 })
-	
-					console.log('[dashboard] 云函数返回:', res)
-					if (res && res.code === 0 && res.data) {
-						bannerList = res.data
-					} else {
-						console.log('[dashboard] 云函数返回结果异常')
-						bannerList = []
-					}
-				} catch (e) {
-					console.error('[dashboard] 加载 banner 失败', e)
-					// If token expired during banner load, clear it and don't retry
-					if (e.message && (e.message.includes('需要重新登录') || e.message.includes('token已过期') || e.message.includes('TokenExpired'))) {
-						console.log('[dashboard] Token expired while loading banners, clearing...')
-						uni.removeStorageSync('token')
-						uni.removeStorageSync('uni_id_token')
-					}
-					bannerList = []
-				}
-			}
-			
-			// 转换 fileID 为临时 URL
-			if (bannerList && bannerList.length > 0) {
-				const fileIDs = bannerList
-					.filter(item => item && item.image_url)
-					.map(item => item.image_url)
-					.filter(url => url && typeof url === 'string' && url.startsWith('cloud://'))
-				
-				console.log('[dashboard] 需要转换的 fileIDs:', fileIDs)
-				
-				if (fileIDs.length > 0) {
-					try {
-						const result = await uniCloud.getTempFileURL({
-							fileList: fileIDs
-						})
-						
-						console.log('[dashboard] getTempFileURL 结果:', result)
-						
-						if (result && result.fileList) {
-							const urlMap = {}
-							result.fileList.forEach(file => {
-								if(file.fileID) {
-									// console.log('[dashboard] fileID:', file.fileID, '-> tempURL:', file.tempFileURL)
-									urlMap[file.fileID] = file.tempFileURL
-								}
-							})
-							
-							bannerList = bannerList.map(item => ({
-								...item,
-								image_url: urlMap[item.image_url] || item.image_url
-							}))
-							
-							console.log('[dashboard] 转换后的 bannerList:', bannerList)
-						}
-					} catch (e) {
-						console.error('[dashboard] 转换 fileID 失败:', e)
-					}
-				}
-			}
-		} catch (outerErr) {
-			console.error('[dashboard] loadBanners critical error', outerErr)
-		}
-		
-	this.banners = bannerList || []
-	// console.log('[dashboard] banners 数量:', this.banners.length)
-	// console.log('[dashboard] banners 数据:', this.banners)
-	},
-	goToUpdate() {
-		uni.showLoading({ title: '刷新数据...' })
-		this.loadUserInfo()
-		this.loadBanners()
-		setTimeout(() => {
-			uni.hideLoading()
-			uni.showToast({ title: '刷新成功', icon: 'none' })
-		}, 800)
-	},
-	goToIntro() {
-		uni.navigateTo({
-			url: '/pages/extra/functions'
-		})
-	}
-	}
-	}
+    if (tabBar && typeof tabBar.setData === 'function') {
+      tabBar.setData({
+        selected: 0
+      })
+    }
+
+    if (this.refreshingFromEvent) {
+      this.refreshingFromEvent = false
+      this.refreshList()
+    }
+  },
+  onUnload() {
+    this.unregisterEvents()
+  },
+  methods: {
+    normalizeSchoolDisplay(name) {
+      const safe = String(name || '').trim()
+      if (!safe) return ''
+      if (safe.toLowerCase() === 'campus' || safe === '其他') return MYSTERY_SCHOOL
+      return safe
+    },
+    getToken() {
+      return uni.getStorageSync('token') || ''
+    },
+    registerEvents() {
+      uni.$on('forum-post-created', this.handlePostCreated)
+    },
+    unregisterEvents() {
+      uni.$off('forum-post-created', this.handlePostCreated)
+    },
+    handlePostCreated() {
+      this.refreshingFromEvent = true
+    },
+    async refreshList() {
+      this.page = 1
+      this.hasMore = true
+      this.loading = true
+      await this.fetchPosts(true)
+      this.loading = false
+    },
+    async handleReachBottom() {
+      if (!this.hasMore || this.loadingMore || this.loading) return
+      this.page += 1
+      this.loadingMore = true
+      await this.fetchPosts(false)
+      this.loadingMore = false
+    },
+    async fetchPosts(reset) {
+      try {
+        const forumService = uniCloud.importObject('forum-service')
+        const requestedSchool = this.activeTab === 'local'
+          ? this.normalizeSchoolDisplay(this.currentSchool)
+          : ''
+        const params = {
+          tab: this.activeTab,
+          school: requestedSchool,
+          page: this.page,
+          pageSize: this.pageSize
+        }
+
+        const token = this.getToken()
+        if (token) params._token = token
+
+        const applySchoolMeta = (payload = {}) => {
+          const rawOptions = Array.isArray(payload.school_options) ? payload.school_options : []
+          if (rawOptions.length > 0) {
+            const mapped = []
+            const set = new Set()
+            rawOptions.forEach((item) => {
+              const school = this.normalizeSchoolDisplay(item)
+              if (!school || set.has(school)) return
+              set.add(school)
+              mapped.push(school)
+            })
+            this.schoolOptions = mapped
+          }
+
+          if (this.activeTab === 'local') {
+            if (!this.currentSchool && payload.current_school) {
+              this.currentSchool = this.normalizeSchoolDisplay(payload.current_school)
+            }
+            if (!this.currentSchool && this.schoolOptions.length > 0) {
+              this.currentSchool = this.normalizeSchoolDisplay(this.schoolOptions[0])
+            }
+          }
+        }
+
+        let res = await forumService.getPostList(params)
+        if (!res || res.code !== 0) {
+          throw new Error((res && res.message) || '加载失败')
+        }
+
+        let data = res.data || {}
+        applySchoolMeta(data)
+
+        const shouldRetryLocalInitialFetch = reset &&
+          this.activeTab === 'local' &&
+          !requestedSchool &&
+          !!this.currentSchool
+
+        // 首次本校请求 school 为空时，拿到 current_school 后立即补拉一次列表，避免首屏空白。
+        if (shouldRetryLocalInitialFetch) {
+          const retryParams = Object.assign({}, params, { school: this.currentSchool })
+          res = await forumService.getPostList(retryParams)
+          if (!res || res.code !== 0) {
+            throw new Error((res && res.message) || '加载失败')
+          }
+          data = res.data || {}
+          applySchoolMeta(data)
+        }
+
+        const rawList = Array.isArray(data.list) ? data.list : []
+        const normalizedList = rawList.map((item) => {
+          const nextItem = Object.assign({}, item)
+          nextItem.school = this.normalizeSchoolDisplay(item && item.school)
+          return nextItem
+        })
+
+        let nextList = normalizedList
+        if (this.activeTab === 'local') {
+          const targetSchool = this.normalizeSchoolDisplay(
+            this.currentSchool || data.current_school || DEFAULT_HOME_SCHOOL
+          )
+          nextList = normalizedList.filter((item) => {
+            return this.normalizeSchoolDisplay(item && item.school) === targetSchool
+          })
+        }
+
+        this.posts = reset ? nextList : this.posts.concat(nextList)
+        this.hasMore = !!data.has_more
+      } catch (error) {
+        console.error('[forum] fetchPosts failed:', error)
+        if (reset) {
+          this.posts = []
+          this.hasMore = false
+        }
+        uni.showToast({
+          title: error.message || '加载失败',
+          icon: 'none'
+        })
+      }
+    },
+    async handleTabChange(tab) {
+      if (this.activeTab === tab) return
+      this.activeTab = tab
+      await this.refreshList()
+    },
+    async handleSchoolChange(school) {
+      const targetSchool = this.normalizeSchoolDisplay(school)
+      if (!targetSchool || this.currentSchool === targetSchool) return
+      this.currentSchool = targetSchool
+      this.activeTab = 'local'
+      await this.refreshList()
+    },
+    async handleSchoolSelect(school) {
+      this.showSchoolPopup = false
+      await this.handleSchoolChange(school)
+    },
+    openSchoolPopup() {
+      this.showSchoolPopup = true
+    },
+    closeSchoolPopup() {
+      this.showSchoolPopup = false
+    },
+    async handleAddSchool(payload = {}) {
+      const schoolName = String(payload.name || '').trim()
+      const password = String(payload.password || '').trim()
+
+      if (!schoolName) {
+        uni.showToast({ title: '请输入学校名称', icon: 'none' })
+        return
+      }
+
+      if (!verifyAdminPassword(password)) {
+        uni.showToast({ title: '密码错误', icon: 'none' })
+        return
+      }
+
+      try {
+        const forumService = uniCloud.importObject('forum-service')
+        const token = this.getToken()
+        const params = { school: schoolName }
+        if (token) params._token = token
+
+        const res = await forumService.addSchool(params)
+        if (!res || res.code !== 0) {
+          throw new Error((res && res.message) || '添加学校失败')
+        }
+
+        const addedSchool = this.normalizeSchoolDisplay((res.data && res.data.school) || schoolName)
+        const options = Array.isArray(res.data && res.data.school_options) ? res.data.school_options : []
+        if (options.length > 0) {
+          const mapped = []
+          const set = new Set()
+          options.forEach((item) => {
+            const school = this.normalizeSchoolDisplay(item)
+            if (!school || set.has(school)) return
+            set.add(school)
+            mapped.push(school)
+          })
+          this.schoolOptions = mapped
+        } else if (this.schoolOptions.indexOf(addedSchool) === -1) {
+          this.schoolOptions.unshift(addedSchool)
+        }
+
+        this.currentSchool = addedSchool
+        this.activeTab = 'local'
+        this.showSchoolPopup = false
+        uni.showToast({ title: '添加成功', icon: 'success' })
+        await this.refreshList()
+      } catch (error) {
+        console.error('[forum] addSchool failed:', error)
+        uni.showToast({
+          title: error.message || '添加学校失败',
+          icon: 'none'
+        })
+      }
+    },
+    async handleDeleteSchool(payload = {}) {
+      const target = this.normalizeSchoolDisplay(payload.name)
+      const password = String(payload.password || '').trim()
+      if (!target) return
+      if (target === MYSTERY_SCHOOL || target === '其他' || target.toLowerCase() === 'campus') {
+        uni.showToast({ title: `“${MYSTERY_SCHOOL}”不可删除`, icon: 'none' })
+        return
+      }
+      if (!password) {
+        uni.showToast({ title: '请输入管理员密码', icon: 'none' })
+        return
+      }
+      if (!verifyAdminPassword(password)) {
+        uni.showToast({ title: '密码错误', icon: 'none' })
+        return
+      }
+
+      try {
+        const forumService = uniCloud.importObject('forum-service')
+        const token = this.getToken()
+        const params = { school: target }
+        if (token) params._token = token
+
+        const result = await forumService.deleteSchool(params)
+        if (!result || result.code !== 0) {
+          throw new Error((result && result.message) || '删除学校失败')
+        }
+
+        const options = Array.isArray(result.data && result.data.school_options)
+          ? result.data.school_options
+          : []
+        if (options.length > 0) {
+          this.schoolOptions = options
+        }
+
+        if (this.currentSchool === target) {
+          this.currentSchool = DEFAULT_HOME_SCHOOL
+        }
+
+        this.activeTab = 'local'
+        uni.showToast({ title: '删除成功', icon: 'success' })
+        await this.refreshList()
+      } catch (error) {
+        console.error('[forum] deleteSchool failed:', error)
+        uni.showToast({
+          title: error.message || '删除学校失败',
+          icon: 'none'
+        })
+      }
+    },
+    getPostDisplayTitle(post) {
+      if (!post) return '该动态'
+      const title = String(post.title || '').trim()
+      if (title) return title
+      const content = String(post.content || '').trim().replace(/\s+/g, ' ')
+      if (!content) return '该动态'
+      return content.length > 20 ? `${content.slice(0, 20)}...` : content
+    },
+    handlePostLongPress(post) {
+      if (!post || !post.id) return
+      uni.showActionSheet({
+        itemList: ['删除'],
+        itemColor: '#ef4444',
+        success: (res) => {
+          if (res.tapIndex === 0) {
+            this.pendingDeletePost = post
+            this.showDeletePostDialog = true
+          }
+        }
+      })
+    },
+    closeDeletePostDialog() {
+      if (this.deletingPost) return
+      this.showDeletePostDialog = false
+      this.pendingDeletePost = null
+    },
+    async handleDeletePostConfirm(password) {
+      if (this.deletingPost) return
+
+      const safePassword = String(password || '').trim()
+      if (!safePassword) {
+        uni.showToast({ title: '请输入管理员密码', icon: 'none' })
+        return
+      }
+      if (!verifyAdminPassword(safePassword)) {
+        uni.showToast({ title: '密码错误', icon: 'none' })
+        return
+      }
+
+      const pendingPost = this.pendingDeletePost
+      if (!pendingPost || !pendingPost.id) {
+        uni.showToast({ title: '动态不存在', icon: 'none' })
+        this.closeDeletePostDialog()
+        return
+      }
+
+      this.deletingPost = true
+      try {
+        const forumService = uniCloud.importObject('forum-service')
+        const token = this.getToken()
+        const params = { postId: pendingPost.id, adminPassword: safePassword }
+        if (token) params._token = token
+
+        const result = await forumService.deletePost(params)
+        if (!result || result.code !== 0) {
+          throw new Error((result && result.message) || '删除动态失败')
+        }
+
+        this.showDeletePostDialog = false
+        this.pendingDeletePost = null
+        uni.showToast({ title: '删除成功', icon: 'success' })
+        await this.refreshList()
+      } catch (error) {
+        console.error('[forum] deletePost failed:', error)
+        uni.showToast({
+          title: error.message || '删除动态失败',
+          icon: 'none'
+        })
+      } finally {
+        this.deletingPost = false
+      }
+    },
+    goDetail(post) {
+      if (!post || !post.id) return
+      uni.navigateTo({
+        url: `/subpackages/forum/detail?id=${encodeURIComponent(post.id)}`
+      })
+    },
+    goPublish() {
+      const token = this.getToken()
+      if (!token) {
+        uni.showModal({
+          title: '请先登录',
+          content: '发布动态需要先完成登录。',
+          confirmText: '去登录',
+          success: (res) => {
+            if (res.confirm) {
+              uni.navigateTo({
+                url: '/pages/auth/login/index'
+              })
+            }
+          }
+        })
+        return
+      }
+
+      uni.showActionSheet({
+        itemList: ['快速发布动态'],
+        success: (res) => {
+          if (res.tapIndex !== 0) return
+          this.navigateToPublish()
+        }
+      })
+    },
+    navigateToPublish() {
+      uni.navigateTo({
+        url: '/subpackages/forum/publish'
+      })
+    }
+  }
+}
 </script>
 
 <style scoped>
-	.page {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		height: 100vh;
-		background-color: #F3F0FF;
-	}
+.forum-page {
+  min-height: 100vh;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+}
 
-	.user-header {
-		padding: 32rpx 24rpx 16rpx;
-		flex-direction: row;
-		align-items: center;
-		display: flex;
-		background-color: #ffffff;
-		border-bottom-width: 2rpx;
-		border-bottom-color: #e5e7eb;
-		border-bottom-style: solid;
-		display: none; /* Hiding user info as requested */
-	}
+.post-scroll {
+  flex: 1;
+  height: 0;
+}
 
-	.user-avatar {
-		width: 80rpx;
-		height: 80rpx;
-		border-radius: 40rpx;
-		margin-right: 20rpx;
-		background-color: #e5e7eb;
-	}
+.state-card {
+  margin: 30rpx 24rpx;
+  padding: 40rpx 28rpx;
+  border-radius: 18rpx;
+  background: #ffffff;
+  box-shadow: 0 8rpx 30rpx rgba(15, 23, 42, 0.04);
+}
 
-	.user-info {
-		flex-direction: column;
-		display: flex;
-	}
+.state-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #0f172a;
+  display: block;
+}
 
-	.user-nickname {
-		font-size: 30rpx;
-		font-weight: 700;
-		color: #0f172a;
-	}
+.state-text {
+  margin-top: 10rpx;
+  font-size: 25rpx;
+  color: #64748b;
+  display: block;
+}
 
-	.brand-tagline-badge {
-		display: inline-flex;
-		align-items: center;
-		background: rgba(255, 255, 255, 0.15);
-		backdrop-filter: blur(4px);
-		padding: 6rpx 16rpx;
-		border-radius: 999rpx;
-		margin: 8rpx 0;
-		border: 1rpx solid rgba(255, 255, 255, 0.2);
-	}
-	
-	.tagline-text {
-		font-size: 20rpx;
-		color: #ffffff;
-		font-weight: 600;
-		letter-spacing: 1rpx;
-	}
-	
-	.tagline-arrow {
-		font-size: 16rpx;
-		color: rgba(255, 255, 255, 0.8);
-		margin-left: 8rpx;
-	}
-	
-	.user-uid {
-		font-size: 20rpx;
-		color: rgba(255, 255, 255, 0.6);
-	}
+.waterfall {
+  display: flex;
+  justify-content: space-between;
+  padding: 18rpx 20rpx 0;
+}
 
-	.page-body {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-	}
+.column {
+  width: 348rpx;
+}
 
-	.main-scroll {
-		flex: 1;
-	}
+.loading-more {
+  padding: 20rpx 0;
+  text-align: center;
+  color: #64748b;
+  font-size: 24rpx;
+}
 
-	.section-list {
-		padding: 24rpx 24rpx 160rpx;
-		box-sizing: border-box;
-	}
+.loading-more.done {
+  color: #94a3b8;
+}
 
-	.target-banner {
-		width: 100%;
-		border-radius: 24rpx;
-		overflow: hidden;
-		margin-bottom: 24rpx;
-	}
+.fab-btn {
+  position: fixed;
+  right: 30rpx;
+  bottom: calc(120rpx + env(safe-area-inset-bottom));
+  width: 94rpx;
+  height: 94rpx;
+  border-radius: 50%;
+  background: #0f172a;
+  border: 4rpx solid #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 14rpx 32rpx rgba(15, 23, 42, 0.35);
+  z-index: 50;
+}
 
-	.ad-banner-container {
-		margin-bottom: 24rpx;
-	}
+.fab-icon {
+  color: #ffffff;
+  font-size: 56rpx;
+  font-weight: 300;
+  margin-top: -4rpx;
+}
 
-.ad-banner-swiper {
-		width: 100%;
-		height: 360rpx;
-		border-radius: 24rpx;
-		overflow: hidden;
-		background-color: #ffffff;
-	}
+.bottom-space {
+  height: 180rpx;
+}
 
-	.ad-banner-image {
-		width: 100%;
-		border-radius: 24rpx;
-		overflow: hidden;
-		display: block;
-	}
-
-	/* Brand Hero Card Styles */
-	.brand-hero-card {
-		margin-bottom: 32rpx;
-		background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
-		border-radius: 32rpx;
-		padding: 40rpx;
-		position: relative;
-		overflow: hidden;
-		box-shadow: 0 20rpx 40rpx rgba(99, 102, 241, 0.2);
-	}
-
-	.hero-card-content {
-		position: relative;
-		z-index: 10;
-	}
-
-	.hero-main-title {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 12rpx;
-	}
-
-	.hero-tagline {
-		font-size: 40rpx;
-		font-weight: 800;
-		color: #ffffff;
-		letter-spacing: 2rpx;
-	}
-
-	.hero-arrow-box {
-		display: flex;
-		align-items: center;
-		background: rgba(255, 255, 255, 0.2);
-		padding: 6rpx 16rpx;
-		border-radius: 999rpx;
-		backdrop-filter: blur(4px);
-	}
-
-	.hero-arrow {
-		font-size: 20rpx;
-		color: #ffffff;
-		font-weight: 600;
-	}
-
-	.hero-arrow-icon {
-		font-size: 20rpx;
-		color: #ffffff;
-		margin-left: 6rpx;
-	}
-
-	.hero-subtext {
-		font-size: 24rpx;
-		color: rgba(255, 255, 255, 0.9);
-		font-weight: 500;
-		letter-spacing: 1rpx;
-	}
-
-	.hero-bg-glow {
-		position: absolute;
-		width: 300rpx;
-		height: 300rpx;
-		background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%);
-		top: -100rpx;
-		right: -100rpx;
-		z-index: 1;
-	}
-
-	/* Order Management Card */
-	.order-mgmt-card {
-		background-color: #ffffff;
-		border-radius: 24rpx;
-		padding: 24rpx 32rpx;
-		margin-bottom: 32rpx;
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.03);
-		border: 1rpx solid #e5e7eb;
-	}
-
-	.mgmt-content {
-		display: flex;
-		align-items: center;
-	}
-
-	.mgmt-icon-box {
-		width: 80rpx;
-		height: 80rpx;
-		background-color: #EEF2FF;
-		border-radius: 20rpx;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		margin-right: 24rpx;
-	}
-
-	.mgmt-icon-text {
-		font-size: 32rpx;
-		color: #4F46E5;
-		font-weight: 700;
-	}
-
-	.mgmt-text {
-		display: flex;
-		flex-direction: column;
-	}
-
-	.mgmt-title {
-		font-size: 30rpx;
-		font-weight: 700;
-		color: #1f2937;
-		margin-bottom: 4rpx;
-	}
-
-	.mgmt-desc {
-		font-size: 24rpx;
-		color: #6b7280;
-	}
-
-	.mgmt-arrow {
-		font-size: 32rpx;
-		color: #9ca3af;
-		font-weight: 600;
-	}
+.delete-post-tip {
+  display: block;
+  font-size: 24rpx;
+  color: #64748b;
+  margin-bottom: 8rpx;
+}
 </style>

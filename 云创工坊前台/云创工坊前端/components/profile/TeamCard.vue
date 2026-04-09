@@ -173,7 +173,7 @@
 			<!-- [NEW] Joined State Hint -->
 			<view class="privilege-tip-row">
 				<text class="privilege-icon">🏆</text>
-				<text class="privilege-text">您已成为校园合伙人，享有直推拉新5%额外奖励荣誉权限</text>
+				<text class="privilege-text">您已成为校园合伙人，享有直推拉新固定 5 积分奖励荣誉权限</text>
 			</view>
 
 		</view>
@@ -182,7 +182,7 @@
 		<view v-else class="no-team-card">
 			<text class="no-team-icon">🏢</text>
 			<text class="no-team-text">您还未成为校园合伙人</text>
-			<text class="no-team-subtext">成为校园合伙人，有机会获得直推拉新5%额外奖励</text>
+			<text class="no-team-subtext">成为校园合伙人，有机会获得直推拉新固定 5 积分奖励</text>
 			<button class="join-btn" @tap="openTeamListModal">
 				<text class="join-btn-text">浏览团队</text>
 			</button>

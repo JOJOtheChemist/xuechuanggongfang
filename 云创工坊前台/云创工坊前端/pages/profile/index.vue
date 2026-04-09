@@ -14,10 +14,9 @@
 					<new-partners ref="newPartners" class="new-partners-tight-top" />
 
 					<wallet-card ref="walletCard" @showHistory="navigateToWalletHistory" />
-					<incentive-system ref="incentiveSystem" class="profile-incentive" />
-					
+
 					<!-- 简易版成就/积分卡片 (点击跳转详情) -->
-					<view class="achievements-simple-card" @tap="navigateToAchievements">
+					<view class="achievements-simple-card points-near-wallet" @tap="navigateToAchievements">
 						<view class="simple-card-header">
 							<text class="card-label">我的积分</text>
 							<text class="card-arrow">查看详情 ></text>
@@ -29,6 +28,8 @@
 							</view>
 						</view>
 					</view>
+
+					<incentive-system ref="incentiveSystem" class="profile-incentive" />
 
 					<annual-coin-stats />
 					<!-- Activity Feed / Other Function Wrapper (Inlined for Style Consistency) -->
@@ -73,9 +74,7 @@ import NewPartners from '../../components/dashboard/NewPartners.vue'
 import IncentiveSystem from '../../components/tasks/IncentiveSystem.vue'
 // import ProfileAchievements from '../../components/profile/ProfileAchievements.vue'
 import AnnualCoinStats from '../../components/profile/AnnualCoinStats.vue'
-import ActivityFeed from '../../components/profile/ActivityFeed.vue'
 // import WalletHistoryPopup from '../../components/profile/WalletHistoryPopup.vue'
-import ProfileStatsGrid from '../../components/profile/ProfileStatsGrid.vue'
 
 export default {
 	components: {
@@ -84,7 +83,6 @@ export default {
 		NewPartners,
 		WalletCard,
 		IncentiveSystem,
-		ProfileStatsGrid,
 		// ProfileAchievements,
 		// SalesSummary,
 		// ActivityFeed,
@@ -94,33 +92,43 @@ export default {
 	data() {
 		return {
             isLoggedIn: false,
-			pointsBalance: 0
+			pointsBalance: 0,
+			hasInitialized: false
 		}
 	},
 	onShow() {
+        const shouldRefreshChildren = this.hasInitialized
+        this.hasInitialized = true
         // [NEW] 每次显示页面时，通知 Header 刷新用户状态
-        this.$nextTick(() => {
-            const header = this.$refs.profileHeader
-            if (header && typeof header.refreshUserInfo === 'function') {
-                header.refreshUserInfo()
-            }
-            if (this.$refs.teamCard && typeof this.$refs.teamCard.refresh === 'function') {
-                this.$refs.teamCard.refresh()
-            }
-            if (this.$refs.newPartners && typeof this.$refs.newPartners.loadTeamMembers === 'function') {
-                this.$refs.newPartners.loadTeamMembers()
-            }
-            if (this.$refs.walletCard && typeof this.$refs.walletCard.loadBalance === 'function') {
-                this.$refs.walletCard.loadBalance()
-            }
-            if (this.$refs.incentiveSystem && typeof this.$refs.incentiveSystem.loadBadgeData === 'function') {
-                this.$refs.incentiveSystem.loadBadgeData()
-            }
+        if (shouldRefreshChildren) {
+            this.$nextTick(() => {
+                const header = this.$refs.profileHeader
+                if (header && typeof header.refreshUserInfo === 'function') {
+                    header.refreshUserInfo()
+                }
+                if (this.$refs.teamCard && typeof this.$refs.teamCard.refresh === 'function') {
+                    this.$refs.teamCard.refresh()
+                }
+                if (this.$refs.newPartners && typeof this.$refs.newPartners.loadTeamMembers === 'function') {
+                    this.$refs.newPartners.loadTeamMembers()
+                }
+                if (this.$refs.walletCard && typeof this.$refs.walletCard.loadBalance === 'function') {
+                    this.$refs.walletCard.loadBalance()
+                }
+                if (this.$refs.incentiveSystem && typeof this.$refs.incentiveSystem.loadBadgeData === 'function') {
+                    this.$refs.incentiveSystem.loadBadgeData()
+                }
+            })
+        }
 			this.loadSimplePoints()
-        })
 		
-		if (typeof this.$mp.page.getTabBar === 'function' && this.$mp.page.getTabBar()) {
-			this.$mp.page.getTabBar().setData({
+		const page =
+			(this.$mp && this.$mp.page) ||
+			(typeof getCurrentPages === 'function' ? getCurrentPages().slice(-1)[0] : null)
+		const tabBar = page && typeof page.getTabBar === 'function' ? page.getTabBar() : null
+
+		if (tabBar && typeof tabBar.setData === 'function') {
+			tabBar.setData({
 				selected: 4
 			})
 		}
@@ -134,7 +142,7 @@ export default {
 			}
 			try {
 				// 优先读缓存，避免频繁请求
-				const cache = uni.getStorageSync('points_stats_cache')
+				let cache = uni.getStorageSync('points_stats_cache')
 				if (cache && cache.balance !== undefined) {
 					this.pointsBalance = cache.balance
 				}
@@ -299,6 +307,10 @@ export default {
 		flex-direction: column;
 		justify-content: space-between;
 		box-shadow: 0 10rpx 30rpx rgba(15, 23, 42, 0.2);
+	}
+
+	.points-near-wallet {
+		margin-top: -24rpx;
 	}
 
 	.more-functions-card {

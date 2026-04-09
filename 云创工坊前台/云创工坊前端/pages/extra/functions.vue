@@ -32,7 +32,7 @@
 					<text class="card-emoji">🤝</text>
 					<text class="card-title">任务管理与社交裂变</text>
 				</view>
-				<text class="card-desc">支持每日签到领取奖励、任务看板分类管理，同时配套知识库；提供专属邀请码，邀约新用户可获“新币”奖励，实现社交裂变式业务拓展。</text>
+				<text class="card-desc">支持每日签到领取固定 5 积分、任务看板分类管理，同时配套知识库；提供专属邀请码，邀约新用户可获固定 5 积分奖励，实现社交裂变式业务拓展。</text>
 			</view>
 		</view>
 

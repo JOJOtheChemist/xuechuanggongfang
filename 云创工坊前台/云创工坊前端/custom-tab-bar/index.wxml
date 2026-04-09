@@ -1,38 +1,63 @@
 <view class="nav">
   <view class="nav-inner">
-    <!-- Forum -->
-    <view class="nav-item {{selected === 0 ? 'nav-item-active' : ''}}" data-path="/subpackages/forum/index" data-index="{{0}}" bindtap="switchTab">
-      <image class="nav-icon-img" src="/static/icons/bell.svg" />
-      <text class="nav-text {{selected === 0 ? 'nav-text-active' : ''}}">论坛</text>
+    <view wx:if="{{showCenterPublish}}" class="nav-side nav-side-left">
+      <view class="nav-item {{selected === 0 ? 'nav-item-active' : ''}}" data-path="/pages/dashboard/index" data-index="{{0}}" bindtap="switchTab">
+        <image class="nav-icon-img" src="/static/icons/nav-home.svg" />
+        <text class="nav-text {{selected === 0 ? 'nav-text-active' : ''}}">广场</text>
+      </view>
+
+      <view class="nav-item {{selected === 1 ? 'nav-item-active' : ''}}" data-path="/pages/business/index" data-index="{{1}}" bindtap="switchTab">
+        <image class="nav-icon-img" src="/static/icons/nav-chat.svg" />
+        <text class="nav-text {{selected === 1 ? 'nav-text-active' : ''}}">学习</text>
+      </view>
     </view>
 
-    <!-- Learning (Business) -->
-    <view class="nav-item {{selected === 1 ? 'nav-item-active' : ''}}" data-path="/pages/business/index" data-index="{{1}}" bindtap="switchTab">
-      <image class="nav-icon-img" src="/static/icons/nav-chat.svg" />
-      <text class="nav-text {{selected === 1 ? 'nav-text-active' : ''}}">学习</text>
-    </view>
-    
-    <!-- Home -->
-    <view class="nav-item {{selected === 2 ? 'nav-item-active' : ''}}" data-path="/pages/dashboard/index" data-index="{{2}}" bindtap="switchTab">
-      <image class="nav-icon-img" src="/static/icons/nav-home.svg" />
-      <text class="nav-text {{selected === 2 ? 'nav-text-active' : ''}}">首页</text>
+    <view wx:if="{{showCenterPublish}}" class="nav-center-btn" bindtap="openQuickPublish">
+      <image class="nav-center-icon-img" src="/static/icons/nav-plus.svg" mode="aspectFit" />
     </view>
 
-    <!-- Center Plus Button -->
-    <view class="nav-center-btn">
-       <image class="nav-center-icon-img" src="/static/icons/nav-plus.svg" mode="aspectFit" />
+    <view wx:if="{{showCenterPublish}}" class="nav-side nav-side-right">
+      <view class="nav-item {{selected === 2 ? 'nav-item-active' : ''}}" data-path="/pages/volunteer/index" data-index="{{2}}" bindtap="switchTab">
+        <image class="nav-icon-img" src="/static/icons/nav-volunteer.svg" />
+        <text class="nav-text {{selected === 2 ? 'nav-text-active' : ''}}">志愿</text>
+      </view>
+
+      <view class="nav-item {{selected === 3 ? 'nav-item-active' : ''}}" data-path="/pages/task-center/index" data-index="{{3}}" bindtap="switchTab">
+        <image class="nav-icon-img" src="/static/icons/nav-chart.svg" />
+        <text class="nav-text {{selected === 3 ? 'nav-text-active' : ''}}">创业</text>
+      </view>
+
+      <view class="nav-item {{selected === 4 ? 'nav-item-active' : ''}}" data-path="/pages/profile/index" data-index="{{4}}" bindtap="switchTab">
+        <image class="nav-icon-img" src="/static/icons/nav-user.svg" />
+        <text class="nav-text {{selected === 4 ? 'nav-text-active' : ''}}">我的</text>
+      </view>
     </view>
 
-    <!-- Startup -->
-    <view class="nav-item {{selected === 3 ? 'nav-item-active' : ''}}" data-path="/pages/task-center/index" data-index="{{3}}" bindtap="switchTab">
-      <image class="nav-icon-img" src="/static/icons/nav-chart.svg" />
-      <text class="nav-text {{selected === 3 ? 'nav-text-active' : ''}}">创业中心</text>
-    </view>
+    <view wx:else class="nav-side nav-side-full">
+      <view class="nav-item {{selected === 0 ? 'nav-item-active' : ''}}" data-path="/pages/dashboard/index" data-index="{{0}}" bindtap="switchTab">
+        <image class="nav-icon-img" src="/static/icons/nav-home.svg" />
+        <text class="nav-text {{selected === 0 ? 'nav-text-active' : ''}}">广场</text>
+      </view>
 
-    <!-- Profile -->
-    <view class="nav-item {{selected === 4 ? 'nav-item-active' : ''}}" data-path="/pages/profile/index" data-index="{{4}}" bindtap="switchTab">
-      <image class="nav-icon-img" src="/static/icons/nav-user.svg" />
-      <text class="nav-text {{selected === 4 ? 'nav-text-active' : ''}}">我的</text>
+      <view class="nav-item {{selected === 1 ? 'nav-item-active' : ''}}" data-path="/pages/business/index" data-index="{{1}}" bindtap="switchTab">
+        <image class="nav-icon-img" src="/static/icons/nav-chat.svg" />
+        <text class="nav-text {{selected === 1 ? 'nav-text-active' : ''}}">学习</text>
+      </view>
+
+      <view class="nav-item {{selected === 2 ? 'nav-item-active' : ''}}" data-path="/pages/volunteer/index" data-index="{{2}}" bindtap="switchTab">
+        <image class="nav-icon-img" src="/static/icons/nav-volunteer.svg" />
+        <text class="nav-text {{selected === 2 ? 'nav-text-active' : ''}}">志愿</text>
+      </view>
+
+      <view class="nav-item {{selected === 3 ? 'nav-item-active' : ''}}" data-path="/pages/task-center/index" data-index="{{3}}" bindtap="switchTab">
+        <image class="nav-icon-img" src="/static/icons/nav-chart.svg" />
+        <text class="nav-text {{selected === 3 ? 'nav-text-active' : ''}}">创业</text>
+      </view>
+
+      <view class="nav-item {{selected === 4 ? 'nav-item-active' : ''}}" data-path="/pages/profile/index" data-index="{{4}}" bindtap="switchTab">
+        <image class="nav-icon-img" src="/static/icons/nav-user.svg" />
+        <text class="nav-text {{selected === 4 ? 'nav-text-active' : ''}}">我的</text>
+      </view>
     </view>
   </view>
 </view>

@@ -4,7 +4,7 @@
 const config = {
   // 小程序配置
   appId: 'wxd7918f6ffc6e4234',
-  appSecret: '52ced0fa2c741ddd1d98aa16fd3db8d0',
+  appSecret: '607588d26e9df050892c321579063f8e',
 
   // 微信支付商户配置
   mchId: '1733684223', // 商户号
@@ -35,9 +35,10 @@ const config = {
   notifyUrl: 'https://fc-mp-8da32993-40ae-410e-8eec-3c8bebcab2bd.next.bspapp.com/payment-notify', // 临时占位
 
   // 以下为APIv3相关
-  // 商户证书序列号 & APIv3密钥（V3用RSA签名）
+  // 商户证书序列号、微信支付公钥ID 与 APIv3密钥（V3用RSA签名）
   serialNo: '5CF31CA845B1685EB457176ECBCEF5D26C43AD0A',
-  apiV3Key: 'hyy777llp777hyy777hyc777wgy77799',
+  publicKeyId: 'PUB_KEY_ID_0117336842232025121500181905001400',
+  apiV3Key: 'XUECHUANGGONGFANGxuechuang123456',
 
   // 商户API私钥（PEM格式，从 apiclient_key.pem 读取）
   // 用于 V3 接口签名
@@ -78,7 +79,7 @@ xssRu1hmq49O7fE8lAH3pYI=
   orderExpireMinutes: 30, // 订单超时时间（分钟）
 
   // 支付金额配置（单位：元）
-  testAmount: 0.1, // 测试时使用0.1元
+  testAmount: 0.01, // 测试时使用0.01元
   productionAmount: 100, // 正式环境使用50元
   isTestMode: false // true使用测试金额，false使用正式金额
 }

@@ -18,7 +18,7 @@
 				:disabled="isCheckedIn"
 			>
 				<text class="check-icon" v-if="isCheckedIn">✓</text>
-				<text class="btn-text">{{ isCheckedIn ? '今日已签到' : '立即签到' }}</text>
+				<text class="btn-text">{{ isCheckedIn ? '今日已签到' : '立即签到领5积分' }}</text>
 			</button>
 		</view>
 	</view>
@@ -66,7 +66,7 @@ export default {
 					this.checkInTime = result.data.check_in_time
 					
 					uni.showToast({
-						title: '签到成功！',
+						title: result.message || '签到成功，获得5积分',
 						icon: 'success'
 					})
 					

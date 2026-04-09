@@ -11,44 +11,43 @@
 				<view class="streak-days" id="dayCount">{{ streakDays }} 天</view>
 			</view>
 
-			<view class="earnings-summary-row">
-				<view class="summary-item team">
-					<text class="s-label">昨日直推一级收益</text>
-					<view class="s-val-wrapper">
-						<text class="s-val">{{ formattedDirectIncome }}</text>
-						<text class="s-unit">新币</text>
+				<view class="earnings-summary-row">
+					<view class="summary-item team">
+						<text class="s-label">签到固定奖励</text>
+						<view class="s-val-wrapper">
+							<text class="s-val">{{ checkinRewardPoints }}</text>
+							<text class="s-unit">积分</text>
+						</view>
+						<text class="s-desc">每日签到可领取固定积分</text>
 					</view>
-					<text class="s-desc">直属成员昨日总拉新奖励</text>
-				</view>
-				<view class="s-divider"></view>
-				<view class="summary-item bonus">
-					<text class="s-label">
-						签到奖金(5%)
-						<text v-if="isChecked" class="s-tag done">已发</text>
-						<text v-else class="s-tag wait">未领</text>
-					</text>
-					<view class="s-val-wrapper">
-						<text class="s-val highlight" :class="{ 'locked': !isChecked }">{{ formattedBonusPreview }}</text>
-						<text class="s-unit" :class="{ 'locked': !isChecked }">新币</text>
+					<view class="s-divider"></view>
+					<view class="summary-item bonus">
+						<text class="s-label">
+							今日状态
+							<text v-if="isChecked" class="s-tag done">已发</text>
+							<text v-else class="s-tag wait">未领</text>
+						</text>
+						<view class="s-val-wrapper">
+							<text class="s-val highlight">{{ checkinRewardPoints }}</text>
+							<text class="s-unit">积分</text>
+						</view>
+						<text class="s-desc">{{ isChecked ? '今日奖励已到账' : '签到后立即到账' }}</text>
 					</view>
-					<text class="s-desc">1级直推总收益分红</text>
 				</view>
-			</view>
 
-			<view class="mini-warning" :class="{ 'mini-success': isChecked, 'mini-alert': !isChecked }">
-				<view class="mini-main">
-					<text class="mini-icon" :class="{ 'black-icon': !isChecked }">{{ isChecked ? '✓' : '⚠️' }}</text>
-					<text class="mini-text" v-if="isChecked">打卡成功！收益加成已到账。</text>
-					<text class="mini-text alert-text" v-else>今日未打卡！若签到失败，昨日收益将无法领取并清零！</text>
+				<view class="mini-warning" :class="{ 'mini-success': isChecked, 'mini-alert': !isChecked }">
+					<view class="mini-main">
+						<text class="mini-icon" :class="{ 'black-icon': !isChecked }">{{ isChecked ? '✓' : '⚠️' }}</text>
+						<text class="mini-text" v-if="isChecked">打卡成功！今日 +5 积分已到账。</text>
+						<text class="mini-text alert-text" v-else>今日未签到，完成签到即可领取 5 积分。</text>
+					</view>
 				</view>
-				<text class="mini-formula">公式:签到奖励=昨日直推收益*5%</text>
-			</view>
 
-			<button class="compact-checkin-btn" :class="{ 'is-checked': isChecked }" @click="handleCheckIn">
-				{{ isChecked ? '今日已签到 ✓' : '签到立即领钱' }}
-			</button>
+				<button class="compact-checkin-btn" :class="{ 'is-checked': isChecked }" @click="handleCheckIn">
+					{{ isChecked ? '今日已签到 ✓' : '签到领5积分' }}
+				</button>
+			</view>
 		</view>
-	</view>
 </template>
 
 <script>
@@ -58,19 +57,7 @@
 			return {
 				isChecked: false,
 				streakDays: 7,
-				directIncome: 0
-			}
-		},
-		computed: {
-			formattedDirectIncome() {
-				return Math.floor(this.directIncome).toLocaleString()
-			},
-			bonusPreview() {
-				if (this.directIncome <= 0) return 0
-				return Math.floor(this.directIncome * 0.05)
-			},
-			formattedBonusPreview() {
-				return this.bonusPreview.toLocaleString()
+				checkinRewardPoints: 5
 			}
 		},
 		mounted() {
@@ -80,7 +67,6 @@
 			refresh() {
 				this.checkLocalStatus();
 				this.checkStatus();
-				this.loadYesterdayWithStatus();
 			},
 			checkLocalStatus() {
 				const today = new Date().toISOString().split('T')[0]
@@ -134,8 +120,6 @@
 						const msg = res.message || '打卡成功'
 						uni.showToast({ title: msg, icon: 'none', duration: 2000 })
 						
-						// Refresh yesterday earnings status (badge change)
-						this.loadYesterdayWithStatus()
 						// Notify wallet to refresh
 						uni.$emit('wallet-refresh')
 						
@@ -146,25 +130,6 @@
 					uni.hideLoading()
 					console.error('[CheckInCard] 签到失败', e)
 					uni.showToast({ title: '签到失败', icon: 'none' })
-				}
-			},
-			async loadYesterdayWithStatus() {
-				const token = uni.getStorageSync('token')
-				if (!token) return
-				
-				try {
-					const coinService = uniCloud.importObject('coin-service')
-					
-					// 使用新加的 getYesterdayStats 接口
-					const res = await coinService.getYesterdayStats({ _token: token })
-					
-					if (res && res.code === 0 && res.data) {
-						this.directIncome = res.data.direct_level_income
-							|| res.data.team_yesterday_income
-							|| 0
-					}
-				} catch (e) {
-					console.error('[CheckInCard] 获取昨日收益失败', e)
 				}
 			}
 		}

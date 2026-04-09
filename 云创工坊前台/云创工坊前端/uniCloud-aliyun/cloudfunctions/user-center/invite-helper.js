@@ -1,4 +1,78 @@
 // uniCloud is global in cloud functions
+const INVITE_REWARD_POINTS = 5
+
+async function getOrCreatePointsAccount(db, userId) {
+    const pointsCollection = db.collection('user_points')
+    const accountRes = await pointsCollection.where({ user_id: userId }).limit(1).get()
+
+    if (accountRes.data && accountRes.data.length > 0) {
+        const account = accountRes.data[0]
+        return {
+            accountId: account._id,
+            balance: account.balance || 0,
+            totalPoints: account.total_points || 0
+        }
+    }
+
+    const addRes = await pointsCollection.add({
+        user_id: userId,
+        balance: 0,
+        total_points: 0,
+        create_date: Date.now(),
+        update_date: Date.now()
+    })
+
+    return {
+        accountId: addRes.id,
+        balance: 0,
+        totalPoints: 0
+    }
+}
+
+async function grantInviteRewardPoints({
+    db,
+    inviterId,
+    inviteeUid,
+    source,
+    remark
+}) {
+    if (!inviterId || !inviteeUid || inviterId === inviteeUid) {
+        return { rewarded: false, points: 0 }
+    }
+
+    const existingReward = await db.collection('points_logs').where({
+        user_id: inviterId,
+        reason: 'recommend_reward',
+        ref_id: inviteeUid
+    }).limit(1).get()
+
+    if (existingReward.data && existingReward.data.length > 0) {
+        return { rewarded: false, points: 0 }
+    }
+
+    const account = await getOrCreatePointsAccount(db, inviterId)
+    const newBalance = account.balance + INVITE_REWARD_POINTS
+    const newTotal = account.totalPoints + INVITE_REWARD_POINTS
+
+    await db.collection('user_points').doc(account.accountId).update({
+        balance: newBalance,
+        total_points: newTotal,
+        update_date: Date.now()
+    })
+
+    await db.collection('points_logs').add({
+        user_id: inviterId,
+        change: INVITE_REWARD_POINTS,
+        balance_after: newBalance,
+        reason: 'recommend_reward',
+        source,
+        ref_id: inviteeUid,
+        remark,
+        create_date: Date.now()
+    })
+
+    return { rewarded: true, points: INVITE_REWARD_POINTS }
+}
 
 /**
  * [NEW] 立即补录绑定邀请人 (供登录后的扫码进入场景使用)
@@ -15,7 +89,6 @@ async function bindInviter(uid, inviterId) {
         }
 
         const db = uniCloud.database()
-        const dbCmd = db.command
         const usersCollection = db.collection('uni-id-users')
 
         // 1. 获取当前用户信息，判断是否已有邀请人
@@ -40,31 +113,16 @@ async function bindInviter(uid, inviterId) {
 
         // 2.2 发放奖励 (发放给推荐人)
         try {
-            // [MOD] Updated from 1 to 0.01
-            const rewardCoins = 0.01 // Original: 1
+            const rewardResult = await grantInviteRewardPoints({
+                db,
+                inviterId,
+                inviteeUid: uid,
+                source: 'user-center-bind-inviter',
+                remark: '直推(扫码补录)奖励 +5 积分'
+            })
 
-            // [Deduplication Check]
-            const existingReward = await db.collection('coin_logs').where({
-                user_id: inviterId,
-                type: 'reward',
-                ref_id: uid
-            }).limit(1).get()
-
-            if (!existingReward.data || existingReward.data.length === 0) {
-                await usersCollection.doc(inviterId).update({
-                    'wallet.coins': dbCmd.inc(rewardCoins)
-                })
-
-                await db.collection('coin_logs').add({
-                    user_id: inviterId,
-                    amount: rewardCoins,
-                    type: 'reward',
-                    status: 'success',
-                    ref_id: uid, // Use new user's UID as ref_id
-                    remark: '直推(扫码补录)奖励',
-                    create_date: Date.now()
-                })
-                console.log(`[user-center] 扫码补录奖励发放成功: 给 ${inviterId} 发放 ${rewardCoins} 新币 (New User: ${uid})`)
+            if (rewardResult.rewarded) {
+                console.log(`[user-center] 扫码补录奖励发放成功: 给 ${inviterId} 发放 ${rewardResult.points} 积分 (New User: ${uid})`)
             } else {
                 console.log(`[user-center] 该新用户(${uid})带来的奖励已发放过，跳过`)
             }

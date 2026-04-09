@@ -344,7 +344,7 @@ export default {
           title: '新人分享',
           short: '分享',
           bgColor: '#fee2ff',
-          desc: '邀请好友加入学创工坊，共享优质校园服务资源，领取丰厚推广奖励。',
+          desc: '邀请好友加入学创工坊，共享优质校园服务资源，完成分享可获得积分奖励。',
           type: 'share'
         }
       ]
@@ -579,8 +579,11 @@ export default {
         })
 
         let content = '支付成功！报名已提交。'
-        if (confirmRes.code === 0 && confirmRes.data && confirmRes.data.reward_coins > 0) {
-          content += `\n\n给推荐人发放了 ${confirmRes.data.reward_coins} 新币奖励！`
+        const rewardPoints = Number(
+          (confirmRes && confirmRes.data && (confirmRes.data.reward_points || confirmRes.data.reward_coins)) || 0
+        )
+        if (confirmRes.code === 0 && rewardPoints > 0) {
+          content += `\n\n给推荐人发放了 ${rewardPoints} 积分奖励！`
         }
 
         // 5. 显示成功提示

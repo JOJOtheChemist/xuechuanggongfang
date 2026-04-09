@@ -3,6 +3,8 @@
  * @param {object} order - 订单信息
  * @returns {boolean} 是否应发放
  */
+const REFERRER_REWARD_POINTS = 5
+
 function shouldGrantReferrerReward(order) {
     // 3=驾校, 7=勤工, 9=就业, 13=考证
     const targetBusinessIds = ['3', 3, '7', 7, '9', 9, '13', 13]
@@ -133,7 +135,7 @@ async function grantReferrerReward(order) {
         return 0
     }
 
-    const rewardPoints = 10
+    const rewardPoints = REFERRER_REWARD_POINTS
 
     // 1. 获取或创建积分账户
     const account = await getOrCreatePointsAccount(referrerUid)

@@ -103,11 +103,28 @@
         {{ sendingComment ? '发送中' : '发送' }}
       </button>
     </view>
+
+    <ForumContentSafetyNotice
+      :visible="safetyNoticeVisible"
+      :message="safetyNoticeMessage"
+      @close="closeSafetyNotice"
+    />
   </view>
 </template>
 
 <script>
+import ForumContentSafetyNotice from './components/ForumContentSafetyNotice.vue'
+import {
+  CONTENT_SECURITY_SERVICE_UNAVAILABLE_MESSAGE,
+  extractRequestErrorMessage,
+  isContentSecurityViolation,
+  normalizeContentSafetyMessage
+} from '@/utils/contentSafety.js'
+
 export default {
+  components: {
+    ForumContentSafetyNotice
+  },
   data() {
     return {
       postId: '',
@@ -122,7 +139,9 @@ export default {
       sendingComment: false,
       commentInputFocus: false,
       keyboardHeight: 0,
-      imageModeMap: {}
+      imageModeMap: {},
+      safetyNoticeVisible: false,
+      safetyNoticeMessage: ''
     }
   },
   computed: {
@@ -271,6 +290,25 @@ export default {
 
       return ''
     },
+    closeSafetyNotice() {
+      this.safetyNoticeVisible = false
+      this.safetyNoticeMessage = ''
+    },
+    showSafetyNotice(message) {
+      this.safetyNoticeMessage = normalizeContentSafetyMessage(message, '操作失败')
+      this.safetyNoticeVisible = true
+    },
+    showFailureMessage(message, fallback = '操作失败') {
+      const normalized = normalizeContentSafetyMessage(message, fallback)
+      if (
+        isContentSecurityViolation(normalized)
+        || normalized === CONTENT_SECURITY_SERVICE_UNAVAILABLE_MESSAGE
+      ) {
+        this.showSafetyNotice(normalized)
+        return
+      }
+      uni.showToast({ title: normalized, icon: 'none' })
+    },
     focusCommentInput() {
       this.commentInputFocus = true
     },
@@ -342,7 +380,10 @@ export default {
         uni.showToast({ title: '评论成功', icon: 'success' })
       } catch (error) {
         console.error('[forum][detail] submitComment failed:', error)
-        uni.showToast({ title: error.message || '评论失败', icon: 'none' })
+        const message = extractRequestErrorMessage(error, '评论失败', {
+          assumeContentViolationOn400: true
+        })
+        this.showFailureMessage(message, '评论失败')
       } finally {
         this.sendingComment = false
       }

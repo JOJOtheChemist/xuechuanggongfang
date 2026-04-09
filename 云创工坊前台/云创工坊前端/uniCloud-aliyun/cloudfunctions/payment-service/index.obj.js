@@ -274,10 +274,10 @@ module.exports = {
       console.log('[payment-service][confirmPayment] 订单确认成功', orderNo)
 
       // 3. 发放推荐人奖励
-      let rewardCoins = 0
+      let rewardPoints = 0
       try {
         if (rewardHelper.shouldGrantReferrerReward(order)) {
-          rewardCoins = await rewardHelper.grantReferrerReward(order)
+          rewardPoints = await rewardHelper.grantReferrerReward(order)
         }
       } catch (rewardErr) {
         console.error('[payment-service][confirmPayment] 发放推荐人奖励失败:', rewardErr)
@@ -288,7 +288,8 @@ module.exports = {
         message: '支付确认成功',
         data: {
           success: true,
-          reward_coins: rewardCoins
+          reward_points: rewardPoints,
+          reward_coins: rewardPoints
         }
       }
     } catch (error) {

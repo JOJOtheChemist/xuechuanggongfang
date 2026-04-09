@@ -168,7 +168,7 @@ module.exports = {
             // ----------------------
             // 这里直接复用 user-center 里用的 APPID / SECRET（你可以抽成配置）
             const APPID = 'wxd7918f6ffc6e4234'
-            const SECRET = '52ced0fa2c741ddd1d98aa16fd3db8d0'
+            const SECRET = '607588d26e9df050892c321579063f8e'
 
             const tokenRes = await uniCloud.httpclient.request(
                 `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${APPID}&secret=${SECRET}`,

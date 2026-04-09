@@ -79,7 +79,7 @@ async function generateBusinessInviteQrcode(uid, { businessId } = {}) {
 
         // 1. 获取 access_token（沿用 user-center / team-service 中的配置）
         const APPID = 'wxd7918f6ffc6e4234'
-        const SECRET = '52ced0fa2c741ddd1d98aa16fd3db8d0'
+        const SECRET = '607588d26e9df050892c321579063f8e'
 
         const tokenRes = await uniCloud.httpclient.request(
             `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${APPID}&secret=${SECRET}`,

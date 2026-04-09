@@ -2,6 +2,80 @@
  * Signup Helper - 业务报名相关操作
  * 包含业务报名提交、懒绑定等功能
  */
+const INVITE_REWARD_POINTS = 5
+
+async function getOrCreatePointsAccount(db, userId) {
+    const pointsCollection = db.collection('user_points')
+    const accountRes = await pointsCollection.where({ user_id: userId }).limit(1).get()
+
+    if (accountRes.data && accountRes.data.length > 0) {
+        const account = accountRes.data[0]
+        return {
+            accountId: account._id,
+            balance: account.balance || 0,
+            totalPoints: account.total_points || 0
+        }
+    }
+
+    const addRes = await pointsCollection.add({
+        user_id: userId,
+        balance: 0,
+        total_points: 0,
+        create_date: Date.now(),
+        update_date: Date.now()
+    })
+
+    return {
+        accountId: addRes.id,
+        balance: 0,
+        totalPoints: 0
+    }
+}
+
+async function grantInviteRewardPoints({
+    db,
+    inviterId,
+    inviteeUid,
+    source,
+    remark
+}) {
+    if (!inviterId || !inviteeUid || inviterId === inviteeUid) {
+        return { rewarded: false, points: 0 }
+    }
+
+    const existLog = await db.collection('points_logs').where({
+        user_id: inviterId,
+        reason: 'recommend_reward',
+        ref_id: inviteeUid
+    }).limit(1).get()
+
+    if (existLog.data && existLog.data.length > 0) {
+        return { rewarded: false, points: 0 }
+    }
+
+    const account = await getOrCreatePointsAccount(db, inviterId)
+    const newBalance = account.balance + INVITE_REWARD_POINTS
+    const newTotal = account.totalPoints + INVITE_REWARD_POINTS
+
+    await db.collection('user_points').doc(account.accountId).update({
+        balance: newBalance,
+        total_points: newTotal,
+        update_date: Date.now()
+    })
+
+    await db.collection('points_logs').add({
+        user_id: inviterId,
+        change: INVITE_REWARD_POINTS,
+        balance_after: newBalance,
+        reason: 'recommend_reward',
+        source,
+        ref_id: inviteeUid,
+        remark,
+        create_date: Date.now()
+    })
+
+    return { rewarded: true, points: INVITE_REWARD_POINTS }
+}
 
 /**
  * 提交业务报名
@@ -19,7 +93,7 @@
  * @param {string} signupData.category - 报名类别（例如 勤工俭学）
  * @param {string} signupData.signupWx - 招聘人微信 / 报名微信号
  * @param {string} signupData.referrer - 推荐人（展示用，可为空）
- * @param {string} signupData.referrerUid - 推荐人 uid（用于积分/新币奖励）
+ * @param {string} signupData.referrerUid - 推荐人 uid（用于拉新积分奖励）
  * @param {string} signupData.contactInfo - 联系方式（可选，默认使用 mobile）
  * @param {string} signupData.remark - 备注
  * @param {string} signupData.age - 年龄
@@ -77,41 +151,24 @@ async function submitSignup(uid, signupData = {}) {
         if (referrerUid && (!userInfo.inviter_uid || userInfo.inviter_uid.length === 0)) {
             console.log('[business-service] 执行懒绑定：老用户补录邀请人:', referrerUid)
             try {
-                const dbCmd = db.command
                 // 1. 绑定关系 (始终执行绑定，即使奖励已发放)
                 await db.collection('uni-id-users').doc(uid).update({
                     inviter_uid: [referrerUid],
                     partner_info: { inviter_id: referrerUid }
                 })
 
-                // 2. 查重：检查是否已经给该推荐人发放过针对该新用户的奖励 (使用 ref_id: uid)
-                const existLog = await db.collection('coin_logs').where({
-                    user_id: referrerUid,
-                    ref_id: uid,
-                    type: 'reward'
-                }).get()
+                const rewardResult = await grantInviteRewardPoints({
+                    db,
+                    inviterId: referrerUid,
+                    inviteeUid: uid,
+                    source: 'business-signup-lazy-bind',
+                    remark: '直推(业务补录)奖励 +5 积分'
+                })
 
-                if (existLog.data && existLog.data.length > 0) {
+                if (!rewardResult.rewarded) {
                     console.log(`[business-service] 忽略重复奖励: 推荐人 ${referrerUid} 已经获得过针对用户 ${uid} 的奖励`)
                 } else {
-                    // 3. 发放奖励 (给推荐人)
-                    // [MOD] Updated from 1 to 0.01
-                    const rewardCoins = 0.01 // Original: 1
-                    await db.collection('uni-id-users').doc(referrerUid).update({
-                        'wallet.coins': dbCmd.inc(rewardCoins)
-                    })
-
-                    await db.collection('coin_logs').add({
-                        user_id: referrerUid,
-                        amount: rewardCoins,
-                        type: 'reward',
-                        status: 'success',
-                        ref_id: uid,
-                        remark: '直推(业务补录)奖励',
-                        create_date: Date.now()
-                    })
-
-                    // 4. 记录邀请日志 (invite_logs)
+                    // 3. 记录邀请日志 (invite_logs)
                     await db.collection('invite_logs').add({
                         inviter_id: referrerUid,
                         new_user_id: uid,
@@ -121,7 +178,7 @@ async function submitSignup(uid, signupData = {}) {
                         status: 'registered',
                         create_date: Date.now()
                     })
-                    console.log('[business-service] 懒绑定及奖励发放成功')
+                    console.log(`[business-service] 懒绑定及奖励发放成功，发放 ${rewardResult.points} 积分`)
                 }
             } catch (bindErr) {
                 console.error('[business-service] 懒绑定失败:', bindErr)
@@ -155,7 +212,7 @@ async function submitSignup(uid, signupData = {}) {
         })
 
         // 推荐奖励：根据最新规则，报名本身不发奖励，仅绑定关系。
-        // 付费业务的奖励（10积分）在 payment-service.confirmPayment 中处理。
+        // 付费业务的奖励在 payment-service.confirmPayment 中处理。
         // 免费业务暂无明确奖励规则，且用户提示"报名只是为了绑定邀请关系"。
         // 故此处只保留日志或不做操作。
         console.log('[business-service][submitSignup] 报名成功，推荐人UID:', referrerUid)

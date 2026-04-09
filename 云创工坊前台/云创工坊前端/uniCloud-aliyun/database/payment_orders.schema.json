@@ -39,7 +39,7 @@
     "referrer_reward_sent": {
       "bsonType": "bool",
       "title": "推荐人奖励是否已发放",
-      "description": "标记是否已给推荐人发放新币奖励，防止重复发放",
+      "description": "标记是否已给推荐人发放积分奖励，防止重复发放",
       "default": false
     },
     "amount": {

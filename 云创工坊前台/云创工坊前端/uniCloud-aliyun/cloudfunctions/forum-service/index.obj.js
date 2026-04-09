@@ -9,18 +9,254 @@ const COLLECTION_LIKES = 'forum_post_likes'
 const COLLECTION_USERS = 'uni-id-users'
 const COLLECTION_SCHOOLS = 'forum_schools'
 
-const DEFAULT_SCHOOL = '神秘学校'
+const DEFAULT_HOME_SCHOOL = '云南大学'
+const MYSTERY_SCHOOL = '神秘学校'
 const DEFAULT_PAGE_SIZE = 10
 const MAX_PAGE_SIZE = 30
+const ADMIN_PASSWORD = 'hyy199877'
+const WECHAT_API_BASE = 'https://api.weixin.qq.com'
+const WECHAT_TOKEN_ENDPOINT = '/cgi-bin/token'
+const WECHAT_TEXT_CHECK_ENDPOINT = '/wxa/msg_sec_check'
+const CONTENT_SECURITY_VIOLATION_MESSAGE = '内容含违规信息'
+const CONTENT_SECURITY_SERVICE_UNAVAILABLE_MESSAGE = '内容审核服务暂不可用，请稍后重试'
+const DEFAULT_WECHAT_APP_ID = 'wxd7918f6ffc6e4234'
+const DEFAULT_WECHAT_APP_SECRET = '607588d26e9df050892c321579063f8e'
+const TOKEN_CACHE_BUFFER_SECONDS = 120
+const TOKEN_ERROR_CODES = new Set([40001, 40014, 41001, 42001])
+const VIOLATION_ERROR_CODES = new Set([
+  87014,
+  87017,
+  87018,
+  87019,
+  87101,
+  87102,
+  87103,
+  87104,
+  87105,
+  87106,
+  87107
+])
+
+let cachedWechatAccessToken = ''
+let cachedWechatAccessTokenExpireAt = 0
 
 function toSafeText(value) {
   return String(value || '').trim()
 }
 
+class ContentSecurityError extends Error {}
+class ContentSecurityViolationError extends ContentSecurityError {}
+class ContentSecurityServiceError extends ContentSecurityError {}
+
+function getRuntimeEnv(key) {
+  try {
+    if (process && process.env && process.env[key] !== undefined) {
+      return toSafeText(process.env[key])
+    }
+  } catch (error) {
+    return ''
+  }
+  return ''
+}
+
+function isContentSecurityEnabled() {
+  const raw = toSafeText(getRuntimeEnv('WECHAT_CONTENT_SECURITY_ENABLED') || 'true').toLowerCase()
+  return raw !== '0' && raw !== 'false' && raw !== 'off'
+}
+
+function getContentSecurityCredentials() {
+  const appId = toSafeText(
+    getRuntimeEnv('WECHAT_CONTENT_SECURITY_APP_ID')
+      || getRuntimeEnv('WECHAT_APP_ID')
+      || DEFAULT_WECHAT_APP_ID
+  )
+  const appSecret = toSafeText(
+    getRuntimeEnv('WECHAT_CONTENT_SECURITY_APP_SECRET')
+      || getRuntimeEnv('WECHAT_APP_SECRET')
+      || DEFAULT_WECHAT_APP_SECRET
+  )
+  return { appId, appSecret }
+}
+
+function normalizeWechatPayload(payload) {
+  if (payload && typeof payload === 'object') {
+    return payload
+  }
+  const raw = toSafeText(payload)
+  if (!raw) return {}
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed === 'object') return parsed
+  } catch (error) {
+    return {}
+  }
+  return {}
+}
+
+function extractWechatErrCode(payload) {
+  if (!payload || typeof payload !== 'object') return -1
+  const code = Number(payload.errcode)
+  return Number.isFinite(code) ? code : -1
+}
+
+function extractWechatErrMsg(payload) {
+  if (!payload || typeof payload !== 'object') return ''
+  return toSafeText(payload.errmsg || payload.message)
+}
+
+function hasValidCachedWechatToken() {
+  return !!cachedWechatAccessToken && cachedWechatAccessTokenExpireAt > Date.now()
+}
+
+function resetWechatTokenCache() {
+  cachedWechatAccessToken = ''
+  cachedWechatAccessTokenExpireAt = 0
+}
+
+async function fetchWechatAccessToken(forceRefresh = false) {
+  if (!isContentSecurityEnabled()) return ''
+  if (!forceRefresh && hasValidCachedWechatToken()) {
+    return cachedWechatAccessToken
+  }
+
+  const credentials = getContentSecurityCredentials()
+  if (!credentials.appId || !credentials.appSecret) {
+    throw new ContentSecurityServiceError('missing wechat credentials')
+  }
+
+  const tokenUrl = `${WECHAT_API_BASE}${WECHAT_TOKEN_ENDPOINT}?grant_type=client_credential&appid=${credentials.appId}&secret=${credentials.appSecret}`
+
+  let tokenRes
+  try {
+    tokenRes = await uniCloud.httpclient.request(tokenUrl, {
+      method: 'GET',
+      dataType: 'json'
+    })
+  } catch (error) {
+    throw new ContentSecurityServiceError('fetch wechat access_token failed')
+  }
+
+  const payload = normalizeWechatPayload(tokenRes && tokenRes.data)
+  const accessToken = toSafeText(payload.access_token)
+  if (!accessToken) {
+    const errcode = extractWechatErrCode(payload)
+    const errmsg = extractWechatErrMsg(payload) || 'unknown error'
+    throw new ContentSecurityServiceError(`fetch wechat access_token failed: ${errcode} ${errmsg}`)
+  }
+
+  const expiresIn = Number(payload.expires_in) > 0 ? Number(payload.expires_in) : 7200
+  cachedWechatAccessToken = accessToken
+  cachedWechatAccessTokenExpireAt = Date.now() + Math.max(60, expiresIn - TOKEN_CACHE_BUFFER_SECONDS) * 1000
+  return cachedWechatAccessToken
+}
+
+async function postWechatContentCheck(endpoint, payload) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const accessToken = await fetchWechatAccessToken(attempt > 0)
+    const requestUrl = `${WECHAT_API_BASE}${endpoint}?access_token=${accessToken}`
+
+    let checkRes
+    try {
+      checkRes = await uniCloud.httpclient.request(requestUrl, {
+        method: 'POST',
+        dataType: 'json',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        data: payload
+      })
+    } catch (error) {
+      throw new ContentSecurityServiceError('wechat content security request failed')
+    }
+
+    const result = normalizeWechatPayload(checkRes && checkRes.data)
+    const errcode = extractWechatErrCode(result)
+    if (TOKEN_ERROR_CODES.has(errcode) && attempt === 0) {
+      resetWechatTokenCache()
+      continue
+    }
+
+    return result
+  }
+
+  throw new ContentSecurityServiceError('wechat content security request exhausted retries')
+}
+
+function isContentSecurityViolation(payload) {
+  const errcode = extractWechatErrCode(payload)
+  if (VIOLATION_ERROR_CODES.has(errcode)) return true
+
+  const result = payload && payload.result
+  if (result && typeof result === 'object') {
+    const suggest = toSafeText(result.suggest).toLowerCase()
+    if (suggest && suggest !== 'pass') return true
+  }
+
+  const detailList = payload && payload.detail
+  if (Array.isArray(detailList)) {
+    for (let i = 0; i < detailList.length; i += 1) {
+      const item = detailList[i]
+      if (!item || typeof item !== 'object') continue
+      const suggest = toSafeText(item.suggest).toLowerCase()
+      if (suggest && suggest !== 'pass') return true
+    }
+  }
+
+  return false
+}
+
+function ensureContentSecurityPass(payload) {
+  if (isContentSecurityViolation(payload)) {
+    throw new ContentSecurityViolationError(CONTENT_SECURITY_VIOLATION_MESSAGE)
+  }
+
+  const errcode = extractWechatErrCode(payload)
+  if (errcode === 0) return
+
+  const errmsg = extractWechatErrMsg(payload) || 'unknown error'
+  throw new ContentSecurityServiceError(`wechat content security error: ${errcode} ${errmsg}`)
+}
+
+async function ensureTextSafe(text) {
+  if (!isContentSecurityEnabled()) return
+
+  const safeText = toSafeText(text)
+  if (!safeText) return
+
+  const result = await postWechatContentCheck(WECHAT_TEXT_CHECK_ENDPOINT, {
+    content: safeText
+  })
+  ensureContentSecurityPass(result)
+}
+
+function buildPostAuditText(title, content) {
+  const blocks = []
+  const safeTitle = toSafeText(title)
+  const safeContent = toSafeText(content)
+  if (safeTitle) blocks.push(`标题：${safeTitle}`)
+  if (safeContent) blocks.push(`内容：${safeContent}`)
+  return blocks.join('\n')
+}
+
+function toClientErrorMessage(error, fallback = 'failed') {
+  if (error instanceof ContentSecurityViolationError) {
+    return CONTENT_SECURITY_VIOLATION_MESSAGE
+  }
+  if (error instanceof ContentSecurityServiceError) {
+    return CONTENT_SECURITY_SERVICE_UNAVAILABLE_MESSAGE
+  }
+  const message = toSafeText(error && error.message)
+  return message || fallback
+}
+
+function isAdminPasswordValid(input) {
+  return toSafeText(input) === ADMIN_PASSWORD
+}
+
 function normalizeSchoolName(value) {
   const safe = toSafeText(value)
   if (!safe) return ''
-  if (safe.toLowerCase() === 'campus' || safe === '其他') return DEFAULT_SCHOOL
+  if (safe.toLowerCase() === 'campus' || safe === '其他') return MYSTERY_SCHOOL
   return safe
 }
 
@@ -183,7 +419,8 @@ async function getSchoolOptions(limit = 200) {
     pushUniqueName(item && item.school)
   })
 
-  pushUniqueName(DEFAULT_SCHOOL)
+  pushUniqueName(DEFAULT_HOME_SCHOOL)
+  pushUniqueName(MYSTERY_SCHOOL)
 
   return dedup
 }
@@ -211,7 +448,7 @@ module.exports = {
         currentSchool = await getUserSchool(this.currentUser.uid)
       }
       if (!currentSchool) {
-        currentSchool = DEFAULT_SCHOOL
+        currentSchool = DEFAULT_HOME_SCHOOL
       }
 
       return {
@@ -228,7 +465,7 @@ module.exports = {
         code: -1,
         message: error.message || 'failed',
         data: {
-          current_school: DEFAULT_SCHOOL,
+          current_school: DEFAULT_HOME_SCHOOL,
           school_options: []
         }
       }
@@ -290,8 +527,8 @@ module.exports = {
       if (!safeSchool) {
         throw new Error('school is required')
       }
-      if (safeSchool === DEFAULT_SCHOOL) {
-        throw new Error('默认分类“神秘学校”不可删除')
+      if (safeSchool === MYSTERY_SCHOOL) {
+        throw new Error(`默认分类“${MYSTERY_SCHOOL}”不可删除`)
       }
 
       const now = Date.now()
@@ -299,10 +536,10 @@ module.exports = {
       await Promise.all([
         db.collection(COLLECTION_POSTS)
           .where({
-            school: safeSchool === DEFAULT_SCHOOL ? dbCmd.in([DEFAULT_SCHOOL, 'Campus', '其他']) : safeSchool
+            school: safeSchool === MYSTERY_SCHOOL ? dbCmd.in([MYSTERY_SCHOOL, 'Campus', '其他']) : safeSchool
           })
           .update({
-            school: DEFAULT_SCHOOL,
+            school: MYSTERY_SCHOOL,
             update_date: now
           }),
         db.collection(COLLECTION_SCHOOLS)
@@ -347,7 +584,7 @@ module.exports = {
         targetSchool = await getUserSchool(this.currentUser.uid)
       }
       if (!targetSchool && safeTab === 'local') {
-        targetSchool = DEFAULT_SCHOOL
+        targetSchool = DEFAULT_HOME_SCHOOL
       }
 
       const where = {
@@ -355,8 +592,8 @@ module.exports = {
       }
 
       if (safeTab === 'local' && targetSchool) {
-        if (targetSchool === DEFAULT_SCHOOL) {
-          where.school = dbCmd.in([DEFAULT_SCHOOL, 'Campus', '其他'])
+        if (targetSchool === MYSTERY_SCHOOL) {
+          where.school = dbCmd.in([MYSTERY_SCHOOL, 'Campus', '其他'])
         } else {
           where.school = targetSchool
         }
@@ -423,7 +660,7 @@ module.exports = {
           page: 1,
           pageSize: normalizePageSize(pageSize),
           has_more: false,
-          current_school: DEFAULT_SCHOOL,
+          current_school: DEFAULT_HOME_SCHOOL,
           school_options: []
         }
       }
@@ -501,8 +738,11 @@ module.exports = {
         throw new Error('content is too long')
       }
 
+      const auditText = buildPostAuditText(safeTitle, safeContent)
+      await ensureTextSafe(auditText)
+
       const userProfile = await getUserSnapshot(user.uid)
-      const targetSchool = normalizeSchoolName(school) || userProfile.school || DEFAULT_SCHOOL
+      const targetSchool = normalizeSchoolName(school) || userProfile.school || DEFAULT_HOME_SCHOOL
       const now = Date.now()
 
       const addRes = await db.collection(COLLECTION_POSTS).add({
@@ -531,6 +771,64 @@ module.exports = {
       }
     } catch (error) {
       console.error('[forum-service][createPost] failed:', error)
+      return {
+        code: -1,
+        message: toClientErrorMessage(error, 'failed'),
+        data: null
+      }
+    }
+  },
+
+  async deletePost({ postId, adminPassword = '' } = {}) {
+    try {
+      const safePostId = toSafeText(postId)
+      if (!safePostId) throw new Error('postId is required')
+      if (!isAdminPasswordValid(adminPassword)) {
+        throw new Error('admin password is incorrect')
+      }
+
+      const postRes = await db.collection(COLLECTION_POSTS)
+        .doc(safePostId)
+        .field({ _id: true, status: true })
+        .get()
+      const post = postRes && postRes.data && postRes.data[0]
+      if (!post || Number(post.status || 0) !== 1) {
+        throw new Error('post not found')
+      }
+
+      const now = Date.now()
+      await db.collection(COLLECTION_POSTS).doc(safePostId).update({
+        status: 0,
+        update_date: now
+      })
+
+      // Best-effort cleanup. Post is already hidden even if cleanup fails.
+      await Promise.all([
+        db.collection(COLLECTION_COMMENTS)
+          .where({ post_id: safePostId })
+          .remove()
+          .catch((error) => {
+            console.warn('[forum-service][deletePost] remove comments failed:', error)
+            return null
+          }),
+        db.collection(COLLECTION_LIKES)
+          .where({ post_id: safePostId })
+          .remove()
+          .catch((error) => {
+            console.warn('[forum-service][deletePost] remove likes failed:', error)
+            return null
+          })
+      ])
+
+      return {
+        code: 0,
+        message: 'deleted',
+        data: {
+          id: safePostId
+        }
+      }
+    } catch (error) {
+      console.error('[forum-service][deletePost] failed:', error)
       return {
         code: -1,
         message: error.message || 'failed',
@@ -666,6 +964,7 @@ module.exports = {
       const safeContent = toSafeText(content)
       if (!safeContent) throw new Error('comment cannot be empty')
       if (safeContent.length > 300) throw new Error('comment is too long')
+      await ensureTextSafe(safeContent)
 
       const postRes = await db.collection(COLLECTION_POSTS).doc(safePostId).get()
       const post = postRes && postRes.data && postRes.data[0]
@@ -705,7 +1004,7 @@ module.exports = {
       console.error('[forum-service][createComment] failed:', error)
       return {
         code: -1,
-        message: error.message || 'failed',
+        message: toClientErrorMessage(error, 'failed'),
         data: null
       }
     }

@@ -1,4 +1,5 @@
 const authUtils = require('auth-utils')
+const CHECKIN_REWARD_POINTS = 5
 
 module.exports = {
   _before: function () {
@@ -24,10 +25,6 @@ module.exports = {
       const now = Date.now()
       const todayDate = new Date()
       const today = todayDate.toISOString().split('T')[0] // YYYY-MM-DD
-      const todayStart = new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate()).getTime()
-      const yesterdayStart = todayStart - 86400000
-      const yesterdayEnd = todayStart
-      const dbCmd = db.command
 
       // 检查今天是否已签到
       const existingCheckIn = await db.collection('check_in_records')
@@ -60,73 +57,25 @@ module.exports = {
         const pointsService = uniCloud.importObject('points-service')
         await pointsService.changePoints({
           _token: this.currentToken,
-          delta: 5,
+          delta: CHECKIN_REWARD_POINTS,
           reason: 'daily_checkin',
           source: 'checkin-service',
           ref_id: today,
-          remark: '每日签到奖励+5积分'
+          remark: `每日签到奖励+${CHECKIN_REWARD_POINTS}积分`
         })
       } catch (pointsError) {
         console.error('[checkin-service][checkIn] 积分发放失败:', pointsError)
       }
 
-      // -------------------------------------------------------------
-      // Extra Bonus: 10% of direct referrals' yesterday income
-      // -------------------------------------------------------------
-      let referralBonus = 0
-      try {
-        const referralRes = await db.collection('uni-id-users')
-          .where({ inviter_uid: uid })
-          .field({ _id: true })
-          .get()
-        const referralIds = (referralRes.data || []).map(item => item._id)
-
-        if (referralIds.length) {
-          const referralLogs = await db.collection('coin_logs')
-            .where({
-              user_id: dbCmd.in(referralIds),
-              amount: dbCmd.gt(0),
-              status: 'success',
-              create_date: dbCmd.gte(yesterdayStart).and(dbCmd.lt(yesterdayEnd))
-            })
-            .field({ amount: true })
-            .get()
-
-          const referralIncome = (referralLogs.data || []).reduce((sum, log) => sum + (log.amount || 0), 0)
-          referralBonus = Math.floor(referralIncome * 0.05)
-
-          if (referralBonus > 0) {
-            await db.collection('uni-id-users')
-              .doc(uid)
-              .update({
-                'wallet.coins': dbCmd.inc(referralBonus)
-              })
-
-            await db.collection('coin_logs').add({
-              user_id: uid,
-              amount: referralBonus,
-              type: 'reward',
-              status: 'success',
-              remark: '每日签到奖励，直推收益加成5%',
-              create_date: now
-            })
-          }
-        }
-      } catch (bonusError) {
-        console.error('[checkin-service][checkIn] 计算签到加成失败:', bonusError)
-      }
-
-      // -------------------------------------------------------------
-
       console.log('[checkin-service][checkIn] 签到成功, userId:', uid)
 
       return {
         code: 0,
-        message: referralBonus > 0 ? `签到成功，直推收益加成 (5%) +${referralBonus} 新币！` : '签到成功！',
+        message: `签到成功，获得${CHECKIN_REWARD_POINTS}积分`,
         data: {
           checked_in: true,
           check_in_time: now,
-          referral_bonus: referralBonus
+          reward_points: CHECKIN_REWARD_POINTS
         }
       }
     } catch (error) {

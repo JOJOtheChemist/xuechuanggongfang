@@ -351,6 +351,8 @@ export default {
 				if (res && res.code === 0 && res.data) {
 					this.userInfo = res.data
 					uni.setStorageSync('userInfo', res.data)
+				} else if (res && (res.error === 'AUTH_REQUIRED' || res.statusCode === 401)) {
+					this.userInfo = null
 				}
 			} catch (e) {
 				console.error('[ProfileHeader] 获取用户信息失败', e)

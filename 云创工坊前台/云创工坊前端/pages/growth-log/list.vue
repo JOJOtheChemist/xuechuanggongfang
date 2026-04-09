@@ -8,8 +8,8 @@
 			<scroll-view class="main" scroll-y="true" @scrolltolower="loadMore">
 				<view class="list">
 					<view
-							v-for="item in logs"
-							:key="item._id"
+							v-for="item in safeLogs"
+							:key="item._id || item.create_date || item.log_date || item.title"
 							class="log-item"
 					>
 						<view class="log-header">
@@ -19,7 +19,7 @@
 						<text class="log-snippet">{{ briefContent(item.content) }}</text>
 					</view>
 					<view v-if="loading" class="list-footer">加载中...</view>
-					<view v-else-if="!logs.length" class="list-footer">暂无成长日志</view>
+					<view v-else-if="!safeLogs.length" class="list-footer">暂无成长日志</view>
 					<view v-else-if="finished" class="list-footer">没有更多了</view>
 				</view>
 			</scroll-view>
@@ -36,6 +36,12 @@ export default {
 			pageSize: 20,
 			loading: false,
 			finished: false
+		}
+	},
+	computed: {
+		safeLogs() {
+			if (!Array.isArray(this.logs)) return []
+			return this.logs.filter(item => item && typeof item === 'object')
 		}
 	},
 	onLoad() {
@@ -66,9 +72,10 @@ export default {
 					pageSize: this.pageSize
 				})
 
-				if (res && res.code === 0 && res.data && Array.isArray(res.data.list)) {
-					const list = res.data.list
-					this.logs = this.logs.concat(list)
+				if (res && res.code === 0 && res.data) {
+					const list = Array.isArray(res.data.list) ? res.data.list : []
+					const currentLogs = Array.isArray(this.logs) ? this.logs : []
+					this.logs = currentLogs.concat(list)
 					if (list.length < this.pageSize) {
 						this.finished = true
 					} else {

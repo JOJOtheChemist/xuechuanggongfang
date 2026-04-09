@@ -74,7 +74,7 @@ export default {
 			this.loading = true
 			try {
 				const dashboardService = uniCloud.importObject('dashboard-service')
-				const res = await dashboardService.getTeamDynamics({ _token: token, limit: 6 })
+				const res = await dashboardService.getTeamDynamics({ _token: token, limit: 4 })
 				if (res && res.code === 0) {
 					this.list = res.data || []
 				} else {

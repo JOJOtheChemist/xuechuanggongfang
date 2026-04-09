@@ -93,7 +93,7 @@ module.exports = {
    * @param {string} category - 报名类别（例如 勤工俭学）
    * @param {string} signupWx - 招聘人微信 / 报名微信号
    * @param {string} referrer - 推荐人（展示用，可为空）
-   * @param {string} referrerUid - 推荐人 uid（用于积分/新币奖励）
+   * @param {string} referrerUid - 推荐人 uid（用于拉新积分奖励）
    * @param {string} contactInfo - 联系方式（可选，默认使用 mobile）
    * @param {string} remark - 备注
    */

@@ -62,7 +62,6 @@
 </template>
 
 <script>
-	import BusinessGrid from '@/components/business/BusinessGrid.vue'
 	import BusinessDetailCard from '@/components/business/BusinessDetailCard.vue'
 	import QuickNav from '@/components/business/QuickNav.vue'
 
@@ -190,7 +189,7 @@ const STATIC_BUSINESS_ITEMS = [
 		title: '新人分享',
 		short: '分享',
 		bgColor: '#fee2ff',
-		desc: '邀请好友加入学创工坊，共享优质校园服务资源，领取丰厚推广奖励。',
+		desc: '邀请好友加入学创工坊，共享优质校园服务资源，完成分享可获得积分奖励。',
 		hasArticles: false,
 		type: 'share'
 	},
@@ -205,12 +204,11 @@ const STATIC_BUSINESS_ITEMS = [
 	}
 ]
 
-export default {
-    components: {
-        BusinessGrid,
-        BusinessDetailCard,
-        QuickNav,
-    },
+	export default {
+	    components: {
+	        BusinessDetailCard,
+	        QuickNav,
+	    },
     data() {
         return {
             pageMounted: false, // 页面是否已挂载
@@ -281,8 +279,13 @@ export default {
 			}
 		}, 3000)
 		
-		if (typeof this.$mp.page.getTabBar === 'function' && this.$mp.page.getTabBar()) {
-			this.$mp.page.getTabBar().setData({
+		const page =
+			(this.$mp && this.$mp.page) ||
+			(typeof getCurrentPages === 'function' ? getCurrentPages().slice(-1)[0] : null)
+		const tabBar = page && typeof page.getTabBar === 'function' ? page.getTabBar() : null
+
+		if (tabBar && typeof tabBar.setData === 'function') {
+			tabBar.setData({
 				selected: 1
 			})
 		}

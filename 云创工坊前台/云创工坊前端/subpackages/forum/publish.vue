@@ -45,11 +45,28 @@
     <button class="publish-btn" :disabled="submitting || uploading" @tap="submitPost">
       {{ submitButtonText }}
     </button>
+
+    <ForumContentSafetyNotice
+      :visible="safetyNoticeVisible"
+      :message="safetyNoticeMessage"
+      @close="closeSafetyNotice"
+    />
   </view>
 </template>
 
 <script>
+import ForumContentSafetyNotice from './components/ForumContentSafetyNotice.vue'
+import {
+  CONTENT_SECURITY_SERVICE_UNAVAILABLE_MESSAGE,
+  extractRequestErrorMessage,
+  isContentSecurityViolation,
+  normalizeContentSafetyMessage
+} from '@/utils/contentSafety.js'
+
 export default {
+  components: {
+    ForumContentSafetyNotice
+  },
   data() {
     return {
       title: '',
@@ -58,7 +75,9 @@ export default {
       schoolOptions: [],
       selectedSchool: '',
       submitting: false,
-      uploading: false
+      uploading: false,
+      safetyNoticeVisible: false,
+      safetyNoticeMessage: ''
     }
   },
   computed: {
@@ -128,12 +147,159 @@ export default {
       const index = Number(event && event.detail ? event.detail.value : -1)
       this.selectedSchool = this.schoolOptions[index] || this.selectedSchool
     },
-    extractFileId(uploadRes) {
-      if (uploadRes && uploadRes.fileID) return uploadRes.fileID
-      if (uploadRes && Array.isArray(uploadRes.success) && uploadRes.success[0] && uploadRes.success[0].fileID) {
-        return uploadRes.success[0].fileID
+    closeSafetyNotice() {
+      this.safetyNoticeVisible = false
+      this.safetyNoticeMessage = ''
+    },
+    showSafetyNotice(message) {
+      this.safetyNoticeMessage = normalizeContentSafetyMessage(message, '发布失败')
+      this.safetyNoticeVisible = true
+    },
+    showFailureMessage(message, fallback = '操作失败') {
+      const normalized = normalizeContentSafetyMessage(message, fallback)
+      if (
+        isContentSecurityViolation(normalized)
+        || normalized === CONTENT_SECURITY_SERVICE_UNAVAILABLE_MESSAGE
+      ) {
+        this.showSafetyNotice(normalized)
+        return
       }
-      return ''
+      uni.showToast({ title: normalized, icon: 'none' })
+    },
+    getUploadFileName(filePath, tempFile, index) {
+      const tempName = tempFile && (tempFile.name || tempFile.fileName)
+      if (tempName) return String(tempName).replace(/[\\/]/g, '_')
+
+      const cleanPath = String(filePath || '').split('?')[0]
+      let pathName = cleanPath.split('/').pop() || ''
+      try {
+        pathName = decodeURIComponent(pathName)
+      } catch (error) {
+        pathName = pathName || ''
+      }
+      const extMatch = pathName.match(/\.(jpe?g|png|webp|gif)$/i)
+      if (pathName && extMatch) return pathName.replace(/[\\/]/g, '_')
+
+      const ext = extMatch ? extMatch[0].toLowerCase() : '.jpg'
+      return `forum-post-${Date.now()}-${index}${ext}`
+    },
+    inferImageContentType(fileName) {
+      const safeName = String(fileName || '').toLowerCase()
+      if (safeName.endsWith('.png')) return 'image/png'
+      if (safeName.endsWith('.webp')) return 'image/webp'
+      if (safeName.endsWith('.gif')) return 'image/gif'
+      return 'image/jpeg'
+    },
+    getLocalFileInfo(filePath) {
+      return new Promise((resolve, reject) => {
+        uni.getFileInfo({
+          filePath,
+          success: resolve,
+          fail: reject
+        })
+      })
+    },
+    readLocalFile(filePath) {
+      return new Promise((resolve, reject) => {
+        const fileManager = typeof uni.getFileSystemManager === 'function'
+          ? uni.getFileSystemManager()
+          : typeof wx !== 'undefined' && typeof wx.getFileSystemManager === 'function'
+            ? wx.getFileSystemManager()
+            : null
+
+        if (!fileManager || typeof fileManager.readFile !== 'function') {
+          reject(new Error('当前平台不支持读取图片文件'))
+          return
+        }
+
+        fileManager.readFile({
+          filePath,
+          success: (res) => resolve(res.data),
+          fail: reject
+        })
+      })
+    },
+    async getUploadFileMeta(filePath, tempFile, index) {
+      const fileName = this.getUploadFileName(filePath, tempFile, index)
+      let fileSize = Number(tempFile && tempFile.size) || 0
+      if (!fileSize) {
+        const info = await this.getLocalFileInfo(filePath)
+        fileSize = Number(info && info.size) || 0
+      }
+
+      if (!fileSize) {
+        throw new Error('无法读取图片大小')
+      }
+
+      return {
+        fileName,
+        fileSize,
+        contentType: this.inferImageContentType(fileName)
+      }
+    },
+    uploadPresignedFile(uploadInfo, fileBuffer, contentType) {
+      return new Promise((resolve, reject) => {
+        const uploadUrl = uploadInfo && (uploadInfo.upload_url || uploadInfo.uploadUrl)
+        if (!uploadUrl) {
+          reject(new Error('后端未返回图片上传地址'))
+          return
+        }
+
+        const headers = Object.assign({}, uploadInfo.headers || {})
+        if (!headers['Content-Type'] && !headers['content-type']) {
+          headers['Content-Type'] = contentType
+        }
+
+        uni.request({
+          url: uploadUrl,
+          method: uploadInfo.method || 'PUT',
+          data: fileBuffer,
+          header: headers,
+          success: (res) => {
+            const statusCode = Number(res && res.statusCode) || 0
+            if (statusCode >= 200 && statusCode < 300) {
+              resolve(res)
+              return
+            }
+            reject(new Error(`图片上传失败（${statusCode}）`))
+          },
+          fail: reject
+        })
+      })
+    },
+    extractUploadedImageUrl(uploadInfo) {
+      const file = uploadInfo && uploadInfo.file ? uploadInfo.file : {}
+      return (
+        file.public_url
+        || file.publicUrl
+        || (uploadInfo && uploadInfo.public_url)
+        || (uploadInfo && uploadInfo.publicUrl)
+        || ''
+      )
+    },
+    async uploadForumImage(forumService, filePath, tempFile, index) {
+      const meta = await this.getUploadFileMeta(filePath, tempFile, index)
+      const presignRes = await forumService.createUploadPresign({
+        _token: this.getToken(),
+        scene: 'forum-post-image',
+        fileName: meta.fileName,
+        contentType: meta.contentType,
+        fileSize: meta.fileSize
+      })
+
+      if (!presignRes || presignRes.code !== 0 || !presignRes.data) {
+        throw new Error((presignRes && presignRes.message) || '创建上传地址失败')
+      }
+
+      const fileBuffer = await this.readLocalFile(filePath)
+      await this.uploadPresignedFile(presignRes.data, fileBuffer, meta.contentType)
+
+      const imageUrl = this.extractUploadedImageUrl(presignRes.data)
+      if (!imageUrl) {
+        throw new Error('上传成功但未返回图片地址')
+      }
+
+      return imageUrl
     },
     async chooseImages() {
       if (this.uploading) return
@@ -146,29 +312,23 @@ export default {
         })
 
         const filePaths = Array.isArray(chooseRes.tempFilePaths) ? chooseRes.tempFilePaths : []
+        const tempFiles = Array.isArray(chooseRes.tempFiles) ? chooseRes.tempFiles : []
         if (filePaths.length === 0) return
 
         this.uploading = true
-        const uid = uni.getStorageSync('userId') || 'anonymous'
+        const forumService = uniCloud.importObject('forum-service')
 
         for (let i = 0; i < filePaths.length; i += 1) {
           const filePath = filePaths[i]
           uni.showLoading({ title: `上传图片 ${i + 1}/${filePaths.length}` })
 
-          const uploadRes = await uniCloud.uploadFile({
-            filePath,
-            cloudPath: `forum-posts/${uid}/${Date.now()}-${i}.jpg`
-          })
-
-          const fileID = this.extractFileId(uploadRes)
-          if (!fileID) {
-            throw new Error('上传成功但未返回文件地址')
-          }
-          this.images.push(fileID)
+          const imageUrl = await this.uploadForumImage(forumService, filePath, tempFiles[i], i)
+          this.images.push(imageUrl)
         }
       } catch (error) {
         console.error('[forum][publish] chooseImages failed:', error)
-        uni.showToast({ title: error.message || '上传失败', icon: 'none' })
+        const message = extractRequestErrorMessage(error, '上传失败')
+        this.showFailureMessage(message, '上传失败')
       } finally {
         this.uploading = false
         uni.hideLoading()
@@ -216,7 +376,7 @@ export default {
         })
 
         if (!res || res.code !== 0 || !res.data || !res.data.id) {
-          throw new Error((res && res.message) || '发布失败')
+          throw new Error(normalizeContentSafetyMessage((res && res.message) || '发布失败', '发布失败'))
         }
 
         uni.$emit('forum-post-created', { id: res.data.id })
@@ -229,7 +389,10 @@ export default {
         }, 400)
       } catch (error) {
         console.error('[forum][publish] submitPost failed:', error)
-        uni.showToast({ title: error.message || '发布失败', icon: 'none' })
+        const message = extractRequestErrorMessage(error, '发布失败', {
+          assumeContentViolationOn400: true
+        })
+        this.showFailureMessage(message, '发布失败')
       } finally {
         this.submitting = false
       }
@@ -248,8 +411,10 @@ export default {
 
 .form-card {
   background: #ffffff;
+  border: 1rpx solid #f1e7ff;
   border-radius: 18rpx;
   padding: 24rpx;
+  box-shadow: 0 10rpx 28rpx rgba(24, 16, 35, 0.06);
 }
 
 .school-row {
@@ -260,15 +425,15 @@ export default {
 
 .label {
   font-size: 28rpx;
-  color: #0f172a;
+  color: #17111f;
   font-weight: 600;
 }
 
 .school-pill {
   height: 62rpx;
   border-radius: 999rpx;
-  border: 1rpx solid #dbeafe;
-  background: #eff6ff;
+  border: 1rpx solid #e9d5ff;
+  background: #faf5ff;
   padding: 0 22rpx;
   display: flex;
   align-items: center;
@@ -277,20 +442,26 @@ export default {
 
 .school-text {
   font-size: 24rpx;
-  color: #1d4ed8;
+  color: #5b21b6;
 }
 
 .school-arrow {
   font-size: 20rpx;
-  color: #1d4ed8;
+  color: #c084fc;
 }
 
 .content-input {
   width: 100%;
   min-height: 260rpx;
   margin-top: 22rpx;
+  padding: 22rpx 20rpx;
+  box-sizing: border-box;
+  border-radius: 18rpx;
+  background: #ffffff;
+  border: 1rpx solid #efe7ff;
   font-size: 28rpx;
   line-height: 1.6;
+  color: #17111f;
 }
 
 .title-input {
@@ -299,15 +470,15 @@ export default {
   margin-top: 22rpx;
   padding: 0 20rpx;
   box-sizing: border-box;
-  border-radius: 14rpx;
-  background: #f8fafc;
-  border: 1rpx solid #e2e8f0;
+  border-radius: 18rpx;
+  background: #ffffff;
+  border: 1rpx solid #efe7ff;
   font-size: 28rpx;
-  color: #0f172a;
+  color: #17111f;
 }
 
 .input-placeholder {
-  color: #94a3b8;
+  color: #a7a1b5;
 }
 
 .count-text {
@@ -315,7 +486,7 @@ export default {
   display: block;
   text-align: right;
   font-size: 22rpx;
-  color: #94a3b8;
+  color: #a7a1b5;
 }
 
 .images-grid {
@@ -335,7 +506,7 @@ export default {
 }
 
 .img-item {
-  background: #e2e8f0;
+  background: #f3eefb;
 }
 
 .img {
@@ -350,7 +521,7 @@ export default {
   width: 36rpx;
   height: 36rpx;
   border-radius: 50%;
-  background: rgba(15, 23, 42, 0.7);
+  background: rgba(8, 5, 13, 0.76);
   color: #ffffff;
   font-size: 28rpx;
   display: flex;
@@ -360,13 +531,13 @@ export default {
 }
 
 .img-uploader {
-  border: 2rpx dashed #cbd5e1;
+  border: 2rpx dashed #c084fc;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #64748b;
-  background: #f8fafc;
+  color: #d8b4fe;
+  background: #faf5ff;
 }
 
 .uploader-plus {
@@ -388,11 +559,11 @@ export default {
   line-height: 88rpx;
   border-radius: 14rpx;
   border: none;
-  background: #2563eb;
+  background: #8b5cf6;
   color: #ffffff;
   font-size: 30rpx;
   font-weight: 700;
-  box-shadow: 0 12rpx 26rpx rgba(37, 99, 235, 0.28);
+  box-shadow: none;
 }
 
 .publish-btn[disabled] {

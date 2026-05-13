@@ -1,65 +1,145 @@
 <template>
   <view class="annual-card">
-    <view class="header-row">
-      <text class="title">年度新币统计</text>
-      <text class="year">{{ year }} 年</text>
-    </view>
-
-    <view class="stats-list">
-      <view class="stat-item">
-        <text class="label">个人</text>
-        <text class="value">{{ userIncome }}</text>
+    <image
+      class="annual-card-image"
+      :src="annualCardImageUrl"
+      mode="widthFix"
+    />
+    <view class="annual-stats-overlay">
+      <view class="annual-stat-item">
+        <text class="annual-stat-value">{{ displayUserIncome }}</text>
       </view>
-      <view class="divider" />
-      <view class="stat-item">
-        <text class="label">团队</text>
-        <text class="value">{{ teamIncome }}</text>
+      <view class="annual-stat-item">
+        <text class="annual-stat-value">{{ displayTeamIncome }}</text>
       </view>
-      <view class="divider" />
-      <view class="stat-item">
-        <text class="label">公司</text>
-        <text class="value">{{ companyIncome }}</text>
+      <view class="annual-stat-item">
+        <text class="annual-stat-value">{{ displayCompanyIncome }}</text>
+      </view>
+      <view class="annual-stat-item">
+        <text class="annual-stat-value">{{ annualTarget }}</text>
       </view>
     </view>
-
-    <view class="tip" v-if="loading">统计中...</view>
+    <view v-if="displayLoading" class="annual-loading-overlay">
+      <text class="tip">统计中...</text>
+    </view>
   </view>
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
+import { getCurrentUserInfo } from '@/utils/http-services'
+
+const ANNUAL_COIN_STATS_IMAGE_URL =
+  'https://xuechuang.xyz/oss/share-assets/xuechuang/profile/summary/profile-annual-coin-stats-v1.png'
+
 export default {
   name: 'AnnualCoinStats',
+  props: {
+    stats: {
+      type: Object,
+      default: null
+    }
+  },
   data() {
     const now = new Date()
     return {
+      annualCardImageUrl: ANNUAL_COIN_STATS_IMAGE_URL,
       year: now.getFullYear(),
       loading: false,
+      teamName: '',
       userIncome: 0,
       teamIncome: 0,
-      companyIncome: 0
+      companyIncome: 0,
+      annualTargetValue: 0
+    }
+  },
+  computed: {
+    hasExternalStats() {
+      return !!this.stats
+    },
+    displayTeamName() {
+      if (this.hasExternalStats) {
+        return typeof this.stats.teamName === 'string' ? this.stats.teamName : ''
+      }
+      return this.teamName
+    },
+    displayUserIncome() {
+      if (this.hasExternalStats) {
+        return Math.floor(Number(this.stats.userIncome || 0))
+      }
+      return this.userIncome
+    },
+    displayTeamIncome() {
+      if (this.hasExternalStats) {
+        return Math.floor(Number(this.stats.teamIncome || 0))
+      }
+      return this.teamIncome
+    },
+    displayCompanyIncome() {
+      if (this.hasExternalStats) {
+        return Math.floor(Number(this.stats.companyIncome || 0))
+      }
+      return this.companyIncome
+    },
+    displayLoading() {
+      if (this.hasExternalStats) {
+        return !!this.stats.loading
+      }
+      return this.loading
+    },
+    annualTarget() {
+      const targetValue = this.hasExternalStats
+        ? (this.stats.annualTarget || this.stats.annual_target || 0)
+        : this.annualTargetValue
+      return Math.max(0, Math.floor(Number(targetValue || 0)))
     }
   },
   methods: {
+    resolveTeamNameFromStorage() {
+      const userInfo = getCurrentUserInfo()
+      const partnerInfo = userInfo && userInfo.partner_info ? userInfo.partner_info : {}
+      const rawTeamName =
+        partnerInfo.team_name ||
+        userInfo.team_name ||
+        userInfo.teamName ||
+        ''
+
+      this.teamName = typeof rawTeamName === 'string' ? rawTeamName.trim() : ''
+    },
     async loadAnnualStats() {
       const token = uni.getStorageSync('token')
       if (!token) return
+
       this.loading = true
       try {
-        const coinService = uniCloud.importObject('coin-service')
+        const coinService = getHttpService('coin-service')
         const res = await coinService.getAnnualCoinStats({ _token: token, year: this.year })
         if (res && res.code === 0 && res.data) {
           this.userIncome = Math.floor(res.data.user_year_income || 0)
           this.teamIncome = Math.floor(res.data.team_year_income || 0)
           this.companyIncome = Math.floor(res.data.company_year_income || 0)
+          this.annualTargetValue = Math.max(0, Math.floor(Number(res.data.annual_target || res.data.annualTarget || 0)))
+
+          const responseTeamName =
+            (typeof res.data.team_name === 'string' && res.data.team_name.trim()) ||
+            (typeof res.data.teamName === 'string' && res.data.teamName.trim()) ||
+            ''
+          if (responseTeamName) {
+            this.teamName = responseTeamName
+          }
         }
-      } catch (e) {
-        console.error('[AnnualCoinStats] 获取失败', e)
+      } catch (error) {
+        console.error('[AnnualCoinStats] 获取失败', error)
       } finally {
         this.loading = false
       }
     }
   },
   mounted() {
+    if (this.hasExternalStats) {
+      return
+    }
+    this.resolveTeamNameFromStorage()
     this.loadAnnualStats()
   }
 }
@@ -67,19 +147,58 @@ export default {
 
 <style scoped>
 .annual-card {
-  background: #ffffff;
-  border-radius: 56rpx; /* unify with other cards */
-  padding: 24rpx 20rpx;
-  box-shadow: 0 4rpx 20rpx rgba(0,0,0,0.03);
-  margin-bottom: 24rpx;
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--profile-card-radius, 20rpx);
+  margin-bottom: 0;
 }
-.header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12rpx; }
-.title { font-size: 26rpx; font-weight: 700; color: #111827; }
-.year { font-size: 22rpx; color: #6b7280; }
-.stats-list { display: flex; align-items: stretch; }
-.stat-item { flex: 1; display: flex; flex-direction: column; align-items: center; }
-.label { font-size: 22rpx; color: #9ca3af; margin-bottom: 6rpx; }
-.value { font-size: 34rpx; font-weight: 800; color: #111827; }
-.divider { width: 2rpx; background: #f3f4f6; margin: 0 12rpx; }
-.tip { margin-top: 12rpx; font-size: 22rpx; color: #9ca3af; text-align: right; }
+
+.annual-card-image {
+  display: block;
+  width: 100%;
+}
+
+.annual-stats-overlay {
+  position: absolute;
+  top: 102rpx;
+  left: 28rpx;
+  right: 28rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 2;
+}
+
+.annual-stat-item {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.annual-stat-item:last-child {
+  transform: translateX(-26rpx);
+}
+
+.annual-stat-value {
+  font-size: 28rpx;
+  font-weight: 700;
+  line-height: 1.15;
+  color: #111111;
+  text-align: center;
+}
+
+.annual-loading-overlay {
+  position: absolute;
+  right: 28rpx;
+  bottom: 24rpx;
+  z-index: 2;
+}
+
+.tip {
+  font-size: 20rpx;
+  color: #111111;
+  line-height: 1.2;
+}
 </style>

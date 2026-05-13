@@ -8,14 +8,14 @@
 			<scroll-view class="app-main" scroll-y="true">
 				<view class="list-wrapper">
 						<view
-							v-for="(item, index) in leaderboard"
-							:key="item.user_id ? item.user_id : index"
+							v-for="(item, index) in leaderboardRows"
+							:key="item.renderKey"
 							class="row"
 					>
 						<text class="rank-index" :class="{ top1: index === 0, top2: index === 1, top3: index === 2 }">{{ index + 1 }}</text>
 						<image
 							class="avatar"
-							:src="item.avatar || defaultAvatar"
+							:src="normalizeAvatarUrl(item.avatar, defaultAvatar)"
 							mode="aspectFill"
 						/>
 						<view class="info">
@@ -34,12 +34,25 @@
 </template>
 
 <script>
+import { getPointsLeaderboard } from '../../utils/points-api'
+
 export default {
 	data() {
 		return {
 			leaderboard: [],
 			loading: false,
-			defaultAvatar: 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png'
+			defaultAvatar: '/static/icons/default-avatar.svg'
+		}
+	},
+	computed: {
+		leaderboardRows() {
+			return (Array.isArray(this.leaderboard) ? this.leaderboard : []).map((item, index) => {
+				const source = item && typeof item === 'object' ? item : {}
+				const rawKey = source.user_id || source.uid || `rank-${index}`
+				return Object.assign({}, source, {
+					renderKey: `leaderboard-${rawKey}`
+				})
+			})
 		}
 	},
 	methods: {
@@ -58,9 +71,7 @@ export default {
 					return
 				}
 
-				const pointsService = uniCloud.importObject('points-service')
-				const res = await pointsService.getPointsLeaderboard({
-					_token: token,
+				const res = await getPointsLeaderboard({
 					limit: 50
 				})
 

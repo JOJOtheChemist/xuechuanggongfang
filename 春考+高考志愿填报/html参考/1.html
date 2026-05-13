@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>志愿查询结果还原</title>
+    <style>
+        /* --- 基础样式，模拟小程序环境 --- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+        }
+
+        body {
+            background-color: #F7F8FA;
+            /* 小程序常用的浅灰背景 */
+            color: #333;
+            padding-bottom: 20px;
+        }
+
+        /* --- 顶部固定筛选区域 (Container) --- */
+        .filter-header {
+            background-color: #fff;
+            padding: 12px 15px;
+            position: sticky;
+            /* 向上滚动时固定 */
+            top: 0;
+            z-index: 100;
+            border-bottom: 1px solid #eee;
+        }
+
+        /* 第一行：考试类型和分数 */
+        .row-1 {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        /* 重点还原：红圈标注的“春考”选择框 */
+        .select-box {
+            background-color: #F2F3F5;
+            padding: 8px 12px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            min-width: 120px;
+            justify-content: space-between;
+        }
+
+        .select-text {
+            font-size: 15px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        /* 模拟右侧小箭头 > */
+        .arrow-right {
+            width: 12px;
+            height: 12px;
+            border-top: 2px solid #999;
+            border-right: 2px solid #999;
+            transform: rotate(45deg);
+            margin-left: 8px;
+        }
+
+        .score-display {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+            background-color: #F2F3F5;
+            padding: 8px 15px;
+            border-radius: 8px;
+        }
+
+        /* 第二行：基础标签 (公办、层次、城市) */
+        .row-2 {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .tag-basic {
+            background-color: #F2F3F5;
+            color: #666;
+            font-size: 13px;
+            padding: 6px 0;
+            width: 31%;
+            /* 三分 */
+            text-align: center;
+            border-radius: 6px;
+        }
+
+        /* 第三行：录取概率分级 (重点还原) */
+        .row-3 {
+            display: flex;
+            justify-content: space-between;
+            background-color: #EFF6FF;
+            /* 淡淡的蓝色背景 */
+            border-radius: 8px;
+            padding: 2px;
+        }
+
+        .tag-prob {
+            flex: 1;
+            text-align: center;
+            font-size: 14px;
+            padding: 10px 0;
+            color: #333;
+            border-radius: 6px;
+        }
+
+        /* “较稳”是蓝色高亮状态 */
+        .tag-prob.active {
+            background-color: #fff;
+            color: #007AFF;
+            /* 蓝色 */
+            font-weight: bold;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        /* --- 院校展示卡片区域 --- */
+        .result-container {
+            padding: 15px;
+        }
+
+        .school-card {
+            background-color: #fff;
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+        }
+
+        /* 院校头部：Logo + 名称 + 标签 */
+        .school-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .school-logo {
+            width: 45px;
+            height: 45px;
+            background-color: #eee;
+            /* 模拟图中的Logo */
+            border-radius: 50%;
+            margin-right: 12px;
+            /* 实际开发中使用 <img src="logo.png"> */
+        }
+
+        .school-title-box {
+            flex: 1;
+        }
+
+        .school-name {
+            font-size: 17px;
+            font-weight: bold;
+            color: #111;
+            margin-bottom: 4px;
+        }
+
+        .school-sub-tags {
+            font-size: 12px;
+            color: #999;
+        }
+
+        /* 专业列表区域 */
+        .major-list {
+            border-top: 1px solid #f2f2f2;
+            padding-top: 10px;
+        }
+
+        /* 重点还原：图中的白色圆角专业块 */
+        .major-item {
+            background-color: #fff;
+            border: 1px solid #F2F3F5;
+            /* 淡淡的边框 */
+            color: #333;
+            font-size: 15px;
+            font-weight: 500;
+            padding: 14px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            display: block;
+            /* 占满整行 */
+        }
+
+        .major-item:last-child {
+            margin-bottom: 0;
+        }
+
+        /* 模拟顶部状态栏时间 (可选) */
+        .status-bar-mock {
+            height: 20px;
+            background-color: #fff;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="status-bar-mock"></div>
+
+    <header class="filter-header">
+        <div class="row-1">
+            <div class="select-box">
+                <span class="select-text">春考</span>
+                <div class="arrow-right"></div>
+            </div>
+            <div class="score-display">440</div>
+        </div>
+
+        <div class="row-2">
+            <div class="tag-basic">公办</div>
+            <div class="tag-basic">院校层次</div>
+            <div class="tag-basic">昆明市</div>
+        </div>
+
+        <div class="row-3">
+            <div class="tag-prob">较难 4</div>
+            <div class="tag-prob active">较稳 6</div>
+            <div class="tag-prob">兜底 4</div>
+        </div>
+    </header>
+
+    <main class="result-container">
+        <article class="school-card">
+            <div class="school-header">
+                <div class="school-logo"></div>
+                <div class="school-title-box">
+                    <h1 class="school-name">云南交通职业技术学院</h1>
+                    <p class="school-sub-tags">昆明市 | 专科 | 公办 | 理工类</p>
+                </div>
+            </div>
+
+            <div class="major-list">
+                <div class="major-item">道路桥梁工程技术</div>
+                <div class="major-item">汽车检测与维修</div>
+                <div class="major-item">新能源汽车技术</div>
+            </div>
+        </article>
+    </main>
+
+</body>
+
+</html>

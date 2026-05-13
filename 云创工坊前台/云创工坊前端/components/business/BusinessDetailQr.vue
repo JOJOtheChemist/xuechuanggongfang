@@ -21,6 +21,7 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
 	export default {
 		name: 'BusinessDetailQr',
 		props: {
@@ -68,7 +69,7 @@
 
 				this.qrLoading = true
 				try {
-					const businessService = uniCloud.importObject('business-service')
+					const businessService = getHttpService('business-service')
 					const res = await businessService.generateBusinessInviteQrcode({
 						_token: token,
 						businessId: this.item.id

@@ -17,6 +17,11 @@
       </view>
     </view>
 
+    <view v-if="isGuestMode && !isReadonly" class="guest-preview-banner">
+      <text class="guest-preview-title">当前为游客预览</text>
+      <text class="guest-preview-desc">可以先浏览服务说明并填写信息，提交时再自主选择是否登录。</text>
+    </view>
+
     <!-- [NEW] 无权限提示 -->
     <view v-if="permissionDenied" class="permission-denied-container">
       <view class="denied-icon-wrap">
@@ -33,7 +38,7 @@
 
       <!-- 当前用户信息 -->
       <view class="user-info-row">
-        <image :src="userAvatar || '/static/logo.png'" class="avatar" mode="aspectFill"></image>
+        <image :src="normalizeAvatarUrl(userAvatar, defaultAvatar)" class="avatar" mode="aspectFill"></image>
         <view class="info-col">
           <text class="nickname">{{ userNickname || '用户' }}</text>
           <text class="uid">ID: {{ userId ? userId.substr(-6) : '...' }}</text>
@@ -195,17 +200,22 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
+import { confirmPayment, createPaymentOrder } from '../../../utils/payment-api'
+
 export default {
   data() {
     return {
       businessId: '',
       business: {},
+      defaultAvatar: '/static/icons/default-avatar.svg',
       userAvatar: '',
       userNickname: '',
       userId: '',
       contactInfo: '',
       remark: '',
 			isReadonly: false, // 是否只读模式
+      isGuestMode: false,
       permissionDenied: false, // [NEW] 无权限状态
       submitting: false,
       category: '',
@@ -383,8 +393,6 @@ export default {
     }
   },
   onLoad(options) {
-    this.checkLogin()
-
 		// [NEW] 处理只读模式
 		if (options.mode === 'readonly') {
 			this.isReadonly = true
@@ -409,8 +417,8 @@ export default {
 				// [FIX] 只读模式下可能没有 id 参数（已从 fetchSignupDetail 获取），不应跳转
 				if (!this.isReadonly) {
 					uni.showToast({ title: '缺少业务参数', icon: 'none' })
-				setTimeout(() => uni.switchTab({ url: '/pages/dashboard/index' }), 1500)
-			}
+					setTimeout(() => uni.reLaunch({ url: '/pages/volunteer/index' }), 1500)
+				}
     }
 
     if (options.category) {
@@ -466,6 +474,9 @@ export default {
     
     // [NEW] 立即记录业务邀请查看 (解决老用户已登录不触发 loginByWeixin 的问题)
     this.recordBusinessInviteView()
+  },
+  onShow() {
+    this.loadUserInfo()
   },
   methods: {
     // 处理报名（包含支付流程）
@@ -543,10 +554,7 @@ export default {
         }
 
         // 2. 创建支付订单，关联 signup_id
-        const token = uni.getStorageSync('token')
-        const paymentService = uniCloud.importObject('payment-service')
-        const res = await paymentService.createOrder({
-          _token: token,
+        const res = await createPaymentOrder({
           businessId: String(this.businessId),
           businessName: this.business.title,
           amount: this.signupPrice,
@@ -573,8 +581,7 @@ export default {
         })
 
         // 4. 支付成功后，调用后端确认支付并发放奖励
-        const confirmRes = await paymentService.confirmPayment({
-          _token: token,
+        const confirmRes = await confirmPayment({
           orderNo: this.currentOrderNo
         })
 
@@ -605,23 +612,59 @@ export default {
     },
     checkLogin() {
       const token = uni.getStorageSync('token')
-      if (!token) {
-        uni.showToast({ title: '请先登录', icon: 'none' })
-        setTimeout(() => {
-          uni.reLaunch({ url: '/pages/auth/login/index' })
-        }, 1000)
-      }
+      this.isGuestMode = !token
+      return !!token
     },
     loadUserInfo() {
       const userInfo = uni.getStorageSync('userInfo') || {}
-      this.userId = uni.getStorageSync('userId')
+      this.userId = userInfo.uid || userInfo.userId || uni.getStorageSync('userId') || ''
       this.userAvatar = userInfo.avatar
-      this.userNickname = userInfo.nickname
+      this.userNickname = userInfo.nickname || userInfo.username
+      this.isGuestMode = !this.userId
+
+      if (!this.userAvatar) {
+        this.userAvatar = this.defaultAvatar
+      }
+      if (!this.userNickname) {
+        this.userNickname = '游客预览'
+      }
       // 自动填充手机号（如果有）
       if (userInfo.mobile) {
         this.contactInfo = userInfo.mobile
         this.form.mobile = userInfo.mobile
       }
+    },
+    buildCurrentPageUrl() {
+      const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+      const currentPage = pages.length ? pages[pages.length - 1] : null
+
+      if (!currentPage || !currentPage.route) {
+        return '/subpackages/forum/index'
+      }
+
+      const route = currentPage.route.startsWith('/') ? currentPage.route : `/${currentPage.route}`
+      const options = currentPage.options || {}
+      const query = Object.keys(options)
+        .filter((key) => options[key] !== undefined && options[key] !== null && options[key] !== '')
+        .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(options[key])}`)
+        .join('&')
+
+      return query ? `${route}?${query}` : route
+    },
+    promptLoginBeforeSubmit(message = '登录后即可继续提交报名信息') {
+      uni.showModal({
+        title: '登录后继续',
+        content: message,
+        confirmText: '去登录',
+        success: (res) => {
+          if (!res.confirm) return
+
+          const redirect = encodeURIComponent(this.buildCurrentPageUrl())
+          uni.navigateTo({
+            url: `/pages/auth/login/index?redirect=${redirect}`
+          })
+        }
+      })
     },
     onNationChange(e) {
       const index = e.detail.value
@@ -645,7 +688,7 @@ export default {
       this.categoryConfigLoaded = false
 
       try {
-        const businessService = uniCloud.importObject('business-service')
+        const businessService = getHttpService('business-service')
         const res = await businessService.getCategoryList({ status: 'active' })
         if (!res || res.code !== 0 || !Array.isArray(res.data)) {
           throw new Error((res && res.message) || '业务配置加载失败')
@@ -701,11 +744,11 @@ export default {
     async submitSignupAndGetId() {
       const token = uni.getStorageSync('token')
       if (!token) {
-        uni.showToast({ title: '请先登录', icon: 'none' })
+        this.promptLoginBeforeSubmit('请先登录后再提交报名信息')
         return null
       }
 
-      const businessService = uniCloud.importObject('business-service')
+      const businessService = getHttpService('business-service')
       const payload = {
         businessId: String(this.businessId),
         businessName: this.business.title,
@@ -738,10 +781,7 @@ export default {
     async submitSignup() {
       const token = uni.getStorageSync('token')
       if (!token) {
-        uni.showToast({ title: '请先登录', icon: 'none' })
-        setTimeout(() => {
-          uni.reLaunch({ url: '/pages/auth/login/index' })
-        }, 1000)
+        this.promptLoginBeforeSubmit('请先登录后再提交报名信息')
         return
       }
 
@@ -751,7 +791,7 @@ export default {
 
       this.submitting = true
       try {
-        const businessService = uniCloud.importObject('business-service')
+        const businessService = getHttpService('business-service')
         const payload = {
           businessId: String(this.businessId),
           businessName: this.business.title,
@@ -780,7 +820,7 @@ export default {
             showCancel: false,
             success: () => {
               setTimeout(() => {
-                uni.switchTab({ url: '/pages/dashboard/index' })
+                uni.reLaunch({ url: '/pages/volunteer/index' })
               }, 300)
             }
           })
@@ -805,7 +845,7 @@ export default {
         
         console.log('[signup] 准备记录业务邀请查看 - inviterId:', this.referrerUid, 'businessId:', this.businessId)
         
-        const userCenter = uniCloud.importObject('user-center')
+        const userCenter = getHttpService('user-center')
         const res = await userCenter.recordBusinessInviteView({
           _token: token,
           inviterId: this.referrerUid,
@@ -828,7 +868,7 @@ export default {
 			uni.showLoading({ title: '加载详情...' })
 			try {
 				const token = uni.getStorageSync('token')
-				const businessService = uniCloud.importObject('business-service')
+				const businessService = getHttpService('business-service')
 				const res = await businessService.getSignupDetail({ 
 					signupId,
 					_token: token
@@ -941,6 +981,29 @@ export default {
 	color: #EA580C;
 	font-size: 24rpx;
 	font-weight: 500;
+}
+
+.guest-preview-banner {
+  margin: 0 24rpx 24rpx;
+  padding: 24rpx 28rpx;
+  border-radius: 24rpx;
+  background: #eff6ff;
+  border: 1rpx solid #bfdbfe;
+}
+
+.guest-preview-title {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #1d4ed8;
+}
+
+.guest-preview-desc {
+  display: block;
+  margin-top: 10rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: #475569;
 }
 
 .contact-hint {

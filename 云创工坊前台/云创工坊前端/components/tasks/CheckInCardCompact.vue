@@ -25,6 +25,7 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
 export default {
 	name: 'CheckInCardCompact',
 	data() {
@@ -56,7 +57,7 @@ export default {
 			uni.showLoading({ title: '签到中...' })
 			
 			try {
-				const checkinService = uniCloud.importObject('checkin-service')
+				const checkinService = getHttpService('checkin-service')
 				const result = await checkinService.checkIn({ _token: token })
 				
 				uni.hideLoading()
@@ -64,6 +65,7 @@ export default {
 				if (result.code === 0) {
 					this.isCheckedIn = true
 					this.checkInTime = result.data.check_in_time
+					this.consecutiveDays = Number(result.data.streak_days || result.data.total_days || this.consecutiveDays || 0)
 					
 					uni.showToast({
 						title: result.message || '签到成功，获得5积分',
@@ -94,7 +96,7 @@ export default {
 			if (!token) return
 			
 			try {
-				const checkinService = uniCloud.importObject('checkin-service')
+				const checkinService = getHttpService('checkin-service')
 				const result = await checkinService.getCheckInStatus({ _token: token })
 				
 				if (result.code === 0) {
@@ -112,7 +114,7 @@ export default {
 			if (!token) return
 			
 			try {
-				const checkinService = uniCloud.importObject('checkin-service')
+				const checkinService = getHttpService('checkin-service')
 				const result = await checkinService.getCheckInStats({ _token: token })
 				
 				if (result.code === 0) {

@@ -1,13 +1,17 @@
 {
 	"easycom": {
 		"autoscan": true,
-		"custom": {
-			"^bottom-nav$": "@/components/dashboard/BottomNav.vue",
+			"custom": {
+				"^bottom-nav$": "@/components/dashboard/BottomNav.vue",
+				"^volunteer-category-dropdown$": "@/components/volunteer/CategoryDropdown.vue",
+				"^volunteer-school-results$": "@/components/volunteer/SchoolResults.vue",
+				"^volunteer-invite-unlock-card$": "@/components/volunteer/UnlockGateCard.vue",
+				"^volunteer-access-status-card$": "@/components/volunteer/AccessStatusCard.vue",
+				"^volunteer-support-phone-card$": "@/components/volunteer/SupportPhoneCard.vue",
+				"^volunteer-unlock-gate-card$": "@/components/volunteer/UnlockGateCard.vue",
 			"^bento-stats-card$": "@/components/dashboard/BentoStatsCard.vue",
 			"^team-updates$": "@/components/dashboard/TeamUpdates.vue",
-			"^new-partners$": "@/components/dashboard/NewPartners.vue",
 				"^profile-header$": "@/components/profile/ProfileHeader.vue",
-				"^team-card$": "@/components/profile/TeamCard.vue",
 				"^wallet-card$": "@/components/profile/WalletCard.vue",
 				"^profile-achievements$": "@/components/profile/ProfileAchievements.vue",
 				"^sales-summary$": "@/components/profile/SalesSummary.vue",
@@ -24,21 +28,23 @@
 		{
 			"path": "pages/dashboard/index",
 			"style": {
-				"navigationBarTitleText": "校园动态",
+				"navigationBarTitleText": "校园广场",
 				"navigationStyle": "custom"
 			}
 		},
-			{
-				"path": "pages/volunteer/index",
-				"style": {
-					"navigationBarTitleText": "志愿",
-					"navigationStyle": "custom"
-				}
-			},
 		{
 			"path": "pages/business/index",
 			"style": {
-				"navigationBarTitleText": "学习中心"
+				"navigationBarTitleText": "学习中心",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/volunteer/index",
+			"style": {
+				"navigationBarTitleText": "志愿",
+				"navigationStyle": "custom",
+				"onReachBottomDistance": 120
 			}
 		},
 		{
@@ -51,7 +57,8 @@
 		{
 			"path": "pages/profile/index",
 			"style": {
-				"navigationBarTitleText": "个人中心"
+				"navigationBarTitleText": "个人中心",
+				"navigationStyle": "custom"
 			}
 		}
 	],
@@ -62,7 +69,7 @@
 				{
 					"path": "index",
 					"style": {
-						"navigationBarTitleText": "校园动态",
+						"navigationBarTitleText": "校园广场",
 						"navigationStyle": "custom"
 					}
 				},
@@ -76,6 +83,44 @@
 					"path": "publish",
 					"style": {
 						"navigationBarTitleText": "发布动态"
+					}
+				}
+			]
+		},
+		{
+			"root": "subpackages/volunteer",
+			"pages": [
+				{
+					"path": "index",
+					"style": {
+						"navigationBarTitleText": "高考查分",
+						"navigationStyle": "custom"
+					}
+				},
+				{
+					"path": "detail",
+					"style": {
+						"navigationBarTitleText": "学校详情",
+						"navigationStyle": "custom"
+					}
+				},
+				{
+					"path": "guide-redirect",
+					"style": {
+						"navigationBarTitleText": "AI高考资讯",
+						"navigationStyle": "custom"
+					}
+				}
+			]
+		},
+		{
+			"root": "subpackages/ai-chat",
+			"pages": [
+				{
+					"path": "index",
+					"style": {
+						"navigationBarTitleText": "AI chat",
+						"navigationStyle": "custom"
 					}
 				}
 			]
@@ -122,7 +167,14 @@
 				{
 					"path": "team-member-list",
 					"style": {
-						"navigationBarTitleText": "团队成员"
+						"navigationBarTitleText": "团队成员",
+						"enablePullDownRefresh": true
+					}
+				},
+				{
+					"path": "team-center",
+					"style": {
+						"navigationBarTitleText": "团队中心"
 					}
 				},
 				{
@@ -150,9 +202,9 @@
 					}
 				},
 				{
-					"path": "achievements",
+					"path": "points-center",
 					"style": {
-						"navigationBarTitleText": "我的成就"
+						"navigationBarTitleText": "积分明细"
 					}
 				},
 				{
@@ -242,7 +294,8 @@
 				{
 					"path": "list",
 					"style": {
-						"navigationBarTitleText": "文章列表"
+						"navigationBarTitleText": "文章列表",
+						"navigationStyle": "custom"
 					}
 				}
 			]
@@ -313,7 +366,7 @@
 	"tabBar": {
 		"custom": true,
 		"color": "#6b7280",
-		"selectedColor": "#4f46e5",
+		"selectedColor": "#2563eb",
 		"backgroundColor": "#ffffff",
 		"list": [
 			{
@@ -323,10 +376,6 @@
 			{
 				"pagePath": "pages/business/index",
 				"text": "学习"
-			},
-			{
-				"pagePath": "pages/volunteer/index",
-				"text": "志愿"
 			},
 			{
 				"pagePath": "pages/task-center/index",

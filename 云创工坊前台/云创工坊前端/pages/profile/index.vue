@@ -5,38 +5,54 @@
 			<view class="bg-circle circle-top-right"></view>
 			<view class="bg-circle circle-bottom-left"></view>
 			
-			<view class="app-header">
-				<profile-header ref="profileHeader" />
-			</view>
-			<scroll-view class="app-main" scroll-y="true">
-				<view class="section-list">
-					<team-card ref="teamCard" />
-					<new-partners ref="newPartners" class="new-partners-tight-top" />
-
-					<wallet-card ref="walletCard" @showHistory="navigateToWalletHistory" />
-
-					<!-- 简易版成就/积分卡片 (点击跳转详情) -->
-					<view class="achievements-simple-card points-near-wallet" @tap="navigateToAchievements">
-						<view class="simple-card-header">
-							<text class="card-label">我的积分</text>
-							<text class="card-arrow">查看详情 ></text>
+				<view class="app-header">
+					<profile-header
+						ref="profileHeader"
+						:key="profileHeaderKey"
+						:team-metrics="teamCard"
+						:team-qrcode-url="teamQrcodeUrl"
+						:team-qrcode-loading="teamQrcodeLoading"
+						@show-qrcode="showTeamInviteQrcode"
+						@logout="handleProfileLogout"
+					/>
+					<view
+						v-if="teamCard.loggedIn"
+						class="profile-header-team-entry-wrap"
+					>
+						<view class="profile-header-team-entry-button" @tap="navigateToTeamCenter">
+							<image
+								class="profile-header-team-entry-image"
+								:src="teamCenterEntryImageUrl"
+								mode="widthFix"
+							/>
 						</view>
-						<view class="simple-card-body">
-							<text class="simple-points">{{ pointsBalance || 0 }}</text>
-							<view class="simple-action-btn">
-								<text>去兑换</text>
-							</view>
+						<view class="profile-header-team-entry-button" @tap="navigateToTeamMembers">
+							<image
+								class="profile-header-team-entry-image"
+								:src="teamMemberListEntryImageUrl"
+								mode="widthFix"
+							/>
 						</view>
 					</view>
-
-					<incentive-system ref="incentiveSystem" class="profile-incentive" />
-
-					<annual-coin-stats />
+					<view class="profile-incentive-wrap">
+						<incentive-system :key="incentiveSystemKey" class="profile-incentive" />
+					</view>
+					<profile-summary-panels
+						:coin-stats="coinStats"
+						:annual-coin-stats="annualCoinStats"
+						:points-balance="pointsBalance"
+						@coin-history="navigateToWalletHistory"
+						@coin-withdraw="navigateToCoinWithdraw"
+						@coin-exchange="navigateToCoinExchange"
+						@points-center="navigateToPointsCenter"
+					/>
+				</view>
+				<scroll-view class="app-main" scroll-y="true">
+						<view class="section-list">
 					<!-- Activity Feed / Other Function Wrapper (Inlined for Style Consistency) -->
 					<!-- Activity Feed / Other Function Wrapper (Simple White Card) -->
 					<view class="more-functions-card" @tap="navigateToFunctions">
 						<view class="more-functions-left">
-							<text class="more-functions-icon">🎁</text>
 							<text class="more-functions-title">更多功能</text>
 						</view>
 						<text class="more-functions-arrow">了解学创工坊 ></text>
@@ -63,65 +79,123 @@
 				</view>
 			</scroll-view>
 		</view>
+		<view
+			v-if="showTeamQrcodeModal"
+			class="qr-modal"
+			:class="{ active: showTeamQrcodeModal }"
+			@tap="closeTeamQrcodeModal"
+		>
+			<view class="qr-card-large" @tap.stop>
+				<view class="close-qr" @tap="closeTeamQrcodeModal">×</view>
+				<view class="qr-modal-title">扫码加入团队</view>
+
+				<view class="qr-image-placeholder">
+					<image
+						v-if="teamQrcodeUrl"
+						:src="teamQrcodeUrl"
+						mode="aspectFit"
+						class="qr-image"
+					/>
+					<view v-else class="loading-qr">
+						<text>二维码生成中...</text>
+					</view>
+				</view>
+
+				<button class="save-img-btn" @tap="saveTeamQrcode">保存海报图片</button>
+			</view>
+		</view>
 	</view>
 </template>
 
 <script>
 import ProfileHeader from '../../components/profile/ProfileHeader.vue'
-import TeamCard from '../../components/profile/TeamCard.vue'
+import ProfileSummaryPanels from '../../components/profile/ProfileSummaryPanels.vue'
 import WalletCard from '../../components/profile/WalletCard.vue'
-import NewPartners from '../../components/dashboard/NewPartners.vue'
 import IncentiveSystem from '../../components/tasks/IncentiveSystem.vue'
-// import ProfileAchievements from '../../components/profile/ProfileAchievements.vue'
-import AnnualCoinStats from '../../components/profile/AnnualCoinStats.vue'
-// import WalletHistoryPopup from '../../components/profile/WalletHistoryPopup.vue'
+import { getHttpService, getCurrentUserToken } from '../../utils/http-services'
+import { getPointsStats } from '../../utils/points-api'
+
+const TEAM_CENTER_ENTRY_IMAGE_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/profile/team-entry/team-center-entry-v1.webp'
+const TEAM_MEMBER_LIST_ENTRY_IMAGE_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/profile/team-entry/team-member-list-entry-v1.webp'
+
+function createDefaultTeamCardState(overrides = {}) {
+	return Object.assign(
+		{
+			loggedIn: false,
+			loading: false,
+			hasTeam: false,
+			teamId: '',
+			teamName: '',
+			teamLevel: '',
+			memberCount: 0,
+			todayNewMembers: 0,
+			inviteCount: 0
+		},
+		overrides
+	)
+}
 
 export default {
 	components: {
 		ProfileHeader,
-		TeamCard,
-		NewPartners,
+		ProfileSummaryPanels,
 		WalletCard,
-		IncentiveSystem,
-		// ProfileAchievements,
-		// SalesSummary,
-		// ActivityFeed,
-		
-		// WalletHistoryPopup
+		IncentiveSystem
 	},
 	data() {
 		return {
-            isLoggedIn: false,
+			teamCenterEntryImageUrl: TEAM_CENTER_ENTRY_IMAGE_URL,
+			teamMemberListEntryImageUrl: TEAM_MEMBER_LIST_ENTRY_IMAGE_URL,
 			pointsBalance: 0,
-			hasInitialized: false
+			coinStats: {
+				currentBalance: 0,
+				todayIncome: 0,
+				totalIncome: 0
+			},
+			annualCoinStats: {
+				loading: false,
+				teamName: '',
+				annualTarget: 0,
+				userIncome: 0,
+				teamIncome: 0,
+				companyIncome: 0
+			},
+			childRefreshKey: 0,
+			hasInitialized: false,
+			teamCard: createDefaultTeamCardState(),
+			showTeamQrcodeModal: false,
+			teamQrcodeLoading: false,
+			teamQrcodeUrl: ''
+		}
+	},
+	computed: {
+		profileHeaderKey() {
+			return `profile-header-${this.childRefreshKey}`
+		},
+		walletCardKey() {
+			return `wallet-card-${this.childRefreshKey}`
+		},
+		incentiveSystemKey() {
+			return `incentive-system-${this.childRefreshKey}`
 		}
 	},
 	onShow() {
-        const shouldRefreshChildren = this.hasInitialized
-        this.hasInitialized = true
-        // [NEW] 每次显示页面时，通知 Header 刷新用户状态
-        if (shouldRefreshChildren) {
-            this.$nextTick(() => {
-                const header = this.$refs.profileHeader
-                if (header && typeof header.refreshUserInfo === 'function') {
-                    header.refreshUserInfo()
-                }
-                if (this.$refs.teamCard && typeof this.$refs.teamCard.refresh === 'function') {
-                    this.$refs.teamCard.refresh()
-                }
-                if (this.$refs.newPartners && typeof this.$refs.newPartners.loadTeamMembers === 'function') {
-                    this.$refs.newPartners.loadTeamMembers()
-                }
-                if (this.$refs.walletCard && typeof this.$refs.walletCard.loadBalance === 'function') {
-                    this.$refs.walletCard.loadBalance()
-                }
-                if (this.$refs.incentiveSystem && typeof this.$refs.incentiveSystem.loadBadgeData === 'function') {
-                    this.$refs.incentiveSystem.loadBadgeData()
-                }
-            })
-        }
-			this.loadSimplePoints()
-		
+		const shouldRefreshChildren = this.hasInitialized
+		this.hasInitialized = true
+		if (shouldRefreshChildren) {
+			this.childRefreshKey += 1
+		}
+		this.$nextTick(() => {
+			const headerRef = this.$refs.profileHeader
+			if (headerRef && typeof headerRef.refreshUserInfo === 'function') {
+				headerRef.refreshUserInfo()
+			}
+		})
+		this.loadSimplePoints()
+		this.loadCoinStats()
+		this.loadAnnualCoinStats()
+		this.refreshTeamSummary()
+
 		const page =
 			(this.$mp && this.$mp.page) ||
 			(typeof getCurrentPages === 'function' ? getCurrentPages().slice(-1)[0] : null)
@@ -134,8 +208,30 @@ export default {
 		}
 	},
 	methods: {
+		getAuthToken() {
+			return getCurrentUserToken()
+		},
+		handleProfileLogout() {
+			this.pointsBalance = 0
+			this.coinStats = {
+				currentBalance: 0,
+				todayIncome: 0,
+				totalIncome: 0
+			}
+			this.annualCoinStats = {
+				loading: false,
+				teamName: '',
+				annualTarget: 0,
+				userIncome: 0,
+				teamIncome: 0,
+				companyIncome: 0
+			}
+			this.teamCard = createDefaultTeamCardState()
+			this.closeTeamQrcodeModal()
+			this.childRefreshKey += 1
+		},
 		async loadSimplePoints() {
-			const token = uni.getStorageSync('token')
+			const token = this.getAuthToken()
 			if (!token) {
 				this.pointsBalance = 0
 				return
@@ -147,8 +243,7 @@ export default {
 					this.pointsBalance = cache.balance
 				}
 				// 异步刷新
-				const pointsService = uniCloud.importObject('points-service')
-				const res = await pointsService.getPointsStats({ _token: token })
+				const res = await getPointsStats()
 				
 				// 增强健壮性：防止 res 为 null 或非对象时报错（例如网络超时可能返回空）
 				if (res && typeof res === 'object' && res.code === 0 && res.data) {
@@ -164,19 +259,337 @@ export default {
 				console.error('Simple points load failed', e)
 			}
 		},
+		async loadCoinStats() {
+			const token = this.getAuthToken()
+			if (!token) {
+				this.coinStats = {
+					currentBalance: 0,
+					todayIncome: 0,
+					totalIncome: 0
+				}
+				return
+			}
+
+			try {
+				const coinService = getHttpService('coin-service')
+				const res = await coinService.getCoinStats({ _token: token })
+
+				if (res && res.code === 0 && res.data) {
+					this.coinStats = {
+						currentBalance: Number(res.data.current_balance || 0),
+						todayIncome: Number(res.data.today_income || 0),
+						totalIncome: Number(res.data.total_income || 0)
+					}
+					return
+				}
+
+				console.warn('[profile] loadCoinStats 响应异常:', res)
+			} catch (error) {
+				console.error('[profile] loadCoinStats failed', error)
+			}
+		},
+		async loadAnnualCoinStats() {
+			const token = this.getAuthToken()
+			if (!token) {
+				this.annualCoinStats = {
+					loading: false,
+					teamName: '',
+					annualTarget: 0,
+					userIncome: 0,
+					teamIncome: 0,
+					companyIncome: 0
+				}
+				return
+			}
+
+			const year = new Date().getFullYear()
+			this.annualCoinStats = {
+				...this.annualCoinStats,
+				loading: true
+			}
+
+			try {
+				const coinService = getHttpService('coin-service')
+				const res = await coinService.getAnnualCoinStats({ _token: token, year })
+
+				if (res && res.code === 0 && res.data) {
+					const responseTeamName =
+						(typeof res.data.team_name === 'string' && res.data.team_name.trim()) ||
+						(typeof res.data.teamName === 'string' && res.data.teamName.trim()) ||
+						''
+
+					this.annualCoinStats = {
+						loading: false,
+						teamName: responseTeamName,
+						annualTarget: Math.max(0, Math.floor(Number(res.data.annual_target || res.data.annualTarget || 0))),
+						userIncome: Math.floor(res.data.user_year_income || 0),
+						teamIncome: Math.floor(res.data.team_year_income || 0),
+						companyIncome: Math.floor(res.data.company_year_income || 0)
+					}
+					return
+				}
+
+				console.warn('[profile] loadAnnualCoinStats 响应异常:', res)
+			} catch (error) {
+				console.error('[profile] loadAnnualCoinStats failed', error)
+			}
+
+			this.annualCoinStats = {
+				...this.annualCoinStats,
+				loading: false
+			}
+		},
+		async refreshTeamSummary() {
+			const token = this.getAuthToken()
+			if (!token) {
+				this.teamCard = createDefaultTeamCardState()
+				this.teamQrcodeUrl = ''
+				return
+			}
+
+			this.teamCard = createDefaultTeamCardState({
+				loggedIn: true,
+				loading: true
+			})
+
+			try {
+				const teamService = getHttpService('team-service')
+				const [teamResult, inviteResult] = await Promise.allSettled([
+					teamService.getMyTeam({ _token: token }),
+					teamService.getInviteStats({ _token: token })
+				])
+				const nextState = createDefaultTeamCardState({
+					loggedIn: true
+				})
+
+				if (teamResult.status === 'fulfilled') {
+					const teamResponse = teamResult.value
+					if (teamResponse && teamResponse.code === 0 && teamResponse.data) {
+						const detail = teamResponse.data.team_detail || {}
+						nextState.hasTeam = true
+						nextState.teamId =
+							teamResponse.data.team_id ||
+							detail.team_id ||
+							detail._id ||
+							detail.id ||
+							''
+						nextState.teamName =
+							teamResponse.data.team_name ||
+							detail.team_name ||
+							'未命名团队'
+						nextState.teamLevel =
+							teamResponse.data.team_level ||
+							detail.team_level ||
+							'普通团队'
+						nextState.memberCount = Number(
+							detail.member_count ||
+							teamResponse.data.member_count ||
+							0
+						)
+						nextState.todayNewMembers = Number(teamResponse.data.today_new_members || 0)
+						this.teamQrcodeUrl =
+							typeof teamResponse.data.invite_qrcode_url === 'string'
+								? teamResponse.data.invite_qrcode_url.trim()
+								: ''
+					} else {
+						this.teamQrcodeUrl = ''
+					}
+				} else {
+					console.error('[profile] 获取团队信息失败:', teamResult.reason)
+					this.teamQrcodeUrl = ''
+				}
+
+				if (inviteResult.status === 'fulfilled') {
+					const inviteResponse = inviteResult.value
+					if (inviteResponse && inviteResponse.code === 0 && inviteResponse.data) {
+						nextState.inviteCount = Number(inviteResponse.data.invited_count || 0)
+					}
+				} else {
+					console.error('[profile] 获取团队邀请统计失败:', inviteResult.reason)
+				}
+
+				this.teamCard = nextState
+			} catch (error) {
+				console.error('[profile] refreshTeamSummary failed', error)
+				this.teamQrcodeUrl = ''
+				this.teamCard = createDefaultTeamCardState({
+					loggedIn: true
+				})
+			}
+		},
+		async showTeamInviteQrcode() {
+			if (!this.teamCard.loggedIn) {
+				uni.navigateTo({
+					url: '/pages/auth/login/index'
+				})
+				return
+			}
+
+			if (!this.teamCard.hasTeam) {
+				uni.showToast({
+					title: '加入团队后可生成邀请码',
+					icon: 'none'
+				})
+				return
+			}
+
+			if (this.teamQrcodeLoading) {
+				return
+			}
+
+			if (this.teamQrcodeUrl) {
+				this.showTeamQrcodeModal = true
+				return
+			}
+
+			const token = this.getAuthToken()
+			if (!token) {
+				uni.navigateTo({
+					url: '/pages/auth/login/index'
+				})
+				return
+			}
+
+			this.teamQrcodeLoading = true
+			uni.showLoading({ title: '二维码生成中...' })
+
+			try {
+				const teamService = getHttpService('team-service')
+				const result = await teamService.generateInviteQrcode({ _token: token })
+				const qrcodeUrl = result && result.code === 0 && result.data && typeof result.data.qrcode_url === 'string'
+					? result.data.qrcode_url.trim()
+					: ''
+
+				if (!qrcodeUrl) {
+					uni.showToast({
+						title: (result && result.message) || '邀请码二维码生成失败',
+						icon: 'none'
+					})
+					return
+				}
+
+				this.teamQrcodeUrl = qrcodeUrl
+				this.showTeamQrcodeModal = true
+			} catch (error) {
+				console.error('[profile] 生成团队邀请码失败:', error)
+				uni.showToast({
+					title: '生成失败',
+					icon: 'none'
+				})
+			} finally {
+				this.teamQrcodeLoading = false
+				uni.hideLoading()
+			}
+		},
+		saveTeamQrcode() {
+			if (!this.teamQrcodeUrl) {
+				uni.showToast({ title: '二维码未加载', icon: 'none' })
+				return
+			}
+
+			uni.downloadFile({
+				url: this.teamQrcodeUrl,
+				success: (res) => {
+					if (res.statusCode === 200) {
+						uni.saveImageToPhotosAlbum({
+							filePath: res.tempFilePath,
+							success: () => {
+								uni.showToast({ title: '保存成功', icon: 'success' })
+							},
+							fail: () => {
+								uni.showToast({ title: '保存失败', icon: 'none' })
+							}
+						})
+					}
+				},
+				fail: () => {
+					uni.showToast({ title: '下载失败', icon: 'none' })
+				}
+			})
+		},
+		closeTeamQrcodeModal() {
+			this.showTeamQrcodeModal = false
+		},
+		promptToJoinTeam() {
+			uni.showModal({
+				title: '提示',
+				content: '你还没有加入团队，是否前往团队选择页付费加入？',
+				success: ({ confirm }) => {
+					if (!confirm) {
+						return
+					}
+
+					uni.navigateTo({
+						url: '/pages/extra/team-browser'
+					})
+				}
+			})
+		},
+		navigateToTeamMembers() {
+			if (!this.teamCard.loggedIn) {
+				uni.navigateTo({
+					url: '/pages/auth/login/index'
+				})
+				return
+			}
+
+			if (!this.teamCard.hasTeam) {
+				this.promptToJoinTeam()
+				return
+			}
+
+			if (!this.teamCard.teamId) {
+				uni.showToast({
+					title: '暂无团队成员信息',
+					icon: 'none'
+				})
+				return
+			}
+
+			uni.navigateTo({
+				url: `/pages/extra/team-member-list?teamId=${encodeURIComponent(this.teamCard.teamId)}`
+			})
+		},
 		navigateToWalletHistory() {
 			uni.navigateTo({
 				url: '/pages/extra/wallet-details'
 			})
 		},
-		navigateToAchievements() {
+		navigateToCoinWithdraw() {
 			uni.navigateTo({
-				url: '/pages/extra/achievements'
+				url: `/pages/extra/wallet-withdraw?balance=${this.coinStats.currentBalance || 0}`
+			})
+		},
+		navigateToCoinExchange() {
+			uni.navigateTo({
+				url: `/pages/extra/wallet-exchange?balance=${this.coinStats.currentBalance || 0}`
+			})
+		},
+		navigateToTeamCenter() {
+			if (!this.teamCard.loggedIn) {
+				uni.navigateTo({
+					url: '/pages/auth/login/index'
+				})
+				return
+			}
+
+			if (!this.teamCard.hasTeam) {
+				this.promptToJoinTeam()
+				return
+			}
+
+			uni.navigateTo({
+				url: '/pages/extra/team-center'
 			})
 		},
 		navigateToFunctions() {
 			uni.navigateTo({
 				url: '/pages/extra/functions'
+			})
+		},
+		navigateToPointsCenter() {
+			uni.navigateTo({
+				url: '/pages/extra/points-center'
 			})
 		}
 	}
@@ -186,12 +599,14 @@ export default {
 <style scoped>
 	/* 外层灰背景，模仿 HTML body 居中效果 */
 	.page-root {
+		--profile-card-gap: 12rpx;
+		--profile-card-radius: 20rpx;
 		flex: 1;
 		display: flex;
 		flex-direction: row;
 		justify-content: center;
 		min-height: 100vh;
-		background-color: #F3F0FF;
+		background: #ffffff;
 	}
 
 	/* 中间 app 容器，类似手机壳 */
@@ -199,7 +614,7 @@ export default {
 		flex: 1;
 		width: 100%;
 		max-width: 750rpx;
-		background-color: #F3F0FF;
+		background-color: transparent;
 		box-shadow: 0 20rpx 60rpx rgba(15, 23, 42, 0.35);
 		border-radius: 0;
 		position: relative;
@@ -209,11 +624,7 @@ export default {
 	}
 
 	.bg-circle {
-		position: absolute;
-		border-radius: 50%;
-		z-index: 0;
-		pointer-events: none;
-		filter: blur(80rpx);
+		display: none;
 	}
 
 	.circle-top-right {
@@ -234,7 +645,7 @@ export default {
 
 	/* 顶部个人信息区域，贴合 HTML 的 header 区 */
 	.app-header {
-		background-color: #ffffff;
+		background-color: transparent;
 		z-index: 20;
 		position: relative;
 	}
@@ -247,24 +658,93 @@ export default {
 	}
 
 	.section-list {
-		padding: 24rpx 24rpx 240rpx;
+		padding: 30rpx 24rpx 240rpx;
 		box-sizing: border-box;
 		display: flex;
 		flex-direction: column;
+		gap: var(--profile-card-gap);
+	}
+
+	.qr-modal {
+		position: fixed;
+		left: 0;
+		right: 0;
+		top: 0;
+		bottom: 0;
+		background: rgba(15, 23, 42, 0.58);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 40rpx;
+		z-index: 999;
+	}
+
+	.qr-card-large {
+		width: 100%;
+		max-width: 620rpx;
+		padding: 42rpx 36rpx 34rpx;
+		border-radius: 36rpx;
+		background: #ffffff;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
 		gap: 24rpx;
+		position: relative;
+		box-shadow: 0 24rpx 70rpx rgba(15, 23, 42, 0.2);
 	}
 
-	.new-partners-tight-top {
-		margin-top: -12rpx;
+	.close-qr {
+		position: absolute;
+		right: 24rpx;
+		top: 20rpx;
+		font-size: 44rpx;
+		line-height: 1;
+		color: #94a3b8;
 	}
 
-	.profile-incentive {
-		margin-top: -10rpx !important;
-		margin-bottom: -10rpx !important;
+	.qr-modal-title {
+		font-size: 32rpx;
+		font-weight: 700;
+		color: #0f172a;
+	}
+
+	.qr-image-placeholder {
+		width: 440rpx;
+		height: 440rpx;
+		border-radius: 28rpx;
+		background: linear-gradient(135deg, #fff7ed 0%, #ffffff 100%);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.qr-image {
+		width: 380rpx;
+		height: 380rpx;
+	}
+
+	.loading-qr {
+		font-size: 24rpx;
+		color: #94a3b8;
+	}
+
+	.save-img-btn {
+		width: 100%;
+		height: 84rpx;
+		border: none;
+		border-radius: 999rpx;
+		background: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
+		color: #ffffff;
+		font-size: 28rpx;
+		font-weight: 700;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		box-shadow: 0 12rpx 26rpx rgba(245, 158, 11, 0.2);
 	}
 
 	.brand-claim-footer {
-		margin-top: 60rpx;
+		margin-top: 32rpx;
 		padding: 40rpx 24rpx 60rpx;
 		display: flex;
 		flex-direction: column;
@@ -297,26 +777,43 @@ export default {
 		opacity: 0.9;
 	}
 
-	.achievements-simple-card {
-		background: linear-gradient(135deg, #1e293b, #0f172a);
-		padding: 30rpx 40rpx;
-		border-radius: 32rpx;
-		margin-bottom: 0;
-		color: #ffffff;
-		display: flex;
-		flex-direction: column;
-		justify-content: space-between;
-		box-shadow: 0 10rpx 30rpx rgba(15, 23, 42, 0.2);
+	.profile-incentive-wrap {
+		margin: 0 28rpx 18rpx;
+		border-radius: 24rpx;
+		box-shadow: 0 14rpx 26rpx rgba(15, 23, 42, 0.08);
 	}
 
-	.points-near-wallet {
-		margin-top: -24rpx;
+	.profile-incentive {
+		margin: 0;
+	}
+
+	.profile-header-team-entry-wrap {
+		position: relative;
+		z-index: 31;
+		display: flex;
+		align-items: center;
+		gap: 28rpx;
+		margin: -112rpx 64rpx 18rpx;
+	}
+
+	.profile-header-team-entry-button {
+		flex: 1 1 0;
+		min-width: 0;
+		border-radius: 20rpx;
+		overflow: hidden;
+		transform: scale(1.05);
+		transform-origin: center center;
+	}
+
+	.profile-header-team-entry-image {
+		display: block;
+		width: 100%;
 	}
 
 	.more-functions-card {
 		background: #ffffff;
 		padding: 24rpx 32rpx;
-		border-radius: 32rpx;
+		border-radius: var(--profile-card-radius);
 		margin-bottom: 0;
 		color: #1e293b;
 		display: flex;
@@ -329,11 +826,6 @@ export default {
 	.more-functions-left {
 		display: flex;
 		align-items: center;
-		gap: 16rpx;
-	}
-	
-	.more-functions-icon {
-		font-size: 32rpx;
 	}
 	
 	.more-functions-title {
@@ -347,35 +839,4 @@ export default {
 		color: #94a3b8;
 	}
 
-	.simple-card-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 20rpx;
-	}
-	.card-label {
-		font-size: 24rpx;
-		color: #94a3b8;
-	}
-	.card-arrow {
-		font-size: 22rpx;
-		color: #64748b;
-	}
-	.simple-card-body {
-		display: flex;
-		justify-content: space-between;
-		align-items: flex-end;
-	}
-	.simple-points {
-		font-size: 56rpx;
-		font-weight: 800;
-		line-height: 1;
-	}
-	.simple-action-btn {
-		background: rgba(255,255,255,0.15);
-		padding: 10rpx 24rpx;
-		border-radius: 999rpx;
-		font-size: 24rpx;
-		border: 1px solid rgba(255,255,255,0.1);
-	}
 </style>

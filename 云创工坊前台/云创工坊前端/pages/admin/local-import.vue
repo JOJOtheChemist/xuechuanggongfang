@@ -2,7 +2,7 @@
   <view class="import-container">
     <view class="header">
       <text class="title">本地数据导入工具</text>
-      <text class="subtitle">无需配置云函数 URL，直接使用客户端 SDK</text>
+      <text class="subtitle">直接调用独立后端批量导入，无需旧云函数</text>
     </view>
 
     <view class="status-box">
@@ -13,7 +13,7 @@
     </view>
     
     <view class="control-panel" style="margin-bottom: 20rpx; display: flex; gap: 20rpx;">
-        <button type="warn" size="mini" @tap="clearDatabase" :disabled="importing">清空云数据库</button>
+        <button type="warn" size="mini" @tap="clearDatabase" :disabled="importing">清空文章库</button>
     </view>
 
     <scroll-view scroll-y class="log-box">
@@ -31,6 +31,8 @@
 </template>
 
 <script>
+import { clearImportedArticles, importArticlesInBatches, loadStaticJson, normalizeArticleForImport } from '@/utils/admin-catalog'
+
 export default {
   data() {
     return {
@@ -46,14 +48,10 @@ export default {
   async onLoad() {
     this.addLog('正在加载本地数据...', 'info')
     try {
-      // 动态请求 static 下的 json，避免打包过大
-      const res = await uni.request({
-        url: '/pages/admin/static/articles_data.json',
-        method: 'GET'
-      })
-      
-      if (res.statusCode === 200 && res.data) {
-        this.articles = res.data
+      const data = await loadStaticJson('/pages/admin/static/articles_data.json')
+
+      if (Array.isArray(data) && data.length > 0) {
+        this.articles = data.map((item) => normalizeArticleForImport(item)).filter(Boolean)
         this.total = this.articles.length
         this.addLog(`加载成功，共 ${this.total} 条数据`, 'success')
       } else {
@@ -74,25 +72,19 @@ export default {
     async clearDatabase() {
         const res = await uni.showModal({
             title: '危险操作',
-            content: '确定要清空云数据库中所有文章吗？此操作不可恢复！',
+            content: '确定要清空文章数据吗？此操作不可恢复！',
             confirmColor: '#DD524D'
         })
         
         if (res.confirm) {
-            this.addLog('正在请求清空数据库...', 'info')
-            try {
-                const syncCloud = uniCloud.importObject('sync-cloud-articles')
-                const result = await syncCloud.clearArticles()
-                
-                if (result.code === 0) {
-                    this.addLog(`清空成功: ${JSON.stringify(result.data)}`, 'success')
-                    uni.showToast({ title: '已清空', icon: 'success' })
-                } else {
-                    this.addLog(`清空失败: ${result.message}`, 'error')
-                }
-            } catch (e) {
-                this.addLog(`调用云函数失败: ${e.message}`, 'error')
-            }
+            const result = await clearImportedArticles({
+                resetCategoryTags: true
+            })
+            this.addLog(`清理完成，删除 ${result.deletedCount || 0} 篇文章`, 'success')
+            uni.showToast({
+                title: '清理完成',
+                icon: 'success'
+            })
         }
     },
     
@@ -102,66 +94,41 @@ export default {
       this.current = 0
       this.successCount = 0
       this.failCount = 0
-      
-      const importer = uniCloud.importObject('import-articles')
-      
-      // 分批处理，每批 10 条
-      const BATCH_SIZE = 10
-      
-      for (let i = 0; i < this.articles.length; i += BATCH_SIZE) {
-        const batch = this.articles.slice(i, i + BATCH_SIZE)
-        this.current = i + 1
-        
-        try {
-          // 清理数据：移除本地绝对路径等不需要上传的字段
-          // 保留 title, category_id, summary, content, price_points, author_name, publish_time, stats
-          const cleanBatch = batch.map(a => ({
-            title: a.title,
-            category_id: a.category_id,
-            summary: a.summary,
-            content: a.content,
-            price_points: a.price_points,
-            author_name: a.author_name,
-            publish_time: a.publish_time,
-            stats: a.stats,
-            tags: a.tags || [],  // 保留标签
-            cover_image: a.cover_image || '', 
-            attachments: a.attachments || []  // 保留PDF附件
-          }))
-          
-          this.addLog(`正在上传第 ${i+1}-${Math.min(i+BATCH_SIZE, this.total)} 条...`, 'info')
-          
-          const res = await importer.importData({
-            articles: cleanBatch
-          })
-          
-          if (res) {
-            this.successCount += res.success || 0
-            this.failCount += res.failed || 0
-            
-            if (res.errors && res.errors.length) {
-              res.errors.forEach(err => {
-                this.addLog(`失败 [${err.title}]: ${err.error}`, 'error')
-              })
+
+      try {
+        const result = await importArticlesInBatches({
+          articles: this.articles,
+          batchSize: 100,
+          onProgress: (progress) => {
+            if (progress.stage === 'after') {
+              this.current = progress.processed
+              this.successCount = progress.success || 0
+              this.failCount = progress.failed || 0
+              this.addLog(`已完成第 ${progress.batchIndex}/${progress.batchCount} 批`, 'info')
             }
           }
-          
-        } catch (e) {
-          this.failCount += batch.length
-          this.addLog(`批次上传失败: ${e.message}`, 'error')
-        }
-        
-        // 稍微停顿一下
-        await new Promise(r => setTimeout(r, 200))
+        })
+
+        this.current = result.total
+        this.successCount = result.success
+        this.failCount = result.failed
+        this.addLog(`导入完成，成功 ${result.success}，失败 ${result.failed}`, result.failed ? 'warn' : 'success')
+        ;(result.errors || []).slice(0, 20).forEach((item) => {
+          this.addLog(`失败: ${item.title} - ${item.error}`, 'error')
+        })
+        uni.showToast({
+          title: '导入完成',
+          icon: result.failed ? 'none' : 'success'
+        })
+      } catch (e) {
+        this.addLog(`导入异常: ${e.message}`, 'error')
+        uni.showToast({
+          title: '导入失败',
+          icon: 'none'
+        })
+      } finally {
+        this.importing = false
       }
-      
-      this.importing = false
-      this.addLog('导入完成！', 'success')
-      uni.showModal({
-        title: '完成',
-        content: `成功: ${this.successCount}, 失败: ${this.failCount}`,
-        showCancel: false
-      })
     }
   }
 }

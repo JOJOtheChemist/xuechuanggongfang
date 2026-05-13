@@ -2,7 +2,7 @@
 	<view class="bento-section">
 		<view class="bento-card">
 			<view class="bento-flex">
-				<!-- 左侧：复制右侧样式，先展示拉新用户+团队伙伴 -->
+				<!-- 左侧：展示拉新、累计推广与多级直推人数 -->
 				<view class="left-panel">
 					<view class="left-stat-item">
 						<text class="item-label">拉新用户</text>
@@ -13,10 +13,18 @@
 					</view>
 
 					<view class="left-stat-item">
-						<text class="item-label">团队伙伴</text>
+						<text class="item-label">个人推广总人数</text>
+						<view class="item-content">
+							<text class="item-value">{{ totalPromotedUsers }}</text>
+							<view class="badge badge-slate">+{{ totalPromotedUsers }}</view>
+						</view>
+					</view>
+
+					<view class="left-stat-item">
+						<text class="item-label">多级直推人数（含1-10级）</text>
 						<view class="item-content">
 							<text class="item-value">{{ teamCount }}</text>
-							<view class="badge badge-orange">+{{ yesterdayNewPartners }}</view>
+							<view class="badge badge-orange">累计</view>
 						</view>
 					</view>
 				</view>
@@ -71,10 +79,15 @@
 				</view>
 			</view>
 		</view>
+		<view class="bento-summary-row">
+			<text class="bento-summary-label">多级直推总人数</text>
+			<text class="bento-summary-value">{{ teamCount }}</text>
+		</view>
 	</view>
 </template>
 
 <script>
+import { getHttpService, getCurrentUserToken } from '@/utils/http-services'
 export default {
 	name: 'BentoStatsCard',
 		data() {
@@ -85,8 +98,8 @@ export default {
 				currentCoins: 0, // 当前新币余额
 				// 用户 & 伙伴统计
 				newUsers: 0,
-				teamCount: 0, // 我所在团队的人数
-				yesterdayNewPartners: 0, // 昨日新增伙伴人数
+				totalPromotedUsers: 0,
+				teamCount: 0, // 多级直推累计人数（从开始到现在）
 				// 订单统计
 				orderCount: 0, // 成功报名的订单总量
 				todayNewOrders: 0, // 今日新增订单
@@ -97,10 +110,73 @@ export default {
 				checkInLoading: false,
 				loading: false
 			}
-		},
+	},
 	methods: {
 		getToken() {
-			return uni.getStorageSync('token')
+			return getCurrentUserToken()
+		},
+		resolveInviteCount({ inviteRes, statsRes, userStatsRes }) {
+			const inviteStatsCount = Number(
+				inviteRes &&
+				inviteRes.code === 0 &&
+				inviteRes.data &&
+				inviteRes.data.invited_count
+			) || 0
+
+			const dashboardCount = Number(
+				statsRes &&
+				statsRes.code === 0 &&
+				statsRes.data &&
+				statsRes.data.newUsers
+			) || 0
+
+			const registeredInviteCount = Number(
+				userStatsRes &&
+				userStatsRes.code === 0 &&
+				userStatsRes.data &&
+				userStatsRes.data.registered_invite_count
+			) || 0
+
+			const totalInviteCount = Number(
+				userStatsRes &&
+				userStatsRes.code === 0 &&
+				userStatsRes.data &&
+				userStatsRes.data.invite_count
+			) || 0
+
+			if (inviteStatsCount > 0) return inviteStatsCount
+			if (dashboardCount > 0) return dashboardCount
+			if (registeredInviteCount > 0) return registeredInviteCount
+			return totalInviteCount
+		},
+		resolveTotalPromotedUsers({ userStatsRes, inviteRes, statsRes }) {
+			const totalInviteCount = Number(
+				userStatsRes &&
+				userStatsRes.code === 0 &&
+				userStatsRes.data &&
+				userStatsRes.data.invite_count
+			) || 0
+
+			const inviteStatsCount = Number(
+				inviteRes &&
+				inviteRes.code === 0 &&
+				inviteRes.data &&
+				inviteRes.data.invited_count
+			) || 0
+
+			const dashboardCount = Number(
+				statsRes &&
+				statsRes.code === 0 &&
+				statsRes.data &&
+				statsRes.data.newUsers
+			) || 0
+
+			if (totalInviteCount > 0) return totalInviteCount
+			if (inviteStatsCount > 0) return inviteStatsCount
+			return dashboardCount
+		},
+		pickSettledValue(result) {
+			return result && result.status === 'fulfilled' ? result.value : null
 		},
 		async loadStats() {
 			const token = this.getToken()
@@ -109,8 +185,8 @@ export default {
 				this.todayProfit = 0
 				this.currentCoins = 0
 				this.newUsers = 0
+				this.totalPromotedUsers = 0
 				this.teamCount = 0
-				this.yesterdayNewPartners = 0
 				this.orderCount = 0
 				this.todayNewOrders = 0
 				this.isChecked = false
@@ -120,44 +196,48 @@ export default {
 
 			this.loading = true
 			try {
-				// 1) 利润 & 新增用户等统计 (dashboard-service)
-				const dashboardService = uniCloud.importObject('dashboard-service')
-				const statsRes = await dashboardService.getStatsCard({ _token: token })
-
-				if (statsRes && statsRes.code === 0 && statsRes.data) {
-					const data = statsRes.data
-					// 新币统计
-					this.monthProfit = data.monthProfit || 0
-					this.todayProfit = data.todayProfit || 0
-					this.currentCoins = data.currentCoins || 0
-					// 其他统计
-					this.newUsers = data.newUsers || 0
-					// dashboard-service 可能也返回 orderCount，但我们下面会用 goal-service 覆盖它
-					// this.orderCount = data.orderCount || 0 
-					this.todayNewOrders = data.todayNewOrders || 0
-				}
-
-				// 2) 团队伙伴统计（通过 team-service 获取我所在团队信息）
-				const teamService = uniCloud.importObject('team-service')
-				const teamRes = await teamService.getMyTeam({ _token: token })
-
-				if (teamRes && teamRes.code === 0 && teamRes.data) {
-					this.teamCount = teamRes.data.member_count || 0
-					this.yesterdayNewPartners = teamRes.data.yesterday_new_members || 0
-				} else {
-					this.teamCount = 0
-					this.yesterdayNewPartners = 0
-				}
-				
-				// 3) 个人订单量/完成量统计 (通过 goal-service 获取，与 PlanProgress 保持一致)
-				const goalService = uniCloud.importObject('goal-service')
+				const dashboardService = getHttpService('dashboard-service')
+				const goalService = getHttpService('goal-service')
+				const userService = getHttpService('user-center')
 				const now = new Date()
 				const year = now.getFullYear()
 				const month = now.getMonth() + 1
-				const goalRes = await goalService.getMonthGoals({ _token: token, year, month })
-				
+
+				const [statsTask, inviteTask, userStatsTask, goalTask] = await Promise.allSettled([
+					dashboardService.getStatsCard({ _token: token }),
+					getHttpService('team-service').getInviteStats({ _token: token }),
+					userService.getMyStats({ _token: token }),
+					goalService.getMonthGoals({ _token: token, year, month })
+				])
+
+				const statsRes = this.pickSettledValue(statsTask)
+				const inviteRes = this.pickSettledValue(inviteTask)
+				const userStatsRes = this.pickSettledValue(userStatsTask)
+				const goalRes = this.pickSettledValue(goalTask)
+
+				if (statsRes && statsRes.code === 0 && statsRes.data) {
+					const data = statsRes.data
+					this.monthProfit = data.monthProfit || 0
+					this.todayProfit = data.todayProfit || 0
+					this.currentCoins = data.currentCoins || 0
+					this.todayNewOrders = data.todayNewOrders || 0
+				}
+
+				// 拉新人数优先走独立后端的专用邀请统计接口，避免旧聚合口返回 0。
+				this.newUsers = this.resolveInviteCount({ inviteRes, statsRes, userStatsRes })
+				this.totalPromotedUsers = this.resolveTotalPromotedUsers({ userStatsRes, inviteRes, statsRes })
+
+				if (userStatsRes && userStatsRes.code === 0 && userStatsRes.data) {
+					this.teamCount = Number(
+						userStatsRes.data.multiLevelInviteTotalCount ||
+						userStatsRes.data.multi_level_invite_total_count ||
+						0
+					)
+				} else {
+					this.teamCount = 0
+				}
+
 				if (goalRes && goalRes.code === 0 && goalRes.data && goalRes.data.stats) {
-					// 覆盖 dashboard-service 的 orderCount，使用 goal-service 的个人完成数
 					this.orderCount = Number(goalRes.data.stats.total_completed) || 0
 				}
 
@@ -171,13 +251,19 @@ export default {
 		async loadCheckInSummary(token) {
 			if (!token) return
 			try {
-				const checkinService = uniCloud.importObject('checkin-service')
-				const statusRes = await checkinService.getCheckInStatus({ _token: token })
+				const checkinService = getHttpService('checkin-service')
+				const [statusRes, statsRes] = await Promise.all([
+					checkinService.getCheckInStatus({ _token: token }),
+					checkinService.getCheckInStats({ _token: token })
+				])
 
 				if (statusRes && statusRes.code === 0 && statusRes.data) {
 					this.isChecked = !!statusRes.data.is_checked_in
-					const savedStreak = Number(uni.getStorageSync('daily_checkin_streak')) || 0
-					this.streakDays = Number(statusRes.data.streak_days) || savedStreak
+					this.streakDays = Number(statusRes.data.streak_days || statusRes.data.total_days || 0)
+				}
+
+				if (statsRes && statsRes.code === 0 && statsRes.data) {
+					this.streakDays = Number(statsRes.data.consecutive_days || statsRes.data.total_days || this.streakDays || 0)
 				}
 			} catch (e) {
 				console.error('[BentoStatsCard] 加载签到摘要失败', e)
@@ -194,15 +280,12 @@ export default {
 			this.checkInLoading = true
 			uni.showLoading({ title: '签到中...' })
 			try {
-				const checkinService = uniCloud.importObject('checkin-service')
+				const checkinService = getHttpService('checkin-service')
 				const res = await checkinService.checkIn({ _token: token })
 				uni.hideLoading()
 				if (res && res.code === 0) {
 					this.isChecked = true
-					const streakFromRes = res.data ? Number(res.data.streak_days) : 0
-					this.streakDays = streakFromRes || (this.streakDays + 1)
-					uni.setStorageSync('daily_checkin_streak', this.streakDays)
-					uni.setStorageSync('daily_checkin_date', new Date().toISOString().split('T')[0])
+					this.streakDays = Number(res.data && (res.data.streak_days || res.data.total_days)) || this.streakDays
 					await this.loadCheckInSummary(token)
 					uni.$emit('wallet-refresh')
 					uni.showToast({ title: res.message || '签到成功', icon: 'none' })
@@ -248,6 +331,30 @@ export default {
 	border: 1rpx solid #e2e8f0;
 }
 
+.bento-summary-row {
+	margin-top: 18rpx;
+	padding: 24rpx 28rpx;
+	border-radius: 24rpx;
+	background: linear-gradient(135deg, #fff7ed 0%, #fffbeb 100%);
+	border: 1rpx solid #fed7aa;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	box-shadow: 0 8rpx 24rpx rgba(249, 115, 22, 0.08);
+}
+
+.bento-summary-label {
+	font-size: 26rpx;
+	color: #9a3412;
+	font-weight: 600;
+}
+
+.bento-summary-value {
+	font-size: 36rpx;
+	color: #c2410c;
+	font-weight: 800;
+}
+
 /* Flex 容器：固定高度 */
 .bento-flex {
 	display: flex;
@@ -271,7 +378,7 @@ export default {
 }
 
 .left-stat-item + .left-stat-item {
-	margin-top: 16rpx;
+	margin-top: 10rpx;
 }
 
 .left-panel .item-value {
@@ -475,6 +582,11 @@ export default {
 .badge-blue {
 	background-color: #e0e7ff;
 	color: #4f46e5;
+}
+
+.badge-slate {
+	background-color: #e2e8f0;
+	color: #475569;
 }
 
 /* 热门板块特殊样式 */

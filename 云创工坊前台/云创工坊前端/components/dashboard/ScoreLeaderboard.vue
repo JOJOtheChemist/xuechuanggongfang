@@ -8,7 +8,7 @@
     </view>
 
     <view class="leaderboard-list">
-      <view v-for="(item, index) in displayList" :key="item._id || index" class="leaderboard-item">
+      <view v-for="(item, index) in displayList" :key="item.renderKey" class="leaderboard-item">
         <!-- Rank Box -->
         <view class="rank-box" :class="'rank-' + (index + 1)">
           <text class="rank-num">{{ index + 1 }}</text>
@@ -17,7 +17,7 @@
 
         <!-- Content Strip -->
         <view class="content-strip">
-          <image class="user-avatar" :src="item.avatar || defaultAvatar" mode="aspectFill"></image>
+          <image class="user-avatar" :src="normalizeAvatarUrl(item.avatar, defaultAvatar)" mode="aspectFill"></image>
           <view class="user-info">
             <text class="user-name text-ellipsis">{{ item.nickname || '用户' }}</text>
             <text v-if="isMe(item)" class="tag-me">我</text>
@@ -44,13 +44,13 @@
         <view class="popup-title">积分排行榜</view>
         <scroll-view scroll-y class="popup-scroll" @scrolltolower="loadMore">
             <view class="leaderboard-list full-list">
-              <view v-for="(item, index) in leaderboard" :key="item._id || index" class="leaderboard-item">
+              <view v-for="(item, index) in leaderboardRows" :key="item.renderKey" class="leaderboard-item">
                 <view class="rank-box" :class="'rank-' + (index + 1)">
                   <text class="rank-num">{{ index + 1 }}</text>
                   <text class="rank-label">名</text>
                 </view>
                 <view class="content-strip">
-                  <image class="user-avatar" :src="item.avatar || defaultAvatar" mode="aspectFill"></image>
+                  <image class="user-avatar" :src="normalizeAvatarUrl(item.avatar, defaultAvatar)" mode="aspectFill"></image>
                   <view class="user-info">
                     <text class="user-name text-ellipsis">{{ item.nickname || '用户' }}</text>
                     <text v-if="isMe(item)" class="tag-me">我</text>
@@ -68,6 +68,8 @@
 </template>
 
 <script>
+import { getPointsLeaderboard } from '../../utils/points-api'
+
 export default {
   data() {
     return {
@@ -75,12 +77,21 @@ export default {
       loading: false,
       showPopup: false,
       fullLoaded: false,
-      defaultAvatar: 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png'
+      defaultAvatar: '/static/icons/default-avatar.svg'
     }
   },
   computed: {
+      leaderboardRows() {
+          return (Array.isArray(this.leaderboard) ? this.leaderboard : []).map((item, index) => {
+              const source = item && typeof item === 'object' ? item : {}
+              const rawKey = source.user_id || source.uid || source._id || `leaderboard-${index}`
+              return Object.assign({}, source, {
+                  renderKey: `score-leaderboard-${rawKey}`
+              })
+          })
+      },
       displayList() {
-          return this.leaderboard.slice(0, 5)
+          return this.leaderboardRows.slice(0, 5)
       }
   },
   mounted() {
@@ -110,11 +121,13 @@ export default {
       try {
         this.loading = true
         const token = uni.getStorageSync('token')
-        
-        const pointsService = uniCloud.importObject('points-service')
-        const res = await pointsService.getPointsLeaderboard({
-            _token: token,
-            limit: limit
+        if (!token) {
+          this.leaderboard = []
+          return
+        }
+
+        const res = await getPointsLeaderboard({
+            limit
         })
 
         if (res && res.code === 0 && Array.isArray(res.data)) {

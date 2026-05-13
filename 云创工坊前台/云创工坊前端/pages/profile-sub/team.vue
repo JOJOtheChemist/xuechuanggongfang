@@ -5,7 +5,7 @@
 </template>
 
 <script>
-import TeamCard from '@/components/profile/TeamCard.vue'
+import TeamCard from '@/pages/extra/components/TeamCard.vue'
 
 export default {
 	components: {

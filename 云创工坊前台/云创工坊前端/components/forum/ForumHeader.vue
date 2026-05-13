@@ -1,7 +1,7 @@
 <template>
   <view class="forum-header">
     <view class="top-bar">
-      <text class="forum-title">校园论坛</text>
+      <text class="forum-title">校园广场</text>
       <view class="school-selector" @tap="$emit('open-school-popup')">
         <text class="selector-arrow">⇄</text>
         <text class="selector-text">{{ displaySchool }}</text>

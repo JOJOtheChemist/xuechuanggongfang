@@ -20,14 +20,14 @@
 				<text class="stats-label">新币总量</text>
 				<view class="stats-value-row">
 					<view class="stats-number">
-						<text class="stats-value">{{ currentBalance }}</text>
-						<text class="stats-delta">+{{ todayIncome }}</text>
+						<text class="stats-value">{{ displayCurrentBalance }}</text>
+						<text class="stats-delta">+{{ displayTodayIncome }}</text>
 					</view>
 					<view class="stats-arrow">
 						<text class="stats-arrow-icon">›</text>
 					</view>
 				</view>
-				<text class="stats-sub-label">累计收入: {{ totalIncome }}</text>
+				<text class="stats-sub-label">累计收入: {{ displayTotalIncome }}</text>
 			</view>
 			<view class="stats-bg-icon" />
 		</view>
@@ -35,6 +35,7 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
 export default {
 	name: 'ProfileStatsGrid',
 	data() {
@@ -49,7 +50,32 @@ export default {
 			totalIncome: 0
 		}
 	},
+	computed: {
+		displayCurrentBalance() {
+			return this.formatCoinAmount(this.currentBalance)
+		},
+		displayTodayIncome() {
+			return this.formatCoinAmount(this.todayIncome)
+		},
+		displayTotalIncome() {
+			return this.formatCoinAmount(this.totalIncome)
+		}
+	},
 	methods: {
+		formatCoinAmount(value) {
+			const numericValue = Number(value)
+			if (!Number.isFinite(numericValue)) return '0'
+
+			const fixed = numericValue.toFixed(2)
+			const [integerPart, decimalPart] = fixed.split('.')
+			const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+
+			if (!decimalPart || decimalPart === '00') {
+				return formattedInteger
+			}
+
+			return `${formattedInteger}.${decimalPart.replace(/0+$/, '')}`
+		},
 		getToken() {
 			return uni.getStorageSync('token')
 		},
@@ -58,7 +84,7 @@ export default {
 			if (!token) return
 
 			try {
-				const teamService = uniCloud.importObject('team-service')
+				const teamService = getHttpService('team-service')
 				// 使用 getMyTeam 拿当前团队信息，包含实时人数和今日新增
 				const res = await teamService.getMyTeam({ _token: token })
 
@@ -78,13 +104,13 @@ export default {
 			if (!token) return
 
 			try {
-				const coinService = uniCloud.importObject('coin-service')
+				const coinService = getHttpService('coin-service')
 				const res = await coinService.getCoinStats({ _token: token })
 
 				if (res && res.code === 0 && res.data) {
-					this.currentBalance = Math.floor(res.data.current_balance || 0)
-					this.todayIncome = Math.floor(res.data.today_income || 0)
-					this.totalIncome = Math.floor(res.data.total_income || 0)
+					this.currentBalance = Number(res.data.current_balance || 0)
+					this.todayIncome = Number(res.data.today_income || 0)
+					this.totalIncome = Number(res.data.total_income || 0)
 				} else {
 					this.currentBalance = 0
 					this.todayIncome = 0

@@ -5,7 +5,7 @@
 		</view>
 
 		<view class="banner-list">
-			<view v-for="banner in banners" :key="banner._id" class="banner-item">
+			<view v-for="banner in banners" :key="banner.renderKey" class="banner-item">
 				<image class="banner-image" :src="banner.image_url" mode="aspectFill" />
 				<view class="banner-info">
 					<text class="banner-title">{{ banner.title }}</text>
@@ -13,7 +13,7 @@
 				</view>
 				<view class="banner-actions">
 					<button @tap="toggleStatus(banner)" size="mini">{{ banner.status === 'online' ? '下线' : '上线' }}</button>
-					<button @tap="deleteBanner(banner._id)" size="mini" type="warn">删除</button>
+					<button @tap="deleteBanner(banner.bannerId)" size="mini" type="warn">删除</button>
 				</view>
 			</view>
 		</view>
@@ -25,6 +25,9 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
+import { uploadImageWithPresign } from '@/utils/presigned-upload'
+
 export default {
 	data() {
 		return {
@@ -38,12 +41,20 @@ export default {
 	methods: {
 		async loadBanners() {
 			try {
-				const db = uniCloud.database()
-				const res = await db.collection('banners')
-					.orderBy('sort_order', 'asc')
-					.get()
-				
-				this.banners = res.result.data || []
+				const dashboardService = getHttpService('dashboard-service')
+				const token = uni.getStorageSync('token')
+				const res = await dashboardService.getAdminBanners({
+					_token: token,
+					limit: 100
+				})
+				const bannerList = Array.isArray(res && res.data) ? res.data : []
+				this.banners = bannerList.map((item, index) => {
+					const bannerId = String((item && (item.id || item._id)) || `banner-${index}`)
+					return Object.assign({}, item, {
+						bannerId,
+						renderKey: `banner-${bannerId}`
+					})
+				})
 			} catch (e) {
 				console.error('加载 banner 失败:', e)
 				uni.showToast({ title: '加载失败', icon: 'none' })
@@ -62,31 +73,27 @@ export default {
 					try {
 						this.isUploading = true
 						uni.showLoading({ title: '上传中...' })
-						
-						// 上传到云存储
-						const cloudPath = `banners/${Date.now()}.jpg`
-						const uploadRes = await uniCloud.uploadFile({
+
+						const uploadResult = await uploadImageWithPresign({
+							scene: 'banner-image',
 							filePath,
-							cloudPath
+							token: uni.getStorageSync('token'),
+							fileNamePrefix: 'banner'
 						})
-						
-						console.log('上传结果:', uploadRes)
-						const fileID = uploadRes.fileID
-						
-						if (!fileID) {
-							throw new Error('上传失败，未返回 fileID')
-						}
-						
-						// 插入数据库
-						const db = uniCloud.database()
-						await db.collection('banners').add({
+						const dashboardService = getHttpService('dashboard-service')
+						const createRes = await dashboardService.createBanner({
+							_token: uni.getStorageSync('token'),
 							title: '新 Banner',
-							image_url: fileID,
+							image_url: uploadResult.url,
 							link_url: '',
 							status: 'online',
-							sort_order: this.banners.length + 1,
-							create_date: Date.now()
+							position: 'home',
+							sort_order: this.banners.length + 1
 						})
+
+						if (!createRes || createRes.code !== 0) {
+							throw new Error((createRes && createRes.message) || '保存 Banner 失败')
+						}
 						
 						uni.hideLoading()
 						uni.showToast({ title: '上传成功', icon: 'success' })
@@ -107,10 +114,16 @@ export default {
 		},
 		async toggleStatus(banner) {
 			try {
-				const db = uniCloud.database()
-				await db.collection('banners').doc(banner._id).update({
+				const dashboardService = getHttpService('dashboard-service')
+				const res = await dashboardService.updateBannerStatus({
+					_token: uni.getStorageSync('token'),
+					bannerId: banner.bannerId,
 					status: banner.status === 'online' ? 'offline' : 'online'
 				})
+
+				if (!res || res.code !== 0) {
+					throw new Error((res && res.message) || '更新失败')
+				}
 				
 				uni.showToast({ title: '已更新', icon: 'success' })
 				this.loadBanners()
@@ -127,8 +140,15 @@ export default {
 					if (!res.confirm) return
 					
 					try {
-						const db = uniCloud.database()
-						await db.collection('banners').doc(id).remove()
+						const dashboardService = getHttpService('dashboard-service')
+						const res = await dashboardService.deleteBanner({
+							_token: uni.getStorageSync('token'),
+							bannerId: id
+						})
+
+						if (!res || res.code !== 0) {
+							throw new Error((res && res.message) || '删除失败')
+						}
 						
 						uni.showToast({ title: '已删除', icon: 'success' })
 						this.loadBanners()

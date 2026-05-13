@@ -58,6 +58,7 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
 	export default {
 		name: 'MonthPlan',
 		data() {
@@ -197,7 +198,7 @@
 				}
 
 				try {
-					const goalService = uniCloud.importObject('goal-service')
+					const goalService = getHttpService('goal-service')
 					const year = new Date().getFullYear()
 					
 					const res = await goalService.getMonthGoals({

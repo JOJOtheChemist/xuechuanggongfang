@@ -25,6 +25,8 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
+
 export default {
 	data() {
 		return {
@@ -40,21 +42,23 @@ export default {
 			uni.showLoading({ title: '更新中...' })
 			
 			try {
-				const service = uniCloud.importObject('update-article-prices')
-				const res = await service.updateAllArticlePrices()
-				
+				const articleService = getHttpService('article-service')
+				const result = await articleService.batchUpdatePrices({
+					price: 5,
+					_token: uni.getStorageSync('token')
+				})
+
 				uni.hideLoading()
-				
-				if (res && res.code === 0) {
-					this.result = res.data
-					uni.showToast({ title: '更新成功', icon: 'success' })
-				} else {
-					uni.showModal({
-						title: '更新失败',
-						content: res.message || '未知错误',
-						showCancel: false
-					})
+
+				if (!result || result.code !== 0 || !result.data) {
+					throw new Error((result && result.message) || '更新失败')
 				}
+
+				this.result = result.data
+				uni.showToast({
+					title: `已更新 ${result.data.updated || 0} 篇`,
+					icon: 'success'
+				})
 			} catch (e) {
 				uni.hideLoading()
 				console.error('更新失败:', e)

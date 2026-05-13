@@ -1,219 +1,177 @@
-const fs = require('fs');
-const path = require('path');
-const https = require('https');
-const url = require('url');
+const fs = require('fs')
+const path = require('path')
+const http = require('http')
+const https = require('https')
 
-// Configuration
-// Cloud Storage Base URL (Must end with /)
-const BASE_URL = 'https://mp-46bd4293-7b92-444c-b936-5777a228063a.cdn.bspapp.com/all_pdf_images/';
+const BASE_URL = 'https://mp-46bd4293-7b92-444c-b936-5777a228063a.cdn.bspapp.com/all_pdf_images/'
+const LOCAL_ROOT_PREFIX = '/Users/yeya/Documents/HBuilderProjects/云创工坊/所有PDF资料/'
+const DRY_RUN = false
 
-// Local Path Root to be replaced (Must end with / or whatever separator used)
-// Note: We will dynamically detect the separator, but this string should match the start of your local_images paths.
-const LOCAL_ROOT_PREFIX = '/Users/yeya/Documents/HBuilderProjects/云创工坊/所有PDF资料/';
+const API_BASE_URL = (process.env.XUECHUANG_API_BASE_URL || 'https://xuechuang.xyz/api/v1').replace(/\/+$/, '')
+const ADMIN_TOKEN = process.env.XUECHUANG_ADMIN_TOKEN || process.env.TOKEN || ''
+const DATA_FILE = path.join(__dirname, 'pages', 'admin', 'static', 'articles_data.json')
 
-// Set to true to print generated URLs without updating the database
-const DRY_RUN = false;
+function requestJson(method, requestUrl, payload) {
+	return new Promise((resolve, reject) => {
+		const target = new URL(requestUrl)
+		const transport = target.protocol === 'http:' ? http : https
+		const body = payload ? JSON.stringify(payload) : ''
 
-const SPACE_ID = 'mp-46bd4293-7b92-444c-b936-5777a228063a';
-const CLOUD_FUNCTION_NAME = 'import-articles';
-const CANDIDATE_URLS = [
-    `https://fc-${SPACE_ID}.next.bspapp.com/http/${CLOUD_FUNCTION_NAME}`,
-    `https://${SPACE_ID}.next.bspapp.com/http/${CLOUD_FUNCTION_NAME}`
-];
+		const req = transport.request(
+			target,
+			{
+				method,
+				headers: {
+					'Content-Type': 'application/json',
+					'Content-Length': Buffer.byteLength(body),
+					...(ADMIN_TOKEN
+						? {
+							Authorization: `Bearer ${ADMIN_TOKEN}`,
+							'X-Access-Token': ADMIN_TOKEN
+						}
+						: {})
+				}
+			},
+			(res) => {
+				let raw = ''
+				res.on('data', (chunk) => {
+					raw += chunk
+				})
+				res.on('end', () => {
+					if (!raw) {
+						resolve({})
+						return
+					}
 
-let CLOUD_FUNCTION_URL_BASE = '';
-const DATA_FILE = path.join(__dirname, 'static', 'articles_data.json');
+					try {
+						resolve(JSON.parse(raw))
+					} catch (error) {
+						reject(new Error(`Invalid JSON response: ${raw}`))
+					}
+				})
+			}
+		)
 
-// Helper: Check URL availability
-function checkUrl(urlToCheck) {
-    return new Promise((resolve) => {
-        const parsedUrl = url.parse(urlToCheck);
-        const options = {
-            hostname: parsedUrl.hostname,
-            path: parsedUrl.path,
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        };
-        const req = https.request(options, (res) => {
-            if (res.statusCode !== 404) resolve(true);
-            else resolve(false);
-        });
-        req.on('error', () => resolve(false));
-        req.write(JSON.stringify({ test: true }));
-        req.end();
-    });
-}
-
-// Helper: Send POST request to Cloud Function
-function callCloudFunction(methodName, data) {
-    return new Promise((resolve, reject) => {
-        const fullUrl = `${CLOUD_FUNCTION_URL_BASE}/${methodName}`;
-        const parsedUrl = url.parse(fullUrl);
-        const postData = JSON.stringify(data);
-        const options = {
-            hostname: parsedUrl.hostname,
-            path: parsedUrl.path,
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(postData)
-            }
-        };
-        const req = https.request(options, (res) => {
-            let body = '';
-            res.on('data', (chunk) => body += chunk);
-            res.on('end', () => {
-                if (res.statusCode >= 200 && res.statusCode < 300) {
-                    try { resolve(JSON.parse(body)); }
-                    catch (e) { reject(new Error(`Invalid JSON: ${body}`)); }
-                } else {
-                    reject(new Error(`HTTP Error: ${res.statusCode} ${body}`));
-                }
-            });
-        });
-        req.on('error', (e) => reject(e));
-        req.write(postData);
-        req.end();
-    });
+		req.on('error', reject)
+		if (body) req.write(body)
+		req.end()
+	})
 }
 
 function convertLocalToRemote(localPath) {
-    // 1. Check if path starts with prefix
-    if (!localPath.startsWith(LOCAL_ROOT_PREFIX)) {
-        console.warn(`    ⚠️ Path does not start with expected prefix: ${localPath}`);
-        // Fallback: just use filename if prefix doesn't match? 
-        // Or maybe return null to skip? 
-        // For now, let's try to preserve the folder structure relative to the '所有PDF资料' directory if possible,
-        // or just return plain filename if totally mismatch.
-        // Let's being strict:
-        return null;
-    }
+	if (!localPath.startsWith(LOCAL_ROOT_PREFIX)) {
+		console.warn(`    ⚠️ Path does not start with expected prefix: ${localPath}`)
+		return null
+	}
 
-    // 2. Extract relative path
-    // e.g. "六级知识板块/六级高频词汇.../image.webp"
-    const relativePath = localPath.substring(LOCAL_ROOT_PREFIX.length);
+	const relativePath = localPath.substring(LOCAL_ROOT_PREFIX.length)
+	const encodedRelativePath = relativePath
+		.split(/[/\\]/)
+		.map((segment) => encodeURIComponent(segment))
+		.join('/')
 
-    // 3. Split by path separator (forward or backward slash)
-    const parts = relativePath.split(/[/\\]/);
+	return BASE_URL + encodedRelativePath
+}
 
-    // 4. Encode each part (URI encode needed for Chinese characters)
-    const encodedParts = parts.map(part => encodeURIComponent(part));
+async function importArticle(articleData) {
+	const response = await requestJson('POST', `${API_BASE_URL}/catalog/admin/articles/import`, {
+		articles: [articleData]
+	})
 
-    // 5. Join with forward slashes
-    const encodedRelativePath = encodedParts.join('/');
+	if (!response || response.code !== 0 || !response.data) {
+		throw new Error((response && response.message) || 'Import failed')
+	}
 
-    // 6. Prepend Base URL
-    return BASE_URL + encodedRelativePath;
+	return response.data
 }
 
 async function main() {
-    console.log('=============================================');
-    console.log(`Dry Run Mode: ${DRY_RUN ? 'ON (No DB changes)' : 'OFF (Will update DB)'}`);
-    console.log(`Base URL: ${BASE_URL}`);
-    console.log(`Prefix  : ${LOCAL_ROOT_PREFIX}`);
-    console.log('=============================================\n');
+	console.log('=============================================')
+	console.log(`Dry Run Mode: ${DRY_RUN ? 'ON (No DB changes)' : 'OFF (Will update DB)'}`)
+	console.log(`API Base : ${API_BASE_URL}`)
+	console.log(`CDN Base : ${BASE_URL}`)
+	console.log(`Prefix   : ${LOCAL_ROOT_PREFIX}`)
+	console.log('=============================================\n')
 
-    if (!DRY_RUN) {
-        console.log('正在检测云函数 URL...');
-        for (const testUrl of CANDIDATE_URLS) {
-            console.log(`  Trying: ${testUrl}`);
-            if (await checkUrl(testUrl)) {
-                CLOUD_FUNCTION_URL_BASE = testUrl;
-                console.log(`  ✅ 成功连接: ${CLOUD_FUNCTION_URL_BASE}`);
-                break;
-            }
-        }
+	if (!DRY_RUN && !ADMIN_TOKEN) {
+		console.error('❌ 缺少管理员 Token。请设置环境变量 XUECHUANG_ADMIN_TOKEN 后重试。')
+		process.exit(1)
+	}
 
-        if (!CLOUD_FUNCTION_URL_BASE) {
-            console.error('❌ 无法连接到云函数。请确保 import-articles 云函数已 URL 化。');
-            process.exit(1);
-        }
-    }
+	if (!fs.existsSync(DATA_FILE)) {
+		console.error('Articles data file not found:', DATA_FILE)
+		process.exit(1)
+	}
 
-    if (!fs.existsSync(DATA_FILE)) {
-        console.error('Articles data file not found:', DATA_FILE);
-        return;
-    }
+	const articles = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'))
+	console.log(`Found ${articles.length} articles to process.`)
 
-    const articles = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
-    console.log(`\nFound ${articles.length} articles to process.`);
+	let successCount = 0
+	let skipCount = 0
 
-    let successCount = 0;
-    let skipCount = 0;
+	for (let i = 0; i < articles.length; i += 1) {
+		const article = articles[i]
+		const localImages = Array.isArray(article.local_images) ? article.local_images : []
+		const remoteUrls = localImages
+			.map((imgPath) => convertLocalToRemote(imgPath))
+			.filter(Boolean)
 
-    for (let i = 0; i < articles.length; i++) {
-        const article = articles[i];
-        // console.log(`\n[${i+1}/${articles.length}] Processing: ${article.title}`);
+		if (remoteUrls.length === 0) {
+			console.log(`\n[${i + 1}] ${article.title} - ⚠️ Skipped (No valid image mappings)`)
+			skipCount += 1
+			continue
+		}
 
-        const localImages = article.local_images || [];
-        const remoteUrls = [];
+		console.log(`\n[${i + 1}] ${article.title}`)
+		console.log(`    L: ${localImages[0]}`)
+		console.log(`    R: ${remoteUrls[0]}`)
+		if (localImages.length > 1) {
+			console.log(`    ... (+${localImages.length - 1} more)`)
+		}
 
-        for (const imgPath of localImages) {
-            const remoteUrl = convertLocalToRemote(imgPath);
-            if (remoteUrl) {
-                remoteUrls.push(remoteUrl);
-            }
-        }
+		if (DRY_RUN) {
+			successCount += 1
+			continue
+		}
 
-        if (remoteUrls.length > 0) {
-            // Log the first mapping for verification
-            console.log(`\n[${i + 1}] ${article.title}`);
-            console.log(`    L: ${localImages[0]}`);
-            console.log(`    R: ${remoteUrls[0]}`);
-            if (localImages.length > 1) {
-                console.log(`    ... (+${localImages.length - 1} more)`);
-            }
+		const articleData = {
+			...article,
+			cover_image: remoteUrls[0],
+			attachments: [{
+				type: 'pdf-images',
+				name: `${article.title}.pdf`,
+				images: remoteUrls,
+				pageCount: remoteUrls.length
+			}]
+		}
+		delete articleData.local_images
 
-            if (!DRY_RUN) {
-                // Prepare update payload
-                const attachments = [{
-                    type: 'pdf-images',
-                    name: article.title + '.pdf',
-                    images: remoteUrls,
-                    pageCount: remoteUrls.length
-                }];
+		try {
+			const importResult = await importArticle(articleData)
+			if (Number(importResult.success || 0) > 0) {
+				console.log('    ✅ DB Update Success')
+				successCount += 1
+			} else {
+				console.error('    ⚠️ DB Update Failed:', importResult)
+			}
+		} catch (error) {
+			console.error('    ❌ Request Failed:', error.message)
+		}
+	}
 
-                const articleData = {
-                    ...article,
-                    cover_image: remoteUrls[0],
-                    attachments: attachments
-                };
-                delete articleData.local_images;
+	console.log('\n=============================================')
+	console.log(`Summary: Processed ${articles.length} articles.`)
+	console.log(`Potential Updates: ${successCount}`)
+	console.log(`Skipped: ${skipCount}`)
 
-                try {
-                    const importRes = await callCloudFunction('importData', {
-                        articles: [articleData]
-                    });
-
-                    if (importRes.success > 0) {
-                        console.log('    ✅ DB Update Success');
-                        successCount++;
-                    } else {
-                        console.error('    ⚠️ DB Update Failed:', importRes);
-                    }
-                } catch (e) {
-                    console.error('    ❌ Request Failed:', e.message);
-                }
-            } else {
-                successCount++; // Count potential successes in dry run
-            }
-        } else {
-            console.log(`\n[${i + 1}] ${article.title} - ⚠️ Skipped (No valid image mappings)`);
-            skipCount++;
-        }
-    }
-
-    console.log('\n=============================================');
-    console.log(`Summary: Processed ${articles.length} articles.`);
-    console.log(`Potential Updates: ${successCount}`);
-    console.log(`Skipped: ${skipCount}`);
-
-    if (DRY_RUN) {
-        console.log('\n⚠️  This was a DRY RUN. No database changes were made.');
-        console.log('👉 To apply changes, set "const DRY_RUN = false;" in the script and run again.');
-    } else {
-        console.log('\n✅ Database update complete.');
-    }
+	if (DRY_RUN) {
+		console.log('\n⚠️ This was a DRY RUN. No database changes were made.')
+	} else {
+		console.log('\n✅ Database update complete.')
+	}
 }
 
-main();
+main().catch((error) => {
+	console.error('Fatal error:', error)
+	process.exit(1)
+})

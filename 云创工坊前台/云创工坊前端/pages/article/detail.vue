@@ -53,6 +53,14 @@
 					<text class="meta-item">{{ publishTimeText }}</text>
 				</view>
 
+				<view v-if="isGuestMode" class="guest-mode-card">
+					<text class="guest-mode-kicker">{{ isGuestPreview ? '游客模式预览' : '游客模式' }}</text>
+					<text class="guest-mode-text">
+						{{ isGuestPreview ? '当前可先浏览文章详情预览，登录后可查看完整正文、附件和积分解锁内容。' : '当前为游客模式，你可以先浏览文章详情，需要保存记录或查看更多内容时再登录。' }}
+					</text>
+					<button v-if="isGuestPreview" class="guest-mode-btn" @tap="goLogin">登录查看完整内容</button>
+				</view>
+
 				<!-- 标签展示 -->
 				<view v-if="article.tags && article.tags.length" class="tags-container">
 					<view v-for="(tag, index) in article.tags" :key="index" class="tag-item">
@@ -92,6 +100,12 @@
 				</view>
 				<view v-else class="article-content">
 					<rich-text :nodes="article.content || '暂无内容'"></rich-text>
+				</view>
+
+				<view v-if="isGuestPreview" class="guest-preview-footer">
+					<text class="guest-preview-title">当前是游客模式预览</text>
+					<text class="guest-preview-desc">先体验页面详情，确认需要继续阅读时再登录，不会在进入页面时强制授权。</text>
+					<button class="guest-preview-btn" @tap="goLogin">去登录查看完整文章</button>
 				</view>
 				
 				<!-- 附件列表（仅显示非图集类型的附件） -->
@@ -133,6 +147,7 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
 export default {
 	components: {
 	},
@@ -197,6 +212,12 @@ export default {
 			}
 			return this.article.stats.likes || 0
 		},
+		isGuestMode() {
+			return !!(this.article && this.article.guest_mode)
+		},
+		isGuestPreview() {
+			return !!(this.article && this.article.guest_mode && this.article.preview_mode)
+		},
 		downloadableAttachments() {
 			if (!this.article || !this.article.attachments) return []
 			
@@ -236,17 +257,14 @@ export default {
 			
 			try {
 				const token = uni.getStorageSync('token')
-				if (!token) {
-					this.error = '请先登录后再查看文章'
-					this.loading = false
-					return
+				const articleService = getHttpService('article-service')
+				const params = {
+					articleId: this.articleId
 				}
-				
-				const articleService = uniCloud.importObject('article-service')
-				const res = await articleService.getArticleDetail({
-					articleId: this.articleId,
-					_token: token
-				})
+				if (token) {
+					params._token = token
+				}
+				const res = await articleService.getArticleDetail(params)
 				
 			console.log('[article-detail] 获取文章结果', res)
 			
@@ -290,6 +308,21 @@ export default {
 			uni.showToast({ title: '文章信息异常', icon: 'none' })
 			return
 		}
+
+		const token = uni.getStorageSync('token')
+		if (!token) {
+			uni.showModal({
+				title: '游客模式',
+				content: '当前正在游客模式下浏览，登录后可解锁完整文章内容，是否前往登录？',
+				confirmText: '去登录',
+				success: (res) => {
+					if (res.confirm) {
+						this.goLogin()
+					}
+				}
+			})
+			return
+		}
 		
 		// 确认弹窗
 		uni.showModal({
@@ -302,8 +335,7 @@ export default {
 				uni.showLoading({ title: '解锁中...' })
 				
 				try {
-					const token = uni.getStorageSync('token')
-					const articleService = uniCloud.importObject('article-service')
+					const articleService = getHttpService('article-service')
 					const result = await articleService.unlockArticle({
 						articleId: this.articleId,
 						_token: token
@@ -342,6 +374,12 @@ export default {
 					this.unlocking = false
 				}
 			}
+		})
+	},
+	goLogin() {
+		const redirect = encodeURIComponent(`/pages/article/detail?id=${this.articleId}`)
+		uni.navigateTo({
+			url: `/pages/auth/login/index?redirect=${redirect}`
 		})
 	},
 	
@@ -436,12 +474,8 @@ export default {
 
 				try {
 					let downloadUrl = file.fileID
-					// 如果是云文件 ID，先换取临时链接
 					if (downloadUrl.startsWith('cloud://')) {
-						const res = await uniCloud.getTempFileURL({ fileList: [file.fileID] })
-						if (res.fileList && res.fileList[0].tempFileURL) {
-							downloadUrl = res.fileList[0].tempFileURL
-						}
+						throw new Error('旧文件地址格式已停用，请改用公开 URL')
 					}
 					openDoc(downloadUrl)
 				} catch (e) {
@@ -487,7 +521,7 @@ export default {
 	onLoad(options) {
 		this.loadUserInfo()
 		
-		this.articleId = options.id || ''
+		this.articleId = options.id || options.articleId || options.article_id || ''
 		
 		if (!this.articleId) {
 			this.error = '文章 ID 不存在'
@@ -579,6 +613,44 @@ export default {
 	margin-bottom: 24rpx;
 }
 
+.guest-mode-card {
+	background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+	border: 1rpx solid #bfdbfe;
+	border-radius: 20rpx;
+	padding: 24rpx;
+	margin-bottom: 24rpx;
+	display: flex;
+	flex-direction: column;
+	gap: 14rpx;
+}
+
+.guest-mode-kicker {
+	font-size: 24rpx;
+	font-weight: 700;
+	color: #1d4ed8;
+}
+
+.guest-mode-text {
+	font-size: 25rpx;
+	line-height: 1.6;
+	color: #334155;
+}
+
+.guest-mode-btn {
+	align-self: flex-start;
+	padding: 14rpx 28rpx;
+	border-radius: 999rpx;
+	border: none;
+	background: #1d4ed8;
+	color: #ffffff;
+	font-size: 24rpx;
+	font-weight: 600;
+}
+
+.guest-mode-btn::after {
+	border: none;
+}
+
 .summary-text {
 	font-size: 28rpx;
 	color: #334155;
@@ -590,6 +662,44 @@ export default {
 	color: #1e293b;
 	line-height: 1.8;
 	margin-bottom: 32rpx;
+}
+
+.guest-preview-footer {
+	background: #fff7ed;
+	border: 1rpx solid #fdba74;
+	border-radius: 20rpx;
+	padding: 28rpx;
+	margin-bottom: 32rpx;
+	display: flex;
+	flex-direction: column;
+	gap: 14rpx;
+}
+
+.guest-preview-title {
+	font-size: 28rpx;
+	font-weight: 700;
+	color: #9a3412;
+}
+
+.guest-preview-desc {
+	font-size: 25rpx;
+	line-height: 1.6;
+	color: #7c2d12;
+}
+
+.guest-preview-btn {
+	align-self: flex-start;
+	padding: 16rpx 32rpx;
+	border-radius: 999rpx;
+	border: none;
+	background: #ea580c;
+	color: #ffffff;
+	font-size: 25rpx;
+	font-weight: 600;
+}
+
+.guest-preview-btn::after {
+	border: none;
 }
 
 .attachments-section {

@@ -1,11 +1,15 @@
 <template>
   <view class="forum-page">
-    <forum-header
-      :active-tab="activeTab"
-      :current-school="currentSchool"
-      @change-tab="handleTabChange"
-      @open-school-popup="openSchoolPopup"
-    />
+    <view class="forum-hero-shell">
+      <image class="forum-hero-image" :src="heroImageUrl" mode="widthFix" />
+      <forum-header
+        class="forum-hero-overlay"
+        :active-tab="activeTab"
+        :current-school="currentSchool"
+        @change-tab="handleTabChange"
+        @open-school-popup="openSchoolPopup"
+      />
+    </view>
 
     <scroll-view
       class="post-scroll"
@@ -21,39 +25,41 @@
         <text class="state-text">发布第一条校园动态，和同学一起交流吧</text>
       </view>
 
-      <view v-else class="waterfall">
-        <view class="column">
-          <forum-post-card
-            v-for="item in leftColumnPosts"
-            :key="item.id"
-            :post="item"
-            @open="goDetail"
-            @longpress="handlePostLongPress"
-          />
+      <view v-else class="feed-shell">
+        <view class="waterfall">
+          <view class="column">
+            <forum-post-card
+              v-for="item in leftColumnPosts"
+              :key="item.id"
+              :post="item"
+              @open="goDetail"
+              @longpress="handlePostLongPress"
+            />
+          </view>
+          <view class="column">
+            <forum-post-card
+              v-for="item in rightColumnPosts"
+              :key="item.id"
+              :post="item"
+              @open="goDetail"
+              @longpress="handlePostLongPress"
+            />
+          </view>
         </view>
-        <view class="column">
-          <forum-post-card
-            v-for="item in rightColumnPosts"
-            :key="item.id"
-            :post="item"
-            @open="goDetail"
-            @longpress="handlePostLongPress"
-          />
-        </view>
-      </view>
 
-      <view v-if="loadingMore" class="loading-more">
-        <text>加载更多中...</text>
-      </view>
-      <view v-else-if="posts.length > 0 && !hasMore" class="loading-more done">
-        <text>已经到底了</text>
+        <view v-if="loadingMore" class="loading-more">
+          <text>加载更多中...</text>
+        </view>
+        <view v-else-if="posts.length > 0 && !hasMore" class="loading-more done">
+          <text>已经到底了</text>
+        </view>
       </view>
 
       <view class="bottom-space"></view>
     </scroll-view>
 
     <view class="fab-btn" @tap="goPublish">
-      <text class="fab-icon">+</text>
+      <image class="fab-image" :src="publishButtonImageUrl" mode="aspectFit" />
     </view>
 
     <forum-school-popup
@@ -78,18 +84,38 @@
         <text class="delete-post-tip">将删除：{{ pendingDeletePostTitle }}</text>
       </template>
     </admin-password-dialog>
+
+    <bottom-nav active="forum" />
   </view>
 </template>
 
 <script>
-import ForumHeader from '@/components/forum/ForumHeader.vue'
-import ForumPostCard from '@/components/forum/ForumPostCard.vue'
-import ForumSchoolPopup from '@/components/forum/ForumSchoolPopup.vue'
+import { getHttpService } from '@/utils/http-services'
+import { getCachedImageSync, resolveCachedImage } from '@/utils/remote-image-cache'
+import ForumHeader from './components/ForumHeader.vue'
+import ForumPostCard from './components/ForumPostCard.vue'
+import ForumSchoolPopup from './components/ForumSchoolPopup.vue'
 import AdminPasswordDialog from '@/components/common/AdminPasswordDialog.vue'
 import { verifyAdminPassword } from '@/common/admin-auth'
 
 const DEFAULT_HOME_SCHOOL = '云南大学'
 const MYSTERY_SCHOOL = '神秘学校'
+const PUBLISH_BUTTON_IMAGE_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/forum/publish-button/publish-dynamic-button-v1.webp'
+const FORUM_HERO_IMAGE_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/forum/hero/campus-square-hero-v1.jpg'
+
+function buildForumSchoolOptions(rawOptions = [], currentSchool = '') {
+  const mapped = []
+  const set = new Set()
+
+  ;[currentSchool, ...rawOptions, DEFAULT_HOME_SCHOOL, MYSTERY_SCHOOL].forEach((item) => {
+    const school = String(item || '').trim()
+    if (!school || set.has(school)) return
+    set.add(school)
+    mapped.push(school)
+  })
+
+  return mapped
+}
 
 export default {
   components: {
@@ -101,6 +127,8 @@ export default {
   data() {
     return {
       activeTab: 'local',
+      heroImageUrl: getCachedImageSync(FORUM_HERO_IMAGE_URL),
+      publishButtonImageUrl: PUBLISH_BUTTON_IMAGE_URL,
       currentSchool: DEFAULT_HOME_SCHOOL,
       schoolOptions: [],
       showSchoolPopup: false,
@@ -138,6 +166,7 @@ export default {
   },
   onLoad() {
     this.registerEvents()
+    this.syncHeroImage()
     this.refreshList()
   },
   onShow() {
@@ -161,6 +190,16 @@ export default {
     this.unregisterEvents()
   },
   methods: {
+    async syncHeroImage() {
+      try {
+        const cachedUrl = await resolveCachedImage(FORUM_HERO_IMAGE_URL)
+        if (cachedUrl) {
+          this.heroImageUrl = cachedUrl
+        }
+      } catch (error) {
+        console.warn('[forum] 头图缓存失败', error)
+      }
+    },
     normalizeSchoolDisplay(name) {
       const safe = String(name || '').trim()
       if (!safe) return ''
@@ -172,12 +211,28 @@ export default {
     },
     registerEvents() {
       uni.$on('forum-post-created', this.handlePostCreated)
+      uni.$on('forum-post-liked', this.handlePostLiked)
     },
     unregisterEvents() {
       uni.$off('forum-post-created', this.handlePostCreated)
+      uni.$off('forum-post-liked', this.handlePostLiked)
     },
     handlePostCreated() {
       this.refreshingFromEvent = true
+    },
+    handlePostLiked(payload = {}) {
+      const targetId = String(payload.id || '').trim()
+      if (!targetId) return
+
+      const nextLiked = !!payload.is_liked
+      const nextLikeCount = Number(payload.like_count || 0)
+      this.posts = (Array.isArray(this.posts) ? this.posts : []).map((item) => {
+        if (!item || String(item.id || '') !== targetId) return item
+        return Object.assign({}, item, {
+          is_liked: nextLiked,
+          like_count: nextLikeCount
+        })
+      })
     },
     async refreshList() {
       this.page = 1
@@ -195,7 +250,7 @@ export default {
     },
     async fetchPosts(reset) {
       try {
-        const forumService = uniCloud.importObject('forum-service')
+        const forumService = getHttpService('forum-service')
         const requestedSchool = this.activeTab === 'local'
           ? this.normalizeSchoolDisplay(this.currentSchool)
           : ''
@@ -211,17 +266,11 @@ export default {
 
         const applySchoolMeta = (payload = {}) => {
           const rawOptions = Array.isArray(payload.school_options) ? payload.school_options : []
-          if (rawOptions.length > 0) {
-            const mapped = []
-            const set = new Set()
-            rawOptions.forEach((item) => {
-              const school = this.normalizeSchoolDisplay(item)
-              if (!school || set.has(school)) return
-              set.add(school)
-              mapped.push(school)
-            })
-            this.schoolOptions = mapped
-          }
+          const nextSchoolOptions = buildForumSchoolOptions(
+            rawOptions.map(item => this.normalizeSchoolDisplay(item)),
+            this.normalizeSchoolDisplay(payload.current_school || this.currentSchool)
+          )
+          this.schoolOptions = nextSchoolOptions
 
           if (this.activeTab === 'local') {
             if (!this.currentSchool && payload.current_school) {
@@ -325,7 +374,7 @@ export default {
       }
 
       try {
-        const forumService = uniCloud.importObject('forum-service')
+        const forumService = getHttpService('forum-service')
         const token = this.getToken()
         const params = { school: schoolName }
         if (token) params._token = token
@@ -382,7 +431,7 @@ export default {
       }
 
       try {
-        const forumService = uniCloud.importObject('forum-service')
+        const forumService = getHttpService('forum-service')
         const token = this.getToken()
         const params = { school: target }
         if (token) params._token = token
@@ -462,7 +511,7 @@ export default {
 
       this.deletingPost = true
       try {
-        const forumService = uniCloud.importObject('forum-service')
+        const forumService = getHttpService('forum-service')
         const token = this.getToken()
         const params = { postId: pendingPost.id, adminPassword: safePassword }
         if (token) params._token = token
@@ -540,6 +589,26 @@ export default {
   height: 0;
 }
 
+.forum-hero-image {
+  display: block;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.forum-hero-shell {
+  position: relative;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.forum-hero-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 42rpx;
+  z-index: 2;
+}
+
 .state-card {
   margin: 30rpx 24rpx;
   padding: 40rpx 28rpx;
@@ -562,14 +631,20 @@ export default {
   display: block;
 }
 
+.feed-shell {
+  margin: 0rpx 24rpx 0;
+  padding: 18rpx 18rpx 24rpx;
+  background: #ffffff;
+}
+
 .waterfall {
   display: flex;
-  justify-content: space-between;
-  padding: 18rpx 20rpx 0;
+  justify-content: flex-start;
+  column-gap: 28rpx;
 }
 
 .column {
-  width: 348rpx;
+  width: 318rpx;
 }
 
 .loading-more {
@@ -585,29 +660,24 @@ export default {
 
 .fab-btn {
   position: fixed;
-  right: 30rpx;
-  bottom: calc(120rpx + env(safe-area-inset-bottom));
-  width: 94rpx;
-  height: 94rpx;
-  border-radius: 50%;
-  background: #0f172a;
-  border: 4rpx solid #f1f5f9;
+  left: 50%;
+  bottom: calc(150rpx + env(safe-area-inset-bottom));
+  width: 240rpx;
+  height: 91rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 14rpx 32rpx rgba(15, 23, 42, 0.35);
+  transform: translateX(-50%);
   z-index: 50;
 }
 
-.fab-icon {
-  color: #ffffff;
-  font-size: 56rpx;
-  font-weight: 300;
-  margin-top: -4rpx;
+.fab-image {
+  width: 100%;
+  height: 100%;
 }
 
 .bottom-space {
-  height: 180rpx;
+  height: 280rpx;
 }
 
 .delete-post-tip {

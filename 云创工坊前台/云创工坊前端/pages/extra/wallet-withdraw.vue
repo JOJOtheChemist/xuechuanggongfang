@@ -17,44 +17,37 @@
 					<text class="label">提现数量 (新币)</text>
 					<view class="input-box">
 						<input 
-							type="number" 
+							type="digit"
 							class="amount-input" 
 							v-model="amount" 
 							placeholder="请输入数量"
 						/>
 					</view>
 
-
-					<text class="label">提现收款码</text>
-					<view class="qrcode-section">
-						<view class="qrcode-box" @tap="uploadQrcode">
-							<image v-if="paymentQrcode" :src="paymentQrcode" mode="aspectFill" class="qrcode-img"></image>
-							<view v-else class="qrcode-placeholder">
-								<text class="plus-icon">+</text>
-								<text class="upload-text">上传收款码</text>
-							</view>
-						</view>
-						<text class="tip-text">请上传微信/支付宝收款码，方便管理员打款</text>
+					<view class="notice-box direct-withdraw-box">
+						<text class="notice-text">提交后将通过微信官方接口直接提现到当前登录微信，请留意微信到账或确认通知。</text>
 					</view>
 					
 
 					
 					<button class="confirm-btn" :loading="loading" @tap="submit">提交申请</button>
 				</view>
+
 			</view>
 		</view>
 	</view>
 </template>
 
 <script>
+import { getHttpService, getCurrentUserToken } from '@/utils/http-services'
+import { uploadImageWithPresign } from '@/utils/presigned-upload'
+
 export default {
 	data() {
 		return {
 			amount: '',
 			balance: 0,
 			loading: false,
-			loading: false,
-
 			paymentQrcode: '',
 			isGuest: false
 		}
@@ -63,33 +56,68 @@ export default {
 		if (options.balance) {
 			this.balance = options.balance
 		}
+	},
+	onShow() {
 		this.loadBalance()
 	},
 	methods: {
-
+		showSubmitError(message) {
+			const text = String(message || '').trim() || '申请失败'
+			if (/商户.*余额不足|联系商家补充余额|NOT_ENOUGH/i.test(text)) {
+				uni.showModal({
+					title: '提现失败',
+					content: text,
+					showCancel: false,
+					confirmText: '我知道了'
+				})
+				return
+			}
+			uni.showToast({ title: text, icon: 'none' })
+		},
+		getWechatLoginCode() {
+			return new Promise((resolve) => {
+				// #ifdef MP-WEIXIN
+				uni.login({
+					provider: 'weixin',
+					success: (loginRes) => {
+						resolve(String(loginRes?.code || '').trim())
+					},
+					fail: (error) => {
+						console.warn('[wallet-withdraw] uni.login failed:', error)
+						resolve('')
+					}
+				})
+				// #endif
+				// #ifndef MP-WEIXIN
+				resolve('')
+				// #endif
+			})
+		},
+		normalizeCoinAmount(value) {
+			const amount = Number(value)
+			if (!Number.isFinite(amount)) return null
+			const normalized = Math.round((amount + Number.EPSILON) * 100) / 100
+			if (Math.abs(normalized - amount) > 0.000001) {
+				return null
+			}
+			return normalized
+		},
 		async loadBalance() {
-			const token = uni.getStorageSync('token')
-			if (!token) {
+			const token = getCurrentUserToken()
+			const refreshToken = uni.getStorageSync('refreshToken')
+			if (!token && !refreshToken) {
 				this.isGuest = true
 				return
 			}
 			this.isGuest = false
 			try {
-				const coinService = uniCloud.importObject('coin-service')
-				const res = await coinService.getCoinStats({ _token: token })
+				const coinService = getHttpService('coin-service')
+				const res = await coinService.getCoinStats(token ? { _token: token } : {})
 				if (res && res.code === 0 && res.data) {
 					this.balance = res.data.current_balance || 0
-				}
-				
-				// Fetch user profile for existing qrcode via Cloud Object
-				try {
-					const userCenter = uniCloud.importObject('user-center')
-					const qrRes = await userCenter.getPaymentQrcode({ _token: token })
-					if (qrRes.code === 0 && qrRes.data) {
-						this.paymentQrcode = qrRes.data.payment_qrcode || ''
-					}
-				} catch(qrError) {
-					console.warn('Failed to load payment qrcode', qrError)
+					this.isGuest = false
+				} else if (res && (res.statusCode === 401 || res.error === 'AUTH_REQUIRED')) {
+					this.isGuest = true
 				}
 			} catch (e) {
 				console.error(e)
@@ -100,13 +128,14 @@ export default {
 				this.promptLogin()
 				return
 			}
-			const val = parseFloat(this.amount)
-			if (isNaN(val) || val <= 0) {
-				uni.showToast({ title: '请输入有效数量', icon: 'none' })
+			const rawAmount = String(this.amount || '').trim()
+			if (/^\d+(\.\d{3,})$/.test(rawAmount)) {
+				uni.showToast({ title: '最多支持2位小数', icon: 'none' })
 				return
 			}
-			if (Math.floor(val) !== val) {
-				uni.showToast({ title: '仅支持整数', icon: 'none' })
+			const val = this.normalizeCoinAmount(rawAmount)
+			if (val === null || val <= 0) {
+				uni.showToast({ title: '请输入有效数量', icon: 'none' })
 				return
 			}
 			if (val > this.balance) {
@@ -118,36 +147,36 @@ export default {
 			// 	uni.showToast({ title: '请填写联系方式', icon: 'none' })
 			// 	return
 			// }
-			if (!this.paymentQrcode) {
-				uni.showToast({ title: '请上传收款码', icon: 'none' })
-				return
-			}
-
 			this.loading = true
 			try {
-				const token = uni.getStorageSync('token')
-				if (!token) {
+				const token = getCurrentUserToken()
+				const refreshToken = uni.getStorageSync('refreshToken')
+				const wechatLoginCode = await this.getWechatLoginCode()
+				if (!token && !refreshToken) {
 					this.promptLogin()
 					this.loading = false
 					return
 				}
-				const coinService = uniCloud.importObject('coin-service')
-				const res = await coinService.applyWithdrawCoins({
-					_token: token,
-					coins: val,
-					payment_qrcode: this.paymentQrcode
-				})
+				const coinService = getHttpService('coin-service')
+				const res = await coinService.applyWithdrawCoins(Object.assign(
+					token ? { _token: token } : {},
+					{
+						coins: val,
+						code: wechatLoginCode || undefined
+					}
+				))
 
 				if (res.code === 0) {
-					uni.showToast({ title: '提现申请已提交', icon: 'success' })
+					const stateText = res.data?.transferStateText || ''
+					uni.showToast({ title: stateText ? `已发起：${stateText}` : '微信提现已发起', icon: 'success' })
 					setTimeout(() => {
 						uni.navigateBack()
 					}, 1500)
 				} else {
-					uni.showToast({ title: res.message || '申请失败', icon: 'none' })
+					this.showSubmitError(res.message || '申请失败')
 				}
 			} catch (e) {
-				uni.showToast({ title: '请求异常', icon: 'none' })
+				this.showSubmitError(e && e.message ? e.message : '请求异常')
 			} finally {
 				this.loading = false
 			}
@@ -193,28 +222,30 @@ export default {
 		},
 		performUpload(filePath) {
 			uni.showLoading({ title: '上传中...' })
-			uniCloud.uploadFile({
-				filePath: filePath,
-				cloudPath: `payment_qrcode/${Date.now()}.jpg`,
-				success: async (uploadRes) => {
-					this.paymentQrcode = uploadRes.fileID
-					// Update DB via Cloud Object
+			uploadImageWithPresign({
+				scene: 'payment-qrcode',
+				filePath,
+				token: getCurrentUserToken(),
+				fileNamePrefix: 'payment-qrcode'
+			})
+				.then(async (uploadResult) => {
+					this.paymentQrcode = uploadResult.url
 					try {
-						const token = uni.getStorageSync('token')
-						const userCenter = uniCloud.importObject('user-center')
+						const token = getCurrentUserToken()
+						const userCenter = getHttpService('user-center')
 						await userCenter.updatePaymentQrcode({ url: this.paymentQrcode, _token: token })
 						uni.showToast({ title: '已自动保存收款码', icon: 'none' })
 					} catch(e) {
 						console.error('Auto save qrcode failed', e)
 					}
-					uni.hideLoading()
-				},
-				fail: (err) => {
+				})
+				.catch((err) => {
 					console.error(err)
+					uni.showToast({ title: (err && err.message) || '上传失败', icon: 'none' })
+				})
+				.finally(() => {
 					uni.hideLoading()
-					uni.showToast({ title: '上传失败', icon: 'none' })
-				}
-			})
+				})
 		}
 	}
 }
@@ -280,6 +311,15 @@ export default {
 	padding: 16rpx;
 	border-radius: 12rpx;
 	margin-bottom: 32rpx;
+}
+
+.direct-withdraw-box {
+	background-color: #eff6ff;
+	border-color: #bfdbfe;
+}
+
+.direct-withdraw-box .notice-text {
+	color: #1d4ed8;
 }
 
 .notice-text {

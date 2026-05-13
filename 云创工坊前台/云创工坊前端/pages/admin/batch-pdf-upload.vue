@@ -113,6 +113,8 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
+import { clearImportedArticles, createArticleFromPdfUrl, importArticlesInBatches, loadStaticJson } from '@/utils/admin-catalog'
 export default {
   data() {
     return {
@@ -147,16 +149,11 @@ export default {
       this.articles = [] // 先重置以便看到刷新效果
       this.addLog('正在拉取文章列表...', 'info')
       try {
-        const db = uniCloud.database()
-        // 尝试两种通用的响应结构
-        const res = await db.collection('articles').limit(500).get()
-        
-        let data = []
-        if (res.result && res.result.data) {
-          data = res.result.data
-        } else if (res.data) {
-          data = res.data
-        }
+        const articleService = getHttpService('article-service')
+        const res = await articleService.getList({
+          pageSize: 500
+        })
+        const data = Array.isArray(res && res.data && res.data.list) ? res.data.list : []
 
         if (data && data.length > 0) {
           this.articles = data
@@ -188,20 +185,16 @@ export default {
       if (!confirmed) return
       
       this.processing = true
-      this.addLog('正在请求清空 articles 集合...', 'warn')
       
       try {
-        const syncer = uniCloud.importObject('sync-cloud-articles', { customUI: true })
-        const res = await syncer.clearArticles()
-        
-        if (res && res.code === 0) {
-          this.addLog('清空成功!', 'success')
-          this.articles = []
-          uni.showToast({ title: '已清空', icon: 'success' })
-        } else {
-          this.addLog('清空失败: ' + (res.message || '未知错误'), 'error')
-          uni.showModal({ title: '错误', content: res.message || '未知错误' })
-        }
+        const result = await clearImportedArticles({
+          resetCategoryTags: true
+        })
+        this.addLog(`已删除 ${result.deletedCount || 0} 篇文章`, 'success')
+        uni.showToast({
+          title: '清理完成',
+          icon: 'success'
+        })
       } catch (e) {
         console.error(e)
         this.addLog('清空请求失败: ' + e.message, 'error')
@@ -279,19 +272,12 @@ export default {
       try {
         // 1. 加载本地 JSON
         this.addLog('正在读取 pages/admin/static/cloud_urls.json...', 'info')
-        const res = await new Promise((resolve, reject) => {
-          uni.request({
-            url: '/pages/admin/static/cloud_urls.json',
-            success: (res) => resolve(res),
-            fail: (err) => reject(err)
-          })
-        })
+        const urls = await loadStaticJson('/pages/admin/static/cloud_urls.json')
         
-        if (!res.data || !Array.isArray(res.data)) {
+        if (!urls || !Array.isArray(urls)) {
           throw new Error('JSON 数据格式不正确或加载失败')
         }
-        
-        const urls = res.data
+
         this.addLog(`✅ 成功加载 ${urls.length} 个 URL`, 'success')
         
         // 2. 复用手动处理逻辑生成列表
@@ -334,45 +320,29 @@ export default {
       this.addLog(`🚢 开始分批同步 ${count} 篇文章...`, 'info')
       
       try {
-        const BATCH_SIZE = 50
-        const totalBatches = Math.ceil(count / BATCH_SIZE)
-        const syncer = uniCloud.importObject('sync-cloud-articles', { customUI: true })
-        
-        let successCount = 0
-        
-        for (let i = 0; i < totalBatches; i++) {
-          const start = i * BATCH_SIZE
-          const end = Math.min(start + BATCH_SIZE, count)
-          const batch = this.scannedFiles.slice(start, end)
-          
-          this.addLog(`📦 正在同步第 ${i + 1}/${totalBatches} 批 (${start + 1}~${end})...`, 'info')
-          
-          // 显示当前批次的一些标题作为反馈
-          if (batch.length > 0) {
-            this.addLog(`📝 当前处理: ${batch[0].name.split('/').pop()} 等...`, 'detail')
+        const articles = this.scannedFiles
+          .map((item) => createArticleFromPdfUrl(item.url))
+          .filter((item) => item && item.title)
+
+        const result = await importArticlesInBatches({
+          articles,
+          batchSize: 100,
+          onProgress: (progress) => {
+            if (progress.stage === 'after') {
+              this.progress = `第 ${progress.batchIndex}/${progress.batchCount} 批`
+              this.addLog(`✅ 第 ${progress.batchIndex}/${progress.batchCount} 批同步完成`, 'success')
+            }
           }
-          
-          const res = await syncer.syncArticles({
-            fileList: batch,
-            categoryName: this.scanningCategory.name,
-            clearExisting: (i === 0) // 只有第一批次时尝试清空（如果是基于板块的同步）
-          })
-          
-          if (res && res.code === 0) {
-            successCount += (res.data.inserted || batch.length)
-            this.progress = `进度: ${Math.round((successCount / count) * 100)}% (${successCount}/${count})`
-          } else {
-            throw new Error(res.message || `第 ${i + 1} 批次同步失败`)
-          }
-        }
-        
-        this.addLog(`🎉 同步圆满完成! 共创建 ${successCount} 篇文章。`, 'success')
-        uni.showModal({ title: '同步成功', content: `已成功同步 ${successCount} 篇文章到数据库。`, showCancel: false })
-        
-        // 清空扫描缓存
-        this.scannedFiles = []
-        this.scanningCategory = null
-        this.progress = ''
+        })
+
+        this.addLog(`🎉 同步完成，成功 ${result.success}，失败 ${result.failed}`, result.failed ? 'warn' : 'success')
+        ;(result.errors || []).slice(0, 20).forEach((item) => {
+          this.addLog(`❌ ${item.title}: ${item.error}`, 'error')
+        })
+        uni.showToast({
+          title: '同步完成',
+          icon: result.failed ? 'none' : 'success'
+        })
       } catch (e) {
         console.error(e)
         this.addLog('❌ 同步中断: ' + e.message, 'error')

@@ -25,7 +25,7 @@
 				</view>
 				<view v-else class="dynamics-list">
 					<view v-for="item in list" :key="item.id" class="dynamics-item">
-						<image class="avatar" :src="item.inviter_avatar" mode="aspectFill" />
+						<image class="avatar" :src="normalizeAvatarUrl(item.inviter_avatar)" mode="aspectFill" />
 						<view class="item-content">
 							<view class="item-text">
 								<text class="name">{{ item.inviter_name }}</text>
@@ -60,6 +60,7 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
 export default {
 	data() {
 		return {
@@ -88,7 +89,7 @@ export default {
 			this.isGuest = false
 			this.loading = true
 			try {
-				const dashboardService = uniCloud.importObject('dashboard-service')
+				const dashboardService = getHttpService('dashboard-service')
 				const res = await dashboardService.getTeamDynamics({ _token: token, limit: 50 })
 				this.list = (res && res.code === 0 && res.data) ? res.data : []
 			} catch (e) {

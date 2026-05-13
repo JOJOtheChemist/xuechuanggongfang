@@ -69,6 +69,8 @@
 </template>
 
 <script>
+import { createArticleFromIncrementalItem, importArticlesInBatches, loadStaticJson, normalizeArticleForImport } from '@/utils/admin-catalog'
+
 export default {
   data() {
     return {
@@ -104,8 +106,8 @@ export default {
     addLog(msg) { this.logs.unshift(msg); },
     
     async loadData() {
-      const res = await uni.request({ url: '/pages/admin/static/articles_data.json' });
-      this.articles = res.data;
+      const data = await loadStaticJson('/pages/admin/static/articles_data.json');
+      this.articles = Array.isArray(data) ? data.map((item) => normalizeArticleForImport(item)).filter(Boolean) : [];
       this.addLog(`加载了 ${this.articles.length} 篇文章`);
     },
 
@@ -150,52 +152,28 @@ export default {
 
     async startLink() {
         this.processing = true;
-        let successCount = 0;
-        
-        const importObj = uniCloud.importObject('import-articles');
-
-        for (let i = 0; i < this.articles.length; i++) {
-            const art = this.articles[i];
-            this.progress = `${i+1}/${this.articles.length}`;
-            
-            if (!art.local_images || !art.local_images.length) continue;
-
-            // 生成该文章所有图片的 URL
-            const imageUrls = art.local_images.map(path => this.getCloudUrl(path));
-            
-            // 构造数据
-            const attachments = [{
-                type: 'pdf-images',
-                name: art.title + '.pdf',
-                images: imageUrls,
-                pageCount: imageUrls.length
-            }];
-            
-            const articleData = {
-                ...art,
-                cover_image: imageUrls[0],
-                attachments: attachments
-            };
-            
-            try {
-                // 调用云函数更新
-                const res = await importObj.importData({
-                    articles: [articleData]
-                });
-                
-                if (res.success > 0) {
-                    this.addLog(`✅ 关联成功: ${art.title}`);
-                    successCount++;
-                } else {
-                    this.addLog(`⚠️ 关联跳过: ${art.title}`);
+        try {
+            const result = await importArticlesInBatches({
+                articles: this.articles,
+                batchSize: 100,
+                onProgress: (progress) => {
+                    if (progress.stage === 'after') {
+                        this.progress = `${progress.batchIndex}/${progress.batchCount}`;
+                        this.addLog(`已完成第 ${progress.batchIndex}/${progress.batchCount} 批`);
+                    }
                 }
-            } catch (e) {
-                this.addLog(`❌ 失败: ${art.title} - ${e.message}`);
-            }
+            });
+
+            this.addLog(`同步完成，成功 ${result.success}，失败 ${result.failed}`);
+            (result.errors || []).slice(0, 20).forEach((item) => this.addLog(`❌ ${item.title}: ${item.error}`));
+            uni.showToast({ title: '同步完成', icon: result.failed ? 'none' : 'success' });
+        } catch (e) {
+            this.addLog(`❌ 同步失败: ${e.message}`);
+            uni.showToast({ title: '同步失败', icon: 'none' });
+        } finally {
+            this.processing = false;
+            this.progress = '';
         }
-        
-        this.processing = false;
-        this.addLog(`🎉 全部完成！成功关联 ${successCount} 篇`);
     },
 
     // 增量文件上传
@@ -203,7 +181,6 @@ export default {
       this.incrementProcessing = true;
       this.incrementLogs = [];
       let successCount = 0;
-      let updateCount = 0;
       
       try {
         // 解析JSON
@@ -216,67 +193,27 @@ export default {
         }
         
         this.incrementLogs.unshift(`📋 解析成功，共 ${incrementalData.length} 条数据`);
-        
-        const importObj = uniCloud.importObject('import-articles');
-        
-        for (let i = 0; i < incrementalData.length; i++) {
-          const item = incrementalData[i];
-          this.incrementProgress = `${i+1}/${incrementalData.length}`;
-          
-          // 验证必须字段
-          if (!item.level1 || !item.fileName) {
-            this.incrementLogs.unshift(`⚠️ 跳过(缺少必须字段): ${item.fileName || '未知'}`);
-            continue;
-          }
-          
-          // 获取分类ID
-          const categoryId = this.categoryMapping[item.level1];
-          if (!categoryId) {
-            this.incrementLogs.unshift(`⚠️ 跳过(未知分类 ${item.level1}): ${item.fileName}`);
-            continue;
-          }
-          
-          // 提取文件名(去掉.pdf后缀)
-          const title = item.fileName.replace(/\.pdf$/i, '');
-          
-          // 构造tags数组
-          const tags = [item.level2, item.level3, item.level4].filter(Boolean);
-          
-          // 构造完整的文章数据
-          const articleData = {
-            title: title,
-            category_id: categoryId,
-            tags: tags,
-            summary: `${item.level1} > ${tags.join(' > ')}`,
-            price_points: 5, // 默认5积分
-            status: 'published',
-            view_count: 0,
-            like_count: 0
-          };
-          
-          try {
-            // 调用云函数导入
-            const res = await importObj.importData({
-              articles: [articleData]
-            });
-            
-            if (res.success > 0) {
-              this.incrementLogs.unshift(`✅ 成功: ${title}`);
-              successCount++;
-            } else if (res.failed === 0) {
-              // 可能是更新了已存在的文章
-              this.incrementLogs.unshift(`🔄 更新: ${title}`);
-              updateCount++;
-            } else {
-              this.incrementLogs.unshift(`⚠️ 跳过: ${title}`);
+
+        const articles = incrementalData
+          .map((item) => createArticleFromIncrementalItem(item, this.urlPrefix))
+          .filter((item) => item && item.title);
+
+        const result = await importArticlesInBatches({
+          articles,
+          batchSize: 100,
+          onProgress: (progress) => {
+            if (progress.stage === 'after') {
+              this.incrementProgress = `${progress.batchIndex}/${progress.batchCount}`;
+              this.incrementLogs.unshift(`✅ 第 ${progress.batchIndex}/${progress.batchCount} 批已完成`);
             }
-          } catch (e) {
-            this.incrementLogs.unshift(`❌ 失败: ${title} - ${e.message}`);
           }
-        }
-        
-        this.incrementLogs.unshift(`🎉 全部完成! 新增 ${successCount} 篇, 更新 ${updateCount} 篇`);
-        
+        });
+
+        successCount = result.success;
+        this.incrementLogs.unshift(`🎉 增量上传完成，成功 ${result.success}，失败 ${result.failed}`);
+        (result.errors || []).slice(0, 20).forEach((item) => {
+          this.incrementLogs.unshift(`❌ ${item.title}: ${item.error}`);
+        });
       } catch (e) {
         this.incrementLogs.unshift(`❌ JSON解析失败: ${e.message}`);
       } finally {
@@ -291,9 +228,9 @@ export default {
       this.incrementLogs = [ `🚀 开始一键上传: ${file.label} ...` ];
       
       try {
-        const res = await uni.request({ url: file.path });
-        if (res.data) {
-          this.incrementalJson = JSON.stringify(res.data, null, 2);
+        const data = await loadStaticJson(file.path);
+        if (data) {
+          this.incrementalJson = JSON.stringify(data, null, 2);
           // 调用现有的上传逻辑
           await this.uploadIncremental();
         } else {

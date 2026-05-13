@@ -10,8 +10,8 @@
 
 		<view class="content">
 			<view class="card-header">
-				<view class="big-avatar" v-if="member.avatar_url || member.avatar">
-					<image :src="member.avatar_url || member.avatar" mode="aspectFill" style="width:100%;height:100%;border-radius:50%;" />
+				<view class="big-avatar" v-if="normalizeAvatarUrl(member.avatar_url || member.avatar, '')">
+					<image :src="normalizeAvatarUrl(member.avatar_url || member.avatar, '')" mode="aspectFill" style="width:100%;height:100%;border-radius:50%;" />
 				</view>
 				<view class="big-avatar" v-else>{{ (member.name || 'U').substring(0, 1) }}</view>
 				
@@ -79,6 +79,7 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
 export default {
 	data() {
 		return {
@@ -124,7 +125,7 @@ export default {
 			if (!token || !this.member.id) return
 			
 			try {
-				const goalService = uniCloud.importObject('goal-service')
+				const goalService = getHttpService('goal-service')
 				const now = new Date()
 				const year = now.getFullYear()
 				const month = now.getMonth() + 1
@@ -163,7 +164,7 @@ export default {
 			if (!token || !this.member.id) return
 			
 			try {
-				const dashboardService = uniCloud.importObject('dashboard-service')
+				const dashboardService = getHttpService('dashboard-service')
 				const res = await dashboardService.getTeamDynamics({ 
 					_token: token, 
 					limit: 50 
@@ -187,7 +188,7 @@ export default {
 			if (!token || !this.member.id) return
 			
 			try {
-				const checkinService = uniCloud.importObject('checkin-service')
+				const checkinService = getHttpService('checkin-service')
 				const res = await checkinService.getCheckInStatus({ 
 					_token: token,
 					user_id: this.member.id

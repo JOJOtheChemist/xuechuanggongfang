@@ -1,209 +1,225 @@
-const fs = require('fs');
-const path = require('path');
-const https = require('https');
-const url = require('url');
+const fs = require('fs')
+const path = require('path')
+const http = require('http')
+const https = require('https')
 
-// Configuration
-// 自动推测的云函数URL
-const SPACE_ID = 'mp-46bd4293-7b92-444c-b936-5777a228063a';
-const CLOUD_FUNCTION_NAME = 'import-articles';
-// 尝试两个常见格式
-const CANDIDATE_URLS = [
-    `https://fc-${SPACE_ID}.next.bspapp.com/http/${CLOUD_FUNCTION_NAME}`,
-    `https://${SPACE_ID}.next.bspapp.com/http/${CLOUD_FUNCTION_NAME}`
-];
+const API_BASE_URL = (process.env.XUECHUANG_API_BASE_URL || 'https://xuechuang.xyz/api/v1').replace(/\/+$/, '')
+const ADMIN_TOKEN = process.env.XUECHUANG_ADMIN_TOKEN || process.env.TOKEN || ''
+const DATA_FILE = path.join(__dirname, 'pages', 'admin', 'static', 'articles_data.json')
 
-let CLOUD_FUNCTION_URL_BASE = '';
-
-const DATA_FILE = path.join(__dirname, 'articles_data.json');
-
-// Helper: Check URL availability
-function checkUrl(urlToCheck) {
-    return new Promise((resolve) => {
-        const parsedUrl = url.parse(urlToCheck);
-        const options = {
-            hostname: parsedUrl.hostname,
-            path: parsedUrl.path, // checking root of function
-            method: 'POST', // Use POST as our function expects it
-             headers: {
-                'Content-Type': 'application/json'
-            }
-        };
-        
-        const req = https.request(options, (res) => {
-            // If we get 200-299, or even 500 (meaning function ran but errored), it exists.
-            // If 404, it might not exist or path is wrong.
-            if (res.statusCode !== 404) {
-                resolve(true);
-            } else {
-                resolve(false);
-            }
-        });
-        
-        req.on('error', () => resolve(false));
-        req.write(JSON.stringify({ test: true })); // sending dummy data
-        req.end();
-    });
+const MIME_TYPES = {
+	'.jpg': 'image/jpeg',
+	'.jpeg': 'image/jpeg',
+	'.png': 'image/png',
+	'.webp': 'image/webp',
+	'.gif': 'image/gif'
 }
 
-// Helper: Send POST request to Cloud Function
-function callCloudFunction(methodName, data) {
-    return new Promise((resolve, reject) => {
-        const fullUrl = `${CLOUD_FUNCTION_URL_BASE}/${methodName}`;
-        const parsedUrl = url.parse(fullUrl);
-        
-        const postData = JSON.stringify(data);
-        
-        const options = {
-            hostname: parsedUrl.hostname,
-            path: parsedUrl.path,
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(postData)
-            }
-        };
+function requestJson(method, requestUrl, payload) {
+	return new Promise((resolve, reject) => {
+		const target = new URL(requestUrl)
+		const transport = target.protocol === 'http:' ? http : https
+		const body = payload ? JSON.stringify(payload) : ''
 
-        const req = https.request(options, (res) => {
-            let body = '';
-            res.on('data', (chunk) => body += chunk);
-            res.on('end', () => {
-                if (res.statusCode >= 200 && res.statusCode < 300) {
-                    try {
-                        const parsed = JSON.parse(body);
-                        resolve(parsed);
-                    } catch (e) {
-                         // Sometimes it returns plain text if error
-                        reject(new Error(`Invalid JSON response: ${body}`));
-                    }
-                } else {
-                    reject(new Error(`HTTP Error: ${res.statusCode} ${body}`));
-                }
-            });
-        });
+		const req = transport.request(
+			target,
+			{
+				method,
+				headers: {
+					'Content-Type': 'application/json',
+					'Content-Length': Buffer.byteLength(body),
+					...(ADMIN_TOKEN
+						? {
+							Authorization: `Bearer ${ADMIN_TOKEN}`,
+							'X-Access-Token': ADMIN_TOKEN
+						}
+						: {})
+				}
+			},
+			(res) => {
+				let raw = ''
+				res.on('data', (chunk) => {
+					raw += chunk
+				})
+				res.on('end', () => {
+					if (!raw) {
+						resolve({})
+						return
+					}
 
-        req.on('error', (e) => {
-            reject(e);
-        });
+					try {
+						resolve(JSON.parse(raw))
+					} catch (error) {
+						reject(new Error(`Invalid JSON response: ${raw}`))
+					}
+				})
+			}
+		)
 
-        req.write(postData);
-        req.end();
-    });
+		req.on('error', reject)
+		if (body) req.write(body)
+		req.end()
+	})
 }
 
-async function uploadImage(localPath, remoteName) {
-    try {
-        if (!fs.existsSync(localPath)) {
-            throw new Error(`File not found: ${localPath}`);
-        }
-        
-        const content = fs.readFileSync(localPath, { encoding: 'base64' });
-        
-        const res = await callCloudFunction('uploadImage', {
-            filename: remoteName,
-            content: content
-        });
-        
-        if (res.fileID) {
-            return res.fileID;
-        } else if (res.error) {
-            throw new Error(res.error);
-        } else {
-            throw new Error('Unknown upload error');
-        }
-    } catch (e) {
-        console.error(`  ❌ Upload failed for ${remoteName}:`, e.message);
-        return null;
-    }
+function uploadBinary(uploadUrl, buffer, contentType) {
+	return new Promise((resolve, reject) => {
+		const target = new URL(uploadUrl)
+		const transport = target.protocol === 'http:' ? http : https
+
+		const req = transport.request(
+			target,
+			{
+				method: 'PUT',
+				headers: {
+					'Content-Type': contentType,
+					'Content-Length': buffer.length
+				}
+			},
+			(res) => {
+				if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+					resolve()
+					return
+				}
+
+				let raw = ''
+				res.on('data', (chunk) => {
+					raw += chunk
+				})
+				res.on('end', () => {
+					reject(new Error(`Upload failed: ${res.statusCode || 'unknown'} ${raw}`))
+				})
+			}
+		)
+
+		req.on('error', reject)
+		req.write(buffer)
+		req.end()
+	})
+}
+
+function contentTypeForFile(filePath) {
+	const extension = path.extname(filePath).toLowerCase()
+	return MIME_TYPES[extension] || ''
+}
+
+async function createUploadPresign(localPath) {
+	const stat = fs.statSync(localPath)
+	const fileName = path.basename(localPath)
+	const contentType = contentTypeForFile(localPath)
+
+	if (!contentType) {
+		throw new Error(`Unsupported image type: ${fileName}`)
+	}
+
+	const response = await requestJson('POST', `${API_BASE_URL}/storage/uploads/presign`, {
+		fileName,
+		contentType,
+		fileSize: stat.size,
+		scene: 'catalog-asset'
+	})
+
+	if (!response || response.code !== 0 || !response.data) {
+		throw new Error((response && response.message) || 'Failed to create upload presign')
+	}
+
+	return response.data
+}
+
+async function uploadImage(localPath) {
+	const presign = await createUploadPresign(localPath)
+	const buffer = fs.readFileSync(localPath)
+	await uploadBinary(presign.upload_url, buffer, presign.headers && presign.headers['Content-Type'] ? presign.headers['Content-Type'] : contentTypeForFile(localPath))
+	return presign.public_url || (presign.file && presign.file.public_url) || ''
+}
+
+async function importArticle(articleData) {
+	const response = await requestJson('POST', `${API_BASE_URL}/catalog/admin/articles/import`, {
+		articles: [articleData]
+	})
+
+	if (!response || response.code !== 0 || !response.data) {
+		throw new Error((response && response.message) || 'Import failed')
+	}
+
+	return response.data
 }
 
 async function main() {
-    console.log('正在检测云函数 URL...');
-    for (const testUrl of CANDIDATE_URLS) {
-        console.log(`  Trying: ${testUrl}`);
-        const isUp = await checkUrl(testUrl);
-        if (isUp) {
-            CLOUD_FUNCTION_URL_BASE = testUrl;
-            console.log(`  ✅ 成功连接: ${CLOUD_FUNCTION_URL_BASE}`);
-            break;
-        }
-    }
-    
-    if (!CLOUD_FUNCTION_URL_BASE) {
-         console.error('\n❌ 无法自动连接到云函数。请执行以下步骤：');
-         console.error('1. 打开 HBuilderX');
-         console.error('2. 右键 uniCloud-aliyun/cloudfunctions/import-articles -> 上传部署');
-         console.error('3. 登录 uniCloud 控制台 -> 云函数 -> import-articles -> 详情');
-         console.error('4. 找到 "云函数URL化" -> 点击编辑 -> 启用 (路径设为 /http/import-articles)');
-         console.error('5. 复制生成的 URL 填入脚本 upload-real-images.js 的 CANDIDATE_URLS 数组中\n');
-         process.exit(1);
-    }
+	if (!ADMIN_TOKEN) {
+		console.error('❌ 缺少管理员 Token。请设置环境变量 XUECHUANG_ADMIN_TOKEN 后重试。')
+		process.exit(1)
+	}
 
-    if (!fs.existsSync(DATA_FILE)) {
-        console.error('Articles data file not found:', DATA_FILE);
-        return;
-    }
+	if (!fs.existsSync(DATA_FILE)) {
+		console.error('Articles data file not found:', DATA_FILE)
+		process.exit(1)
+	}
 
-    const articles = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
-    console.log(`\nLoaded ${articles.length} articles.`);
+	const articles = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'))
+	console.log(`Loaded ${articles.length} articles.`)
 
-    for (let i = 0; i < articles.length; i++) {
-        const article = articles[i];
-        console.log(`\n[${i+1}/${articles.length}] Processing: ${article.title}`);
+	for (let i = 0; i < articles.length; i += 1) {
+		const article = articles[i]
+		console.log(`\n[${i + 1}/${articles.length}] Processing: ${article.title}`)
 
-        const localImages = article.local_images || [];
-        const uploadedFileIDs = [];
+		const localImages = Array.isArray(article.local_images) ? article.local_images : []
+		const uploadedFileURLs = []
 
-        // Upload images
-        for (const imgPath of localImages) {
-            const fileName = `articles/${article.title}/${path.basename(imgPath)}`;
-            console.log(`  Uploading: ${path.basename(imgPath)}...`);
-            
-            const fileID = await uploadImage(imgPath, fileName);
-            if (fileID) {
-                uploadedFileIDs.push(fileID);
-                console.log(`    -> Success: ${fileID}`);
-            }
-        }
+		for (const imgPath of localImages) {
+			try {
+				if (!fs.existsSync(imgPath)) {
+					throw new Error(`File not found: ${imgPath}`)
+				}
 
-        if (uploadedFileIDs.length > 0) {
-            // Prepare article data with cloud attachments
-            const attachments = [{
-                type: 'pdf-images',
-                name: article.title + '.pdf',
-                images: uploadedFileIDs,
-                pageCount: uploadedFileIDs.length
-            }];
+				console.log(`  Uploading: ${path.basename(imgPath)}...`)
+				const publicUrl = await uploadImage(imgPath)
+				if (publicUrl) {
+					uploadedFileURLs.push(publicUrl)
+					console.log(`    -> Success: ${publicUrl}`)
+				}
+			} catch (error) {
+				console.error(`    ❌ Upload failed for ${imgPath}:`, error.message)
+			}
+		}
 
-            const articleData = {
-                ...article,
-                cover_image: uploadedFileIDs[0], // Use first page as cover
-                attachments: attachments
-            };
-            
-            // Remove local_images field before sending
-            delete articleData.local_images;
+		if (uploadedFileURLs.length === 0) {
+			console.log('  ⚠️ No images uploaded, skipping article save.')
+			continue
+		}
 
-            // Import/Update article
-            console.log('  Saving article to database...');
-            const importRes = await callCloudFunction('importData', {
-                articles: [articleData]
-            });
-            
-            if (importRes.success > 0) {
-                console.log('  ✅ Article saved successfully.');
-            } else {
-                console.log('  ⚠️ Article save skipped or failed (see cloud logs).');
-                if (importRes.errors && importRes.errors.length > 0) {
-                    console.error('    Error:', importRes.errors[0].error);
-                }
-            }
-        } else {
-            console.log('  ⚠️ No images uploaded, skipping article save.');
-        }
-    }
-    
-    console.log('\nDone!');
+		const articleData = {
+			...article,
+			cover_image: uploadedFileURLs[0],
+			attachments: [{
+				type: 'pdf-images',
+				name: `${article.title}.pdf`,
+				images: uploadedFileURLs,
+				pageCount: uploadedFileURLs.length
+			}]
+		}
+		delete articleData.local_images
+
+		try {
+			console.log('  Saving article to database...')
+			const importResult = await importArticle(articleData)
+			if (Number(importResult.success || 0) > 0) {
+				console.log('  ✅ Article saved successfully.')
+			} else {
+				console.log('  ⚠️ Article save skipped or failed.')
+				if (Array.isArray(importResult.errors) && importResult.errors.length > 0) {
+					console.error('    Error:', importResult.errors[0].error)
+				}
+			}
+		} catch (error) {
+			console.error('  ❌ Article import failed:', error.message)
+		}
+	}
+
+	console.log('\nDone!')
 }
 
-main();
+main().catch((error) => {
+	console.error('Fatal error:', error)
+	process.exit(1)
+})

@@ -20,6 +20,10 @@
 			</view>
 			
 			<scroll-view class="app-main" scroll-y="true">
+				<business-hero-banner
+					:image-url="heroBackgroundUrl"
+					:notices="learningNotices"
+				/>
 				<view class="section-list">
 					<quick-nav 
 						:business-data="businessItems" 
@@ -62,9 +66,33 @@
 </template>
 
 <script>
+	import { getHttpService } from '@/utils/http-services'
+	import { getCachedImageSync, resolveCachedImage } from '@/utils/remote-image-cache'
+	import BusinessHeroBanner from '@/components/business/BusinessHeroBanner.vue'
 	import BusinessDetailCard from '@/components/business/BusinessDetailCard.vue'
 	import QuickNav from '@/components/business/QuickNav.vue'
 
+const STUDY_HERO_BACKGROUND_URL = 'https://xuechuang.xyz/oss/share-assets/admission/admin/images/0/2026/05/12/a7391291-a94d-41e5-82ee-83b75f64ef0b.jpg'
+const FALLBACK_LEARNING_NOTICES = [
+	{
+		id: 'fallback-ai-agent',
+		title: 'AI Agent 已上线',
+		content: 'AI Agent 上线，支持学习规划与答疑。',
+		type: 'feature'
+	},
+	{
+		id: 'fallback-points',
+		title: '拉新积分活动',
+		content: '拉新积分活动开启，邀请新同学可得积分。',
+		type: 'activity'
+	},
+	{
+		id: 'fallback-update',
+		title: '资料持续更新',
+		content: '考公考研资料更新中，热门内容持续补充。',
+		type: 'update'
+	}
+]
 
 const STATIC_BUSINESS_ITEMS = [
 	{
@@ -206,6 +234,7 @@ const STATIC_BUSINESS_ITEMS = [
 
 	export default {
 	    components: {
+	    	BusinessHeroBanner,
 	        BusinessDetailCard,
 	        QuickNav,
 	    },
@@ -215,6 +244,8 @@ const STATIC_BUSINESS_ITEMS = [
             showReload: false, // 加载超时显示重试
             // showPopup: false, // [REMOVED] 不再需要弹窗
             isLoggedIn: false,
+            heroBackgroundUrl: getCachedImageSync(STUDY_HERO_BACKGROUND_URL),
+			learningNotices: FALLBACK_LEARNING_NOTICES,
             
             userInfo: {
                 avatar: '',
@@ -245,6 +276,7 @@ const STATIC_BUSINESS_ITEMS = [
 	onShow() {
 		this.showReload = false
 		this.isLoggedIn = !!uni.getStorageSync('token')
+		this.syncHeroBackgroundImage()
 		
 		// 延迟渲染页面内容，确保 switchTab 动画流畅完成
 		setTimeout(() => {
@@ -262,6 +294,7 @@ const STATIC_BUSINESS_ITEMS = [
 			
 			this.$nextTick(() => {
 				this.loadUserInfo()
+				this.loadLearningNotices()
 				
 				// 安全调用加载文章
 				try {
@@ -307,6 +340,16 @@ const STATIC_BUSINESS_ITEMS = [
 		}
 	},
 		methods: {
+			async syncHeroBackgroundImage() {
+				try {
+					const cachedUrl = await resolveCachedImage(STUDY_HERO_BACKGROUND_URL)
+					if (cachedUrl) {
+						this.heroBackgroundUrl = cachedUrl
+					}
+				} catch (error) {
+					console.warn('[business] 顶部图缓存失败', error)
+				}
+			},
 			retryLoading() {
 				this.showReload = false
 				this.pageMounted = false
@@ -320,7 +363,6 @@ const STATIC_BUSINESS_ITEMS = [
 					url: `/pages/article/list?categoryId=${categoryId}&title=${encodeURIComponent(title)}`
 				})
 			},
-			
 			// 加载用户信息
 			loadUserInfo() {
 				try {
@@ -338,6 +380,27 @@ const STATIC_BUSINESS_ITEMS = [
 					}
 				} catch (e) {
 					console.error('[business] 加载用户信息失败', e)
+				}
+			},
+			async loadLearningNotices() {
+				try {
+					const businessService = getHttpService('business-service')
+					const result = await businessService.getLearningNotices()
+					const rawList = result && result.data && Array.isArray(result.data.list) ? result.data.list : []
+					if (!rawList.length) {
+						this.learningNotices = FALLBACK_LEARNING_NOTICES
+						return
+					}
+
+					this.learningNotices = rawList.map((item, index) => ({
+						id: item.id || `learning-notice-${index}`,
+						title: item.title || '',
+						content: item.content || item.title || '',
+						type: item.type || 'update'
+					})).filter(item => item.content)
+				} catch (e) {
+					console.warn('[business] 加载学习页通知失败，使用兜底文案', e)
+					this.learningNotices = FALLBACK_LEARNING_NOTICES
 				}
 			},
 			handleQuickNavClick({ item, index }) {
@@ -587,7 +650,11 @@ const STATIC_BUSINESS_ITEMS = [
 	}
 
 	.section-list {
+		margin-top: -76rpx;
 		padding: 24rpx 24rpx 200rpx;
+		background: #ffffff;
+		border-radius: 36rpx 36rpx 0 0;
+		box-shadow: 0 -12rpx 30rpx rgba(15, 23, 42, 0.06);
 		box-sizing: border-box;
 	}
 

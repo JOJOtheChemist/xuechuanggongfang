@@ -21,6 +21,9 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
+import { uploadImageWithPresign } from '@/utils/presigned-upload'
+
 export default {
   data() {
     return {
@@ -34,17 +37,9 @@ export default {
     checkLoginAndLoad() {
       const token = uni.getStorageSync('token')
       if (!token) {
-        uni.showModal({
-          title: '请先登录',
-          content: '登录后即可管理收款码',
-          confirmText: '去登录',
-          success: (res) => {
-            if (res.confirm) {
-              uni.navigateTo({ url: '/pages/auth/login/index' })
-            } else {
-              uni.navigateBack()
-            }
-          }
+        uni.showToast({
+          title: '未登录',
+          icon: 'none'
         })
         return
       }
@@ -53,7 +48,7 @@ export default {
     async loadQrcode() {
       try {
         const token = uni.getStorageSync('token')
-        const userCenter = uniCloud.importObject('user-center')
+        const userCenter = getHttpService('user-center')
         const res = await userCenter.getPaymentQrcode({ _token: token })
         if (res.code === 0 && res.data) {
           this.paymentQrcode = res.data.payment_qrcode || ''
@@ -79,34 +74,7 @@ export default {
             success: (compressRes) => {
               const compressedPath = compressRes.tempFilePath
               uni.showLoading({ title: '正在上传...' })
-              
-              uniCloud.uploadFile({
-                filePath: compressedPath,
-                cloudPath: `payment_qrcode/${Date.now()}.jpg`,
-                success: async (uploadRes) => {
-                  this.paymentQrcode = uploadRes.fileID
-                  // Update DB via Cloud Object
-                  try {
-                     const token = uni.getStorageSync('token')
-                     const userCenter = uniCloud.importObject('user-center')
-                     const updateRes = await userCenter.updatePaymentQrcode({ url: this.paymentQrcode, _token: token })
-                     if (updateRes.code === 0) {
-                        uni.showToast({ title: '上传并保存成功', icon: 'success' })
-                     } else {
-                        throw new Error(updateRes.message)
-                     }
-                  } catch(e) {
-                     console.error(e)
-                     uni.showToast({ title: '保存失败: ' + (e.message || '未知错误'), icon: 'none' })
-                  }
-                  uni.hideLoading()
-                },
-                fail: (err) => {
-                  console.error(err)
-                  uni.hideLoading()
-                  uni.showToast({ title: '上传失败', icon: 'none' })
-                }
-              })
+              this.directUpload(compressedPath)
             },
             fail: (err) => {
               console.error('压缩失败', err)
@@ -118,28 +86,32 @@ export default {
       })
     },
     // 兜底直接上传
-    directUpload(filePath) {
+    async directUpload(filePath) {
       uni.showLoading({ title: '正在上传...' })
-      uniCloud.uploadFile({
-        filePath: filePath,
-        cloudPath: `payment_qrcode/${Date.now()}.jpg`,
-        success: async (uploadRes) => {
-          this.paymentQrcode = uploadRes.fileID
-          try {
-             const token = uni.getStorageSync('token')
-             const userCenter = uniCloud.importObject('user-center')
-             await userCenter.updatePaymentQrcode({ url: this.paymentQrcode, _token: token })
-             uni.showToast({ title: '更新成功', icon: 'success' })
-          } catch(e) {
-             console.error(e)
-          }
-          uni.hideLoading()
-        },
-        fail: () => {
-          uni.hideLoading()
-          uni.showToast({ title: '上传失败', icon: 'none' })
+      try {
+        const uploadResult = await uploadImageWithPresign({
+          scene: 'payment-qrcode',
+          filePath,
+          token: uni.getStorageSync('token'),
+          fileNamePrefix: 'payment-qrcode'
+        })
+
+        this.paymentQrcode = uploadResult.url
+
+        const token = uni.getStorageSync('token')
+        const userCenter = getHttpService('user-center')
+        const updateRes = await userCenter.updatePaymentQrcode({ url: this.paymentQrcode, _token: token })
+        if (!updateRes || updateRes.code !== 0) {
+          throw new Error((updateRes && updateRes.message) || '保存失败')
         }
-      })
+
+        uni.showToast({ title: '更新成功', icon: 'success' })
+      } catch (e) {
+        console.error(e)
+        uni.showToast({ title: (e && e.message) || '上传失败', icon: 'none' })
+      } finally {
+        uni.hideLoading()
+      }
     },
     saveQrcode() {
       if (!this.paymentQrcode) return

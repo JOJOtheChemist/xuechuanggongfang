@@ -113,6 +113,7 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
 export default {
   data() {
     return {
@@ -144,7 +145,7 @@ export default {
       this.loading = true
       try {
         const token = uni.getStorageSync('token')
-        const businessService = uniCloud.importObject('business-service')
+        const businessService = getHttpService('business-service')
         
         // 显式传递 _token，使用对象参数形式
         const res = await businessService.getSignupDetail({ 

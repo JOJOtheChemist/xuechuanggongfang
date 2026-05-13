@@ -3,7 +3,7 @@
 		<view class="content-wrapper">
 			<!-- Header / Invitation Info -->
 			<view class="header-section">
-				<image class="inviter-avatar" :src="inviterAvatar || defaultAvatar" mode="aspectFill" />
+				<image class="inviter-avatar" :src="normalizeAvatarUrl(inviterAvatar, defaultAvatar)" mode="aspectFill" />
 				<view class="invite-text">
 					<text class="inviter-name">{{ inviterName }}</text>
 					<text class="invite-action">邀请你加入</text>
@@ -36,7 +36,7 @@
 				<text class="fee-label">入团费用</text>
 				<view class="fee-amount">
 					<text class="currency">¥</text>
-					<text class="amount">19.9</text>
+					<text class="amount">{{ displayJoinFee }}</text>
 				</view>
 				<text class="fee-tip">支付后即可获得团队专属权益与资源</text>
 			</view>
@@ -50,7 +50,7 @@
 					class="pay-btn" 
 					hover-class="btn-hover" 
 					:loading="loading" 
-					:disabled="loading || (!teamInfo.team_id && !teamInfo._id)"
+					:disabled="loading || !resolvedTeamId"
 					@tap="handlePayAndJoin"
 				>
 					{{ loading ? '处理中...' : '立即支付并加入' }}
@@ -72,7 +72,23 @@
 </template>
 
 <script>
+import { getCurrentUserInfo, getHttpService } from '@/utils/http-services'
+import { confirmPayment, createPaymentOrder } from '../../utils/payment-api'
+
 export default {
+	computed: {
+		resolvedTeamId() {
+			return this.getTeamId(this.teamInfo) || String(this.teamId || '').trim()
+		},
+		joinFeeValue() {
+			const rawFee = this.teamInfo && this.teamInfo.join_fee
+			const fee = Number(rawFee)
+			return Number.isFinite(fee) && fee > 0 ? fee : 19.9
+		},
+		displayJoinFee() {
+			return this.joinFeeValue.toFixed(1).replace(/\.0$/, '')
+		}
+	},
 	data() {
 		return {
 			inviterId: '',
@@ -80,7 +96,7 @@ export default {
 			inviterName: '...',
 			inviterAvatar: '',
 			teamInfo: {}, // 这是一个对象，包含 team_name, team_level 等
-			defaultAvatar: 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png',
+			defaultAvatar: '/static/icons/default-avatar.svg',
 			loading: false,
 			currentOrderNo: '',
 			currentUid: ''
@@ -90,7 +106,7 @@ export default {
 		console.log('[join-team-confirm] onLoad 接收到参数:', JSON.stringify(options))
 		
 		// 获取当前用户ID用于调试
-		const userInfo = uniCloud.getCurrentUserInfo()
+		const userInfo = getCurrentUserInfo()
 		this.currentUid = userInfo.uid
 		console.log('[join-team-confirm] currentUid:', this.currentUid)
 
@@ -114,6 +130,7 @@ export default {
 			this.teamId = options.team_id
 			this.inviterName = '无推荐人' // 或者不显示推荐人区域
 			console.log('[join-team-confirm] 使用 team_id 模式:', this.teamId)
+			this.restoreTeamSnapshot()
 			this.loadTeamInfoById()
 		}
 		// [双重保险] 兜底：从缓存读取
@@ -127,23 +144,53 @@ export default {
 				console.error('[join-team-confirm] 参数错误 - 缺少 inviter_id 和 team_id，且缓存为空')
 				uni.showToast({ title: '参数错误', icon: 'none' })
 				setTimeout(() => {
-					uni.reLaunch({ url: '/pages/dashboard/index' })
+					uni.reLaunch({ url: '/pages/volunteer/index' })
 				}, 1500)
 			}
 		}
 	},
 	methods: {
+		getTeamId(team) {
+			if (!team || typeof team !== 'object') return ''
+			return String(team.team_id || team.teamId || team.id || team._id || '').trim()
+		},
+
+		applyTeamInfo(team) {
+			if (!team || typeof team !== 'object') return
+			const resolvedTeamId = this.getTeamId(team) || String(this.teamId || '').trim()
+			this.teamInfo = Object.assign({}, team, {
+				team_id: resolvedTeamId || team.team_id || team.teamId || team.id || team._id || ''
+			})
+			if (resolvedTeamId) {
+				this.teamId = resolvedTeamId
+			}
+		},
+
+		restoreTeamSnapshot() {
+			try {
+				const cachedTeam = uni.getStorageSync('pending_join_team_snapshot')
+				const cachedTeamId = this.getTeamId(cachedTeam)
+				if (!cachedTeamId || String(cachedTeamId) !== String(this.teamId || '').trim()) {
+					return false
+				}
+				this.applyTeamInfo(cachedTeam)
+				return true
+			} catch (e) {
+				console.warn('[join-team-confirm] 读取团队快照失败:', e)
+				return false
+			}
+		},
+
 		async loadTeamInfoByInviter() {
 		try {
 			console.log('[join-team-confirm] 开始加载团队信息 - inviterId:', this.inviterId)
-			const teamService = uniCloud.importObject('team-service')
+			const teamService = getHttpService('team-service')
 			// 不需要传 token，已在云对象侧配置白名单
 			const res = await teamService.getTeamInfoByInviter(this.inviterId)
 			console.log('[join-team-confirm] 获取团队信息返回:', JSON.stringify(res))
 			
 			if (res && res.code === 0 && res.data) {
-				this.teamInfo = res.data // data 里包含了 team_id, team_name 等
-				this.teamId = res.data.team_id // 确保 teamId 被设置
+				this.applyTeamInfo(res.data) // data 里包含了 team_id, team_name 等
 				this.inviterName = res.data.inviter_name
 				this.inviterAvatar = res.data.inviter_avatar
 				console.log('[join-team-confirm] 团队信息加载成功 - teamId:', this.teamId, 'teamName:', this.teamInfo.team_name, 'inviterName:', this.inviterName)
@@ -163,23 +210,31 @@ export default {
 		// [NEW] 根据 team_id 加载信息 (当没有推荐人时)
 		async loadTeamInfoById() {
 			try {
-				const teamService = uniCloud.importObject('team-service')
-				const res = await teamService.getTeamDetail(this.teamId)
+				const teamService = getHttpService('team-service')
+				const requestedTeamId = String(this.teamId || '').trim()
+				if (!requestedTeamId) {
+					this.handleLoadError('缺少团队ID')
+					return
+				}
+				const res = await teamService.getTeamDetail({ teamId: requestedTeamId })
 				
 				if (res && res.code === 0 && res.data) {
-					this.teamInfo = res.data
-					// [FIX] Ensure team_id is present for button validation
-					if (!this.teamInfo.team_id) {
-						this.$set(this.teamInfo, 'team_id', res.data._id || this.teamId)
-					}
+					this.applyTeamInfo(res.data)
+					uni.setStorageSync('pending_join_team_snapshot', this.teamInfo)
 					// 如果是通过 ID 查的，teamInfo 里可能没有 inviter 相关字段
 					// 界面展示时需要注意 v-if
 				} else {
-					this.handleLoadError(res.message)
+					if (!this.teamInfo.team_name) {
+						this.handleLoadError(res && res.message)
+					} else {
+						console.warn('[join-team-confirm] 团队详情接口异常，继续使用缓存快照:', res)
+					}
 				}
 			} catch (e) {
 				console.error('Failed to load team info', e)
-				this.handleLoadError('网络错误')
+				if (!this.teamInfo.team_name) {
+					this.handleLoadError('网络错误')
+				}
 			}
 		},
 
@@ -211,17 +266,17 @@ export default {
 			}
 
 			if (this.loading) return
-			if (!this.teamId && !(this.teamInfo && this.teamInfo.team_id)) {
-				uni.showToast({ title: '团队信息异常', icon: 'none' })
+			if (!this.resolvedTeamId) {
+				uni.showToast({ title: '【B-join-confirm】确认页 teamId 丢失', icon: 'none' })
 				return
 			}
 
 			this.loading = true
 			try {
-				const orderData = await this.createJoinOrder(token)
+				const orderData = await this.createJoinOrder()
 				this.currentOrderNo = orderData.order_no
 				await this.invokeWxPay(orderData.pay_params)
-				await this.confirmJoinOrder(token, this.currentOrderNo)
+				await this.confirmJoinOrder(this.currentOrderNo)
 				await this.finalizeJoin(token, this.currentOrderNo)
 			} catch (error) {
 				console.error('Join flow failed', error)
@@ -235,13 +290,18 @@ export default {
 			}
 		},
 
-		async createJoinOrder(token) {
-			const joinService = uniCloud.importObject('team-join-service')
-			// 直接调用专用服务创建订单
-			const res = await joinService.createJoinOrder({
-				_token: token,
-				teamId: this.teamId,
-				inviterId: this.inviterId || ''
+		async createJoinOrder() {
+			const teamId = this.resolvedTeamId
+			const amount = this.joinFeeValue
+			const res = await createPaymentOrder({
+				businessId: `team_join_${teamId}`,
+				businessName: `加入${this.teamInfo.team_name || '团队'}`,
+				amount,
+				extraData: {
+					scene: 'team_join',
+					teamId,
+					inviterId: this.inviterId || ''
+				}
 			})
 
 			if (!res || res.code !== 0 || !res.data) {
@@ -263,23 +323,28 @@ export default {
 			})
 		},
 
-		async confirmJoinOrder(token, orderNo) {
-			// 这一步其实可以是多余的，因为 confirmJoin 内部也会确认，但为了保险起见，或者如果需要分步提示，可以保留
-			// 但 team-join-service.confirmJoin 已经包含了一切。
-			// 这里我们为了逻辑简化，可以将这一步留空，或者直接合并到 finalizeJoin
-			// 暂时保留空实现，兼容上层调用结构
+		async confirmJoinOrder(orderNo) {
+			const res = await confirmPayment({
+				orderNo
+			})
+
+			if (res && res.code !== 0) {
+				throw new Error(res.message || '支付确认失败')
+			}
 		},
 
 		async finalizeJoin(token, orderNo) {
-		const teamId = this.teamInfo.team_id || this.teamId
+		const teamId = this.resolvedTeamId
 		const inviterId = this.inviterId || ''
 		
 		console.log('[join-team-confirm] 准备加入团队 - teamId:', teamId, 'inviterId:', inviterId, 'orderNo:', orderNo)
 		
-		const joinService = uniCloud.importObject('team-join-service')
-		const res = await joinService.confirmJoin({
-			orderNo,
-			_token: token
+		const teamService = getHttpService('team-service')
+		const res = await teamService.applyJoinTeam({
+			_token: token,
+			teamId,
+			inviterId,
+			orderNo
 		})
 		
 		console.log('[join-team-confirm] 加入团队返回结果:', JSON.stringify(res))
@@ -289,8 +354,9 @@ export default {
 			uni.showToast({ title: '加入成功', icon: 'success' })
 			uni.removeStorageSync('pending_team_invite')
 			uni.removeStorageSync('pending_inviter_id')
+			uni.removeStorageSync('pending_join_team_snapshot')
 			setTimeout(() => {
-				uni.reLaunch({ url: '/pages/dashboard/index' })
+				uni.reLaunch({ url: '/pages/volunteer/index' })
 			}, 1200)
 		} else {
 			console.error('[join-team-confirm] 加入团队失败:', res)
@@ -311,7 +377,7 @@ export default {
 			
 			console.log('[join-team-confirm] 准备记录团队邀请查看 - inviterId:', this.inviterId)
 			
-			const userCenter = uniCloud.importObject('user-center')
+			const userCenter = getHttpService('user-center')
 			const res = await userCenter.recordTeamInviteView({
 				_token: token,
 				inviterId: this.inviterId
@@ -331,7 +397,8 @@ export default {
 			// 如果用户主动取消，是否要清除缓存？
 			// 策略：清除缓存，避免下次登录又跳进来。用户如果想加，需要重新扫码。
 			uni.removeStorageSync('pending_team_invite')
-			uni.switchTab({ url: '/pages/dashboard/index' })
+			uni.removeStorageSync('pending_join_team_snapshot')
+			uni.reLaunch({ url: '/pages/volunteer/index' })
 		}
 	}
 }

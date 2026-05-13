@@ -27,10 +27,10 @@
 
     <!-- 3. 排行榜列表 -->
     <view class="rank-list">
-      <view class="rank-item" v-for="(item, index) in topList" :key="item.user_id ? item.user_id : index">
+      <view class="rank-item" v-for="(item, index) in topList" :key="item.renderKey">
         <view class="rank-num" :class="'rank-' + (index + 1)">{{ index + 1 }}</view>
         <view class="avatar-wrapper">
-             <image class="avatar" :src="item.avatar || defaultAvatar" mode="aspectFill"></image>
+             <image class="avatar" :src="normalizeAvatarUrl(item.avatar, defaultAvatar)" mode="aspectFill"></image>
         </view>
        
         <view class="user-info">
@@ -56,6 +56,8 @@
 </template>
 
 <script>
+import { getMyPointsAndRank, getPointsLeaderboard } from '../../utils/points-api'
+
 export default {
   data() {
     return {
@@ -66,13 +68,22 @@ export default {
       },
       totalUsers: 0,
       loading: false,
-      defaultAvatar: 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png'
+      defaultAvatar: '/static/icons/default-avatar.svg'
     }
   },
   computed: {
+      leaderboardRows() {
+          return (Array.isArray(this.leaderboard) ? this.leaderboard : []).map((item, index) => {
+              const source = item && typeof item === 'object' ? item : {}
+              const rawKey = source.user_id || source.uid || `points-${index}`
+              return Object.assign({}, source, {
+                  renderKey: `points-leaderboard-${rawKey}`
+              })
+          })
+      },
       topList() {
           // 只显示前3名
-          return this.leaderboard.slice(0, 3)
+          return this.leaderboardRows.slice(0, 3)
       }
   },
   mounted() {
@@ -89,15 +100,19 @@ export default {
         this.loading = true
         const token = uni.getStorageSync('token')
         if (!token) {
+            this.leaderboard = []
+            this.myStats = {
+              balance: 0,
+              rank: null
+            }
             this.loading = false
             return
         }
-        const pointsService = uniCloud.importObject('points-service')
         
         // Parallel requests
         const [leaderboardRes, myStatsRes] = await Promise.all([
-            pointsService.getPointsLeaderboard({ _token: token, limit: 3 }), // Limit 3 based on design, or 5? HTML shows 2 items. Design implies top few.
-            pointsService.getMyPointsAndRank({ _token: token })
+            getPointsLeaderboard({ limit: 3 }),
+            getMyPointsAndRank()
         ])
 
         if (leaderboardRes && leaderboardRes.code === 0) {

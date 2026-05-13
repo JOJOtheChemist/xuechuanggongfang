@@ -3,7 +3,12 @@
 		<view class="modal" @tap.stop>
 			<view class="modal-header">
 				<text class="modal-title">选择学校</text>
-				<text class="manage-btn" :class="{ active: manageMode }" @tap="toggleManageMode">
+				<text
+					v-if="allowManage"
+					class="manage-btn"
+					:class="{ active: manageMode }"
+					@tap="toggleManageMode"
+				>
 					{{ manageMode ? '完成' : '管理' }}
 				</text>
 			</view>
@@ -27,13 +32,13 @@
 						</text>
 					</view>
 				</view>
-				<view class="school-item add-school-trigger" @tap="toggleAddForm">
+				<view v-if="allowManage" class="school-item add-school-trigger" @tap="toggleAddForm">
 					<text class="add-icon">+</text>
 					<text class="add-text">新增学校</text>
 				</view>
 			</scroll-view>
 
-			<view v-if="showAddForm" class="admin-section">
+			<view v-if="allowManage && showAddForm" class="admin-section">
 				<text class="admin-tip">添加新学校（需管理员密码）</text>
 				<input
 					v-model="adminPassword"
@@ -51,7 +56,7 @@
 				<button class="btn btn-primary" @tap="submitAddSchool">验证并添加</button>
 			</view>
 
-			<view v-if="showDeleteForm" class="admin-section">
+			<view v-if="allowManage && showDeleteForm" class="admin-section">
 				<text class="admin-tip">删除学校：{{ deletingSchoolName }}（帖子会归类到“神秘学校”）</text>
 				<input
 					v-model="deletePassword"
@@ -85,6 +90,10 @@ export default {
 			default() {
 				return []
 			}
+		},
+		allowManage: {
+			type: Boolean,
+			default: true
 		}
 	},
 	data() {
@@ -142,6 +151,7 @@ export default {
 			this.$emit('select-school', this.normalizeSchoolDisplay(name))
 		},
 		requestDeleteSchool(name) {
+			if (!this.allowManage) return
 			if (!this.manageMode) return
 			this.deletingSchoolName = this.normalizeSchoolDisplay(name)
 			this.deletePassword = ''
@@ -149,6 +159,7 @@ export default {
 			this.showDeleteForm = true
 		},
 		toggleManageMode() {
+			if (!this.allowManage) return
 			this.manageMode = !this.manageMode
 			if (!this.manageMode) {
 				this.showDeleteForm = false
@@ -157,6 +168,7 @@ export default {
 			}
 		},
 		toggleAddForm() {
+			if (!this.allowManage) return
 			this.showDeleteForm = false
 			this.showAddForm = !this.showAddForm
 		},

@@ -30,8 +30,8 @@
       <text class="count-text">{{ content.length }}/1000</text>
 
       <view class="images-grid">
-        <view class="img-item" v-for="(img, index) in images" :key="img + index">
-          <image class="img" :src="img" mode="aspectFill" @tap="previewImage(index)" />
+        <view class="img-item" v-for="(img, index) in imageItems" :key="img.renderKey">
+          <image class="img" :src="img.url" mode="aspectFill" @tap="previewImage(index)" />
           <view class="delete-btn" @tap.stop="removeImage(index)">×</view>
         </view>
 
@@ -55,6 +55,7 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
 import ForumContentSafetyNotice from './components/ForumContentSafetyNotice.vue'
 import {
   CONTENT_SECURITY_SERVICE_UNAVAILABLE_MESSAGE,
@@ -62,6 +63,22 @@ import {
   isContentSecurityViolation,
   normalizeContentSafetyMessage
 } from '@/utils/contentSafety.js'
+
+const DEFAULT_FORUM_SCHOOL = '云南大学'
+
+function buildSchoolOptions(rawOptions = [], currentSchool = '') {
+  const nextOptions = []
+  const seen = new Set()
+
+  ;[currentSchool, ...rawOptions, DEFAULT_FORUM_SCHOOL].forEach((item) => {
+    const school = String(item || '').trim()
+    if (!school || seen.has(school)) return
+    seen.add(school)
+    nextOptions.push(school)
+  })
+
+  return nextOptions
+}
 
 export default {
   components: {
@@ -85,6 +102,15 @@ export default {
       const index = this.schoolOptions.findIndex(item => item === this.selectedSchool)
       return index >= 0 ? index : 0
     },
+    imageItems() {
+      return (Array.isArray(this.images) ? this.images : []).map((item, index) => {
+        const url = String(item || '').trim()
+        return {
+          url,
+          renderKey: `publish-image-${index}-${url || 'empty'}`
+        }
+      })
+    },
     submitButtonText() {
       if (this.uploading) return '图片上传中...'
       if (this.submitting) return '发布中...'
@@ -103,17 +129,9 @@ export default {
       const token = this.getToken()
       if (token) return true
 
-      uni.showModal({
-        title: '请先登录',
-        content: '发布动态需要先登录。',
-        confirmText: '去登录',
-        success: (res) => {
-          if (res.confirm) {
-            uni.navigateTo({ url: '/pages/auth/login/index' })
-          } else {
-            uni.navigateBack()
-          }
-        }
+      uni.showToast({
+        title: '未登录',
+        icon: 'none'
       })
       return false
     },
@@ -122,24 +140,25 @@ export default {
       if (!token) return
 
       try {
-        const forumService = uniCloud.importObject('forum-service')
+        const forumService = getHttpService('forum-service')
         const res = await forumService.getSchoolList({ _token: token })
         if (!res || res.code !== 0) {
           throw new Error((res && res.message) || '加载学校失败')
         }
 
         const data = res.data || {}
-        const options = Array.isArray(data.school_options) ? data.school_options : []
+        const options = buildSchoolOptions(
+          Array.isArray(data.school_options) ? data.school_options : [],
+          data.current_school || ''
+        )
         const currentSchool = data.current_school || ''
 
-        if (currentSchool && options.indexOf(currentSchool) === -1) {
-          options.unshift(currentSchool)
-        }
-
         this.schoolOptions = options
-        this.selectedSchool = currentSchool || options[0] || ''
+        this.selectedSchool = currentSchool || options[0] || DEFAULT_FORUM_SCHOOL
       } catch (error) {
         console.error('[forum][publish] loadSchoolOptions failed:', error)
+        this.schoolOptions = buildSchoolOptions()
+        this.selectedSchool = this.schoolOptions[0] || DEFAULT_FORUM_SCHOOL
         uni.showToast({ title: error.message || '加载学校失败', icon: 'none' })
       }
     },
@@ -316,7 +335,7 @@ export default {
         if (filePaths.length === 0) return
 
         this.uploading = true
-        const forumService = uniCloud.importObject('forum-service')
+        const forumService = getHttpService('forum-service')
 
         for (let i = 0; i < filePaths.length; i += 1) {
           const filePath = filePaths[i]
@@ -366,7 +385,7 @@ export default {
 
       this.submitting = true
       try {
-        const forumService = uniCloud.importObject('forum-service')
+        const forumService = getHttpService('forum-service')
         const res = await forumService.createPost({
           _token: token,
           title: safeTitle,

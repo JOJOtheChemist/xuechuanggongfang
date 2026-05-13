@@ -9,6 +9,16 @@
       </view>
 
       <view class="card">
+        <view class="ambassador-badge-deco">
+          <view class="ambassador-badge-glow"></view>
+          <image
+            class="ambassador-badge-img"
+            src="https://xuechuang.xyz/oss/share-assets/xuechuang/profile/badges/campus-partner-badge-v1.png"
+            mode="aspectFit"
+          />
+          <text class="ambassador-badge-label">校园大使</text>
+        </view>
+
         <view v-if="isLoggedIn" class="user-block">
           <image v-if="userAvatar" :src="userAvatar" class="avatar" mode="aspectFill" />
           <view class="user-text">
@@ -19,6 +29,12 @@
         </view>
 
         <view v-else class="action-block">
+          <view class="guest-highlight">
+            <button class="guest-btn" hover-class="btn-hover" @click="goHome">
+              游客试用
+            </button>
+          </view>
+
           <button
             class="wx-btn"
             hover-class="btn-hover"
@@ -26,10 +42,6 @@
             @click="wechatLogin"
           >
             {{ loginLoading ? '登录中...' : '微信一键登录' }}
-          </button>
-
-          <button class="guest-btn" hover-class="btn-hover" @click="goHome">
-            游客试用
           </button>
           
           <view class="agreement-box">
@@ -61,6 +73,7 @@
 </template>
 
 <script>
+import { getHttpService, getCurrentUserInfo, normalizeUserInfo } from '@/utils/http-services'
 export default {
   data() {
     return {
@@ -74,11 +87,13 @@ export default {
       inviterName: '',
       inviterLoading: false,
       teamInviter: '',
-      businessInviter: ''
+      businessInviter: '',
+      redirectUrl: ''
     }
   },
   onLoad(options) {
     console.log('[login] 页面 onLoad 入参:', JSON.stringify(options))
+    this.redirectUrl = options.redirect ? decodeURIComponent(options.redirect) : ''
     
     // [双重保险] 优先从 URL 参数（桌号）获取邀请人信息
     if (options.inviter_id) {
@@ -133,15 +148,13 @@ export default {
     }
 
     // 进入登录页时，先检查本地是否已有登录态
-    const token = uni.getStorageSync('token')
-    const userId = uni.getStorageSync('userId')
-    const userInfo = uni.getStorageSync('userInfo') || {}
+    const currentUser = getCurrentUserInfo()
 
-    if (token && userId) {
+    if (currentUser.token) {
       this.isLoggedIn = true
-      this.userId = userId
-      this.userNickname = userInfo.nickname || ''
-      this.userAvatar = userInfo.avatar || ''
+      this.userId = currentUser.userId || currentUser.uid || ''
+      this.userNickname = currentUser.nickname || currentUser.username || ''
+      this.userAvatar = currentUser.avatar || ''
       // 已登录则直接执行跳转逻辑
       this.handleLoginSuccess()
       return
@@ -165,8 +178,8 @@ export default {
         return
       }
       // 否则回首页
-      uni.switchTab({
-        url: '/pages/dashboard/index'
+      uni.reLaunch({
+        url: '/subpackages/forum/index'
       })
     },
 
@@ -217,7 +230,7 @@ export default {
     async fetchInviterName(inviterId) {
       try {
         this.inviterLoading = true
-        const teamService = uniCloud.importObject('team-service')
+        const teamService = getHttpService('team-service')
         const res = await teamService.getTeamInfoByInviter(inviterId)
 
         if (res?.code === 0 && res.data?.inviter_name) {
@@ -266,23 +279,29 @@ export default {
             const inviteType = this.inviteType || '' // 从 onLoad 时设置的 inviteType 读取
             console.log('[login] 准备登录，inviterId:', inviterId, 'inviteType:', inviteType, '来源:', this.inviterId ? 'URL参数' : '缓存')
             
-            const userCenter = uniCloud.importObject('user-center')
+            const userCenter = getHttpService('user-center')
             // [修改] 传递对象格式的 inviterId 参数
             const inviterParam = inviterId ? { inviterId, inviteType } : undefined
             const result = await userCenter.loginByWeixin({ code, inviterId: inviterParam })
 
             if (result.code === 0 && result.data) {
-              const { uid, token, userInfo, isNewUser } = result.data
+              const { uid, token, accessToken, refreshToken, userInfo, isNewUser } = result.data
+              const latestUserInfo = normalizeUserInfo(userInfo)
+              const sessionToken = accessToken || token || ''
 
               this.isLoggedIn = true
-              this.userId = uid
-              this.userNickname = userInfo.nickname
-              this.userAvatar = userInfo.avatar
+              this.userId = uid || latestUserInfo.uid || latestUserInfo.userId || ''
+              this.userNickname = latestUserInfo.nickname || latestUserInfo.username || ''
+              this.userAvatar = latestUserInfo.avatar || ''
 
               // 持久化登录态，供其它页面和接口共用
-              uni.setStorageSync('userId', uid)
-              uni.setStorageSync('token', token)
-              uni.setStorageSync('userInfo', userInfo)
+              uni.setStorageSync('userId', this.userId)
+              uni.setStorageSync('token', sessionToken)
+              uni.setStorageSync('accessToken', sessionToken)
+              if (refreshToken) {
+                uni.setStorageSync('refreshToken', refreshToken)
+              }
+              uni.setStorageSync('userInfo', latestUserInfo)
               
               uni.showToast({
                 title: isNewUser ? 'Welcome!' : '登录成功',
@@ -316,6 +335,11 @@ export default {
     // 统一处理登录后的跳转逻辑
     async handleLoginSuccess() {
       console.log('[login] 登录成功/已登录，开始处理邀请跳转逻辑')
+
+      if (this.redirectUrl) {
+        this.redirectAfterLogin()
+        return
+      }
       
       // 优先处理业务邀请（报名）
       const jumpedToBusiness = await this.handlePendingBusinessInvite()
@@ -333,6 +357,53 @@ export default {
           this.goHome()
         }, 500)
       }
+    },
+    redirectAfterLogin() {
+      const targetUrl = String(this.redirectUrl || '').trim()
+      if (!targetUrl) {
+        this.goHome()
+        return
+      }
+
+      const tabBarPages = [
+        '/pages/dashboard/index',
+        '/pages/business/index',
+        '/pages/volunteer/index',
+        '/pages/task-center/index',
+        '/pages/profile/index'
+      ]
+      const targetPath = targetUrl.split('?')[0]
+      const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+      const previousPage = pages.length > 1 ? pages[pages.length - 2] : null
+      const previousPath = previousPage && previousPage.route
+        ? `/${String(previousPage.route).replace(/^\/+/, '')}`
+        : ''
+
+      if (previousPath && previousPath === targetPath) {
+        uni.navigateBack()
+        return
+      }
+
+      if (tabBarPages.includes(targetPath)) {
+        uni.switchTab({
+          url: targetPath,
+          fail: () => {
+            uni.reLaunch({
+              url: targetUrl
+            })
+          }
+        })
+        return
+      }
+
+      uni.redirectTo({
+        url: targetUrl,
+        fail: () => {
+          uni.reLaunch({
+            url: targetUrl
+          })
+        }
+      })
     },
 
     // 登录后如果存在业务邀请，引导到报名页
@@ -601,6 +672,54 @@ export default {
   box-shadow: 0 20rpx 60rpx rgba(139, 92, 246, 0.1);
   box-sizing: border-box;
   animation: slideUp 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
+  overflow: visible;
+}
+
+.ambassador-badge-deco {
+  position: absolute;
+  top: -82rpx;
+  right: 34rpx;
+  width: 168rpx;
+  height: 188rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 3;
+  transform: rotate(6deg);
+}
+
+.ambassador-badge-glow {
+  position: absolute;
+  width: 142rpx;
+  height: 142rpx;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.42) 0%, rgba(251, 191, 36, 0) 70%);
+  filter: blur(3rpx);
+}
+
+.ambassador-badge-img {
+  width: 134rpx;
+  height: 138rpx;
+  position: relative;
+  z-index: 2;
+  filter: drop-shadow(0 12rpx 18rpx rgba(124, 58, 237, 0.18));
+}
+
+.ambassador-badge-label {
+  position: relative;
+  z-index: 2;
+  margin-top: -8rpx;
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  font-size: 18rpx;
+  font-weight: 800;
+  color: #7c2d12;
+  background: rgba(255, 247, 237, 0.95);
+  border: 2rpx solid rgba(251, 191, 36, 0.34);
+  box-shadow: 0 8rpx 18rpx rgba(251, 146, 60, 0.16);
 }
 
 @keyframes slideUp {
@@ -683,43 +802,56 @@ export default {
   line-height: 100rpx;
   border-radius: 50rpx;
   /* Solid Color */
-  background: #A78BFA;
-  color: #ffffff;
-  font-size: 34rpx;
+  background: #ffffff;
+  border: 2rpx solid rgba(124, 58, 237, 0.28);
+  color: #7C3AED;
+  font-size: 30rpx;
   font-weight: 700;
-  /* Cute 3D button effect */
-  box-shadow: 0 12rpx 0 rgba(139, 92, 246, 1);
+  box-shadow: 0 8rpx 0 rgba(221, 214, 254, 0.9);
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-top: 30rpx;
   margin-bottom: 12rpx;
 }
 
 .wx-btn:active {
-  box-shadow: 0 4rpx 0 rgba(139, 92, 246, 1);
-  transform: translateY(8rpx);
+  box-shadow: 0 3rpx 0 rgba(221, 214, 254, 0.9);
+  transform: translateY(5rpx);
+}
+
+.guest-highlight {
+  width: 100%;
+  padding: 26rpx 24rpx 28rpx;
+  border-radius: 38rpx;
+  background: linear-gradient(135deg, #fffbeb 0%, #fff7ed 46%, #ffffff 100%);
+  box-shadow: 0 18rpx 36rpx rgba(251, 146, 60, 0.2);
+  box-sizing: border-box;
 }
 
 .guest-btn {
   width: 100%;
-  height: 100rpx;
-  line-height: 100rpx;
-  border-radius: 50rpx;
-  background: #ffffff;
-  color: #7C3AED;
-  font-size: 34rpx;
-  font-weight: 700;
-  box-shadow: 0 8rpx 0 #ddd6fe;
+  height: 112rpx;
+  line-height: 112rpx;
+  border-radius: 56rpx;
+  background: linear-gradient(135deg, #fb923c 0%, #f97316 50%, #ea580c 100%);
+  color: #ffffff;
+  font-size: 36rpx;
+  font-weight: 900;
+  letter-spacing: 2rpx;
+  box-shadow: 0 14rpx 0 #c2410c, 0 20rpx 34rpx rgba(234, 88, 12, 0.28);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 12rpx;
-  margin-top: 24rpx;
+}
+
+.guest-btn::after {
+  border: none;
 }
 
 .guest-btn:active {
-  box-shadow: 0 4rpx 0 #ddd6fe;
-  transform: translateY(4rpx);
+  box-shadow: 0 5rpx 0 #c2410c, 0 10rpx 22rpx rgba(234, 88, 12, 0.22);
+  transform: translateY(9rpx);
 }
 
 .agreement-box {

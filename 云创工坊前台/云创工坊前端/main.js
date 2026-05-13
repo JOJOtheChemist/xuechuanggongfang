@@ -1,14 +1,12 @@
 import App from './App'
+import { getCurrentUserInfo } from './utils/http-services'
+import { normalizeAvatarUrl } from './utils/avatar'
 
 // #ifndef VUE3
 import Vue from 'vue'
 import './uni.promisify.adaptor'
-import { apiSwitch, installApiSwitch } from './utils/api-switch'
-
-installApiSwitch()
 
 Vue.config.productionTip = false
-Vue.prototype.$apiSwitch = apiSwitch
 App.mpType = 'app'
 
 // [Global Mixin] 自动注入全局用户ID，方便页面调试和逻辑判断
@@ -22,9 +20,14 @@ Vue.mixin({
       global_business_inviter: '' // 全局变量：业务邀请人 (临时)
     }
   },
+  methods: {
+    normalizeAvatarUrl(url, fallback) {
+      return normalizeAvatarUrl(url, fallback)
+    }
+  },
   onShow() {
     // 每次页面显示时，自动获取最新的 UID
-    const userInfo = uniCloud.getCurrentUserInfo()
+    const userInfo = getCurrentUserInfo()
     // 优先使用标准接口，如果没有（因项目自定义了storage key），则回退到本地缓存 'userId'
     this.global_uid = userInfo.uid || uni.getStorageSync('userId')
 

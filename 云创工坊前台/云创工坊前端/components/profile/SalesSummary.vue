@@ -19,6 +19,7 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
 export default {
 	name: 'SalesSummary',
 	data() {
@@ -55,7 +56,7 @@ export default {
 				return
 			}
 			try {
-				const userCenter = uniCloud.importObject('user-center')
+				const userCenter = getHttpService('user-center')
 				const res = await userCenter.getMyStats({ _token: token })
 				if (res && res.code === 0 && res.data) {
 					const d = res.data || {}

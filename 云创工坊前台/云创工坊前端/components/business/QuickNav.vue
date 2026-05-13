@@ -5,6 +5,7 @@
         v-for="(item, index) in menuItems"
         :key="index"
         class="nav-card"
+        :class="item.theme"
         hover-class="nav-card-hover"
         @click="handleCardClick(item, index)"
       >
@@ -190,7 +191,7 @@ export default {
 /* --- 全局设置 --- */
 .quick-nav-container {
   width: 100%;
-  padding: 20rpx;
+  padding: 18rpx 8rpx 8rpx;
   box-sizing: border-box;
 }
 
@@ -206,7 +207,9 @@ export default {
 .nav-card {
   background: #ffffff;
   border-radius: 32rpx;
-  padding: 16rpx 0; /* Aggressively reduced vertical padding */
+  padding: 10rpx 0;
+  width: calc(100% - 24rpx);
+  margin-top: 5rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -216,6 +219,8 @@ export default {
               0 0 0 1rpx rgba(0, 0, 0, 0.01); 
   transition: all 0.2s ease;
   position: relative;
+  justify-self: center;
+  box-sizing: border-box;
 }
 
 /* 恢复误删的标签样式 */
@@ -236,25 +241,26 @@ export default {
 
 .nav-card-hover {
   transform: scale(0.98);
-  background-color: #FAFAFA;
+  opacity: 0.94;
 }
 
 /* --- 核心：淡雅圆底区域 --- */
 .icon-circle {
-  width: 56rpx; /* Further reduced from 64rpx */
-  height: 56rpx;
+  width: 64rpx;
+  height: 64rpx;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 8rpx; /* Tighter spacing */
   transition: transform 0.2s;
+  background: transparent;
 }
 
 /* SVG 图标通用样式 */
 .icon-svg {
-  width: 32rpx; /* Reduced from 40rpx */
-  height: 32rpx;
+  width: 38rpx;
+  height: 38rpx;
 }
 
 /* --- 文字区域 --- */
@@ -271,19 +277,19 @@ export default {
 
 .sub-title {
   font-size: 22rpx; /* Increased from 20rpx */
-  color: #999999;
+  color: #333333;
   font-weight: 400;
   margin-top: 2rpx;
 }
 
 /* --- 颜色主题 --- */
 /* 注意：这里只控制背景色，前景色(icon颜色)已在 SVG 生成时处理 */
-.theme-red { background-color: #FEF2F2; }
-.theme-purple { background-color: #F3F0FF; }
-.theme-blue { background-color: #EFF6FF; }
-.theme-green { background-color: #ECFDF5; }
-.theme-orange { background-color: #FFF7ED; }
-.theme-pink { background-color: #FDF2F8; }
-.theme-cyan { background-color: #ECFEFF; }
+.nav-card.theme-red { background-color: #FFF4F4; }
+.nav-card.theme-purple { background-color: #F7F4FF; }
+.nav-card.theme-blue { background-color: #F4F8FF; }
+.nav-card.theme-green { background-color: #F2FCF7; }
+.nav-card.theme-orange { background-color: #FFF7F0; }
+.nav-card.theme-pink { background-color: #FEF5FA; }
+.nav-card.theme-cyan { background-color: #F2FDFF; }
 
 </style>

@@ -1,11 +1,8 @@
+import { isAuthMessage, toFriendlyAuthMessage } from './auth-message'
+
 const API_SOURCE_HTTP = 'http'
-const API_SOURCE_UNICLOUD = 'unicloud'
-
-const API_SOURCE_STORAGE_KEY = 'xuechuang_api_source'
 const API_BASE_URL_STORAGE_KEY = 'xuechuang_api_base_url'
-const API_STRICT_STORAGE_KEY = 'xuechuang_api_strict_http'
 
-const DEFAULT_API_SOURCE = API_SOURCE_HTTP
 const DEFAULT_API_BASE_URL = 'https://xuechuang.xyz/api/v1'
 const LEGACY_DEVTOOLS_API_BASE_URL = 'http://127.0.0.1:3001/api/v1'
 const AUTH_PROMPT_INTERVAL = 2500
@@ -13,13 +10,14 @@ const AUTH_STORAGE_KEYS = [
 	'token',
 	'accessToken',
 	'refreshToken',
-	'userInfo',
-	'userId',
 	'uni_id_token',
-	'uni_id_token_expired'
+	'uni_id_token_expired',
+	'userInfo',
+	'userId'
 ]
 
 let lastAuthPromptAt = 0
+let authRefreshPromise = null
 
 function getUniStorage(key, fallback) {
 	try {
@@ -50,6 +48,38 @@ function clearAuthStorage() {
 	AUTH_STORAGE_KEYS.forEach(removeUniStorage)
 }
 
+function getStoredRefreshToken() {
+	return getUniStorage('refreshToken', '')
+}
+
+function persistAuthSession(payload = {}) {
+	const token = String(payload.accessToken || payload.token || '').trim()
+	const refreshToken = String(payload.refreshToken || '').trim()
+	const userInfo = isPlainObject(payload.userInfo) ? payload.userInfo : null
+	const userId =
+		payload.userId ||
+		payload.uid ||
+		(userInfo && (userInfo.uid || userInfo.userId || userInfo.id)) ||
+		''
+
+	if (token) {
+		setUniStorage('token', token)
+		setUniStorage('accessToken', token)
+	}
+
+	if (refreshToken) {
+		setUniStorage('refreshToken', refreshToken)
+	}
+
+	if (userId !== '') {
+		setUniStorage('userId', userId)
+	}
+
+	if (userInfo) {
+		setUniStorage('userInfo', userInfo)
+	}
+}
+
 function authRequiredResponse(message = '请先登录') {
 	return {
 		code: -1,
@@ -76,9 +106,16 @@ function showAuthPrompt(message = '请先登录') {
 }
 
 function handleAuthFailure(message = '请先登录') {
+	const friendlyMessage = toFriendlyAuthMessage(message, '未登录')
 	clearAuthStorage()
-	showAuthPrompt(message)
-	return authRequiredResponse(message)
+	showAuthPrompt(friendlyMessage)
+	return authRequiredResponse(friendlyMessage)
+}
+
+function createAuthFailureResponse(message = '请先登录') {
+	const friendlyMessage = toFriendlyAuthMessage(message, '未登录')
+	showAuthPrompt(friendlyMessage)
+	return authRequiredResponse(friendlyMessage)
 }
 
 function normalizeBaseUrl(url) {
@@ -89,27 +126,19 @@ function normalizeBaseUrl(url) {
 }
 
 export function getApiSource() {
-	const source = getUniStorage(API_SOURCE_STORAGE_KEY, DEFAULT_API_SOURCE)
-	return source === API_SOURCE_UNICLOUD ? API_SOURCE_UNICLOUD : API_SOURCE_HTTP
+	return API_SOURCE_HTTP
 }
 
-export function setApiSource(source) {
-	const nextSource = source === API_SOURCE_UNICLOUD ? API_SOURCE_UNICLOUD : API_SOURCE_HTTP
-	setUniStorage(API_SOURCE_STORAGE_KEY, nextSource)
-	console.log(`[api-switch] source => ${nextSource}`)
-	return nextSource
+export function setApiSource() {
+	return API_SOURCE_HTTP
 }
 
 export function useHttpApi() {
-	return setApiSource(API_SOURCE_HTTP)
-}
-
-export function useUniCloudApi() {
-	return setApiSource(API_SOURCE_UNICLOUD)
+	return API_SOURCE_HTTP
 }
 
 export function toggleApiSource() {
-	return setApiSource(getApiSource() === API_SOURCE_HTTP ? API_SOURCE_UNICLOUD : API_SOURCE_HTTP)
+	return API_SOURCE_HTTP
 }
 
 export function getApiBaseUrl() {
@@ -121,20 +150,15 @@ export function getApiBaseUrl() {
 export function setApiBaseUrl(url) {
 	const nextUrl = normalizeBaseUrl(url)
 	setUniStorage(API_BASE_URL_STORAGE_KEY, nextUrl)
-	console.log(`[api-switch] baseUrl => ${nextUrl}`)
 	return nextUrl
 }
 
 export function isStrictHttpApi() {
-	const value = getUniStorage(API_STRICT_STORAGE_KEY, false)
-	return value === true || value === 'true'
+	return true
 }
 
-export function setStrictHttpApi(strict) {
-	const nextValue = strict === true
-	setUniStorage(API_STRICT_STORAGE_KEY, nextValue)
-	console.log(`[api-switch] strictHttp => ${nextValue}`)
-	return nextValue
+export function setStrictHttpApi() {
+	return true
 }
 
 function isPlainObject(value) {
@@ -153,18 +177,23 @@ function objectPayload(args) {
 function removeInternalFields(payload) {
 	const nextPayload = isPlainObject(payload) ? Object.assign({}, payload) : {}
 	delete nextPayload._token
-	delete nextPayload.uniIdToken
-	delete nextPayload.uni_id_token
 	return nextPayload
+}
+
+function stripInternalFieldsForQuery(payload) {
+	return removeInternalFields(payload)
+}
+
+function stripInternalFieldsForBody(payload, keepToken) {
+	if (keepToken) {
+		return isPlainObject(payload) ? Object.assign({}, payload) : {}
+	}
+	return removeInternalFields(payload)
 }
 
 function tokenFromPayload(payload) {
 	if (isPlainObject(payload) && payload._token) return payload._token
-	return (
-		getUniStorage('token', '') ||
-		getUniStorage('accessToken', '') ||
-		getUniStorage('uni_id_token', '')
-	)
+	return getUniStorage('token', '') || getUniStorage('accessToken', '') || getUniStorage('uni_id_token', '')
 }
 
 function isJwtLikeToken(token) {
@@ -172,8 +201,49 @@ function isJwtLikeToken(token) {
 }
 
 function isHttpAuthTokenCompatible(token) {
-	if (!token || getApiSource() !== API_SOURCE_HTTP) return true
-	return isJwtLikeToken(token)
+	// 这里不能只认 JWT。
+	// 当前项目既有 JWT，也有 uniCloud 这类 base64 自定义 token。
+	return typeof token === 'string' && token.trim().length > 0
+}
+
+async function refreshAuthSession() {
+	const refreshToken = getStoredRefreshToken()
+	if (!refreshToken) return ''
+
+	if (!authRefreshPromise) {
+		authRefreshPromise = (async () => {
+			try {
+				const response = await uni.request({
+					url: `${getApiBaseUrl()}/auth/refresh`,
+					method: 'POST',
+					data: { refreshToken },
+					header: {
+						'Content-Type': 'application/json'
+					}
+				})
+				const result = normalizeResponse(response)
+				const nextAccessToken = String(result?.data?.accessToken || '').trim()
+
+				if (result && result.code === 0 && isJwtLikeToken(nextAccessToken)) {
+					persistAuthSession({
+						token: nextAccessToken,
+						accessToken: nextAccessToken,
+						refreshToken: result.data.refreshToken,
+						userInfo: result.data.userInfo
+					})
+					return nextAccessToken
+				}
+			} catch (error) {
+				console.warn('[api-switch] refresh auth failed:', error)
+			} finally {
+				authRefreshPromise = null
+			}
+
+			return ''
+		})()
+	}
+
+	return authRefreshPromise
 }
 
 function appendQuery(url, query) {
@@ -225,29 +295,30 @@ function optionalAuthRoute(method, path, options = {}) {
 	return route(method, path, Object.assign({ auth: 'optional' }, options))
 }
 
-function buildRequestConfig(definition, args) {
+function buildRequestConfig(definition, args, overrideToken = '') {
 	const payload = objectPayload(args)
 	const method = String(definition.method || 'GET').toUpperCase()
 	const path = typeof definition.path === 'function'
 		? definition.path(payload, args)
 		: definition.path
+	const preserveTokenInBody = definition.auth === true && method !== 'GET'
 	const query = definition.query
 		? definition.query(payload, args)
 		: method === 'GET'
-			? payload
+			? stripInternalFieldsForQuery(payload)
 			: {}
 	const data = definition.body
 		? definition.body(payload, args)
 		: method === 'GET'
 			? undefined
-			: removeInternalFields(payload)
+			: stripInternalFieldsForBody(payload, preserveTokenInBody)
 
 	return {
 		method,
 		path,
 		query,
 		data,
-		token: tokenFromPayload(payload)
+		token: overrideToken || tokenFromPayload(payload)
 	}
 }
 
@@ -293,6 +364,26 @@ function isAuthFailure(result, statusCode) {
 	return false
 }
 
+function shouldClearAuthStorageOnFailure(definition, statusCode, result) {
+	if (!definition || definition.auth !== true) {
+		return false
+	}
+
+	if (statusCode === 401) {
+		return true
+	}
+
+	const errorText = String(
+		(result && (result.error || result.errCode || result.code)) || ''
+	)
+	const messageText = String(
+		(result && (result.message || result.errMsg)) || ''
+	)
+	const combined = `${errorText} ${messageText}`
+
+	return /ACCESS_TOKEN|REFRESH_TOKEN|AUTH_REQUIRED|登录状态已失效|重新登录|token.*(expired|invalid|无效|过期)/i.test(combined)
+}
+
 function isAuthException(error) {
 	if (!error) return false
 	const combined = String(error.message || error.errMsg || error.error || error)
@@ -303,16 +394,29 @@ function shouldAttachToken(definition) {
 	return definition && (definition.auth === true || definition.auth === 'optional')
 }
 
-async function requestHttp(definition, args) {
+async function requestHttp(definition, args, runtime = {}) {
 	try {
-		const config = buildRequestConfig(definition, args)
+		let config = buildRequestConfig(definition, args, runtime.overrideToken)
 		if (definition.auth === true && !config.token) {
+			if (!runtime.retriedAfterRefresh) {
+				const refreshedToken = await refreshAuthSession()
+				if (refreshedToken) {
+					return requestHttp(definition, args, Object.assign({}, runtime, { retriedAfterRefresh: true, overrideToken: refreshedToken }))
+				}
+			}
 			return handleAuthFailure('请先登录')
 		}
 		if (config.token && shouldAttachToken(definition) && !isHttpAuthTokenCompatible(config.token)) {
+			if (!runtime.retriedAfterRefresh) {
+				const refreshedToken = await refreshAuthSession()
+				if (refreshedToken) {
+					return requestHttp(definition, args, Object.assign({}, runtime, { retriedAfterRefresh: true, overrideToken: refreshedToken }))
+				}
+			}
 			return handleAuthFailure('登录状态已失效，请重新登录')
 		}
 
+		config = buildRequestConfig(definition, args, runtime.overrideToken)
 		const url = appendQuery(`${getApiBaseUrl()}${config.path}`, config.query)
 		const header = {
 			'Content-Type': 'application/json'
@@ -333,11 +437,28 @@ async function requestHttp(definition, args) {
 		const statusCode = rawResponse && rawResponse.statusCode
 		const result = normalizeResponse(response)
 		if (isAuthFailure(result, statusCode)) {
-			return handleAuthFailure(result.message || '登录状态已失效，请重新登录')
+			if (definition.auth === true && !runtime.retriedAfterRefresh) {
+				const refreshedToken = await refreshAuthSession()
+				if (refreshedToken) {
+					return requestHttp(definition, args, Object.assign({}, runtime, { retriedAfterRefresh: true, overrideToken: refreshedToken }))
+				}
+			}
+			const message = result.message || '登录状态已失效，请重新登录'
+			const authMessage = statusCode === 401 && !isAuthMessage(message) ? '未登录' : message
+			if (shouldClearAuthStorageOnFailure(definition, statusCode, result)) {
+				return handleAuthFailure(authMessage)
+			}
+			return createAuthFailureResponse(authMessage)
 		}
 		return definition.transform ? definition.transform(result) : result
 	} catch (e) {
 		if (isAuthException(e)) {
+			if (definition.auth === true && !runtime.retriedAfterRefresh) {
+				const refreshedToken = await refreshAuthSession()
+				if (refreshedToken) {
+					return requestHttp(definition, args, Object.assign({}, runtime, { retriedAfterRefresh: true, overrideToken: refreshedToken }))
+				}
+			}
 			return handleAuthFailure(e.message || e.errMsg || '登录状态已失效，请重新登录')
 		}
 
@@ -441,41 +562,12 @@ function transformCategoryListResponse(response) {
 	return response
 }
 
-function transformCategoryResponse(response) {
-	if (response && response.data) response.data = normalizeCategory(response.data)
-	return response
-}
-
 function transformSignupResponse(response) {
 	const data = response && response.data
 	if (isPlainObject(data) && isPlainObject(data.signup)) {
 		response.data = Object.assign({}, data, {
 			signup_id: data.signup.id || data.signup.signup_id,
 			signupId: data.signup.id || data.signup.signupId
-		})
-	}
-	return response
-}
-
-function transformOrderResponse(response) {
-	const data = response && response.data
-	if (isPlainObject(data) && isPlainObject(data.order)) {
-		response.data = Object.assign({}, data, {
-			order_no: data.order.orderNo || data.order.order_no,
-			orderNo: data.order.orderNo || data.order.order_no,
-			pay_params: data.payParams || data.pay_params || null
-		})
-	}
-	return response
-}
-
-function transformPointsStatsResponse(response) {
-	const data = response && response.data
-	if (isPlainObject(data)) {
-		response.data = Object.assign({}, data, {
-			total_points: data.total_points !== undefined ? data.total_points : data.totalPoints,
-			today_added: data.today_added !== undefined ? data.today_added : data.todayAdded,
-			total_added: data.total_added !== undefined ? data.total_added : data.totalAdded
 		})
 	}
 	return response
@@ -488,22 +580,6 @@ function transformCoinStatsResponse(response) {
 			current_balance: data.current_balance !== undefined ? data.current_balance : data.currentBalance,
 			today_income: data.today_income !== undefined ? data.today_income : data.todayIncome,
 			total_income: data.total_income !== undefined ? data.total_income : data.totalIncome
-		})
-	}
-	return response
-}
-
-function transformWalletResponse(response) {
-	const data = response && response.data
-	if (isPlainObject(data)) {
-		response.data = Object.assign({}, data, {
-			balance: data.balance !== undefined ? data.balance : data.cashBalance,
-			frozen_balance: data.frozen_balance !== undefined ? data.frozen_balance : data.cashFrozenBalance,
-			total_income: data.total_income !== undefined ? data.total_income : data.cashTotalIncome,
-			total_withdraw: data.total_withdraw !== undefined ? data.total_withdraw : data.cashTotalWithdraw,
-			coins: data.coins !== undefined ? data.coins : data.coinBalance,
-			coin_total_income: data.coin_total_income !== undefined ? data.coin_total_income : data.coinTotalIncome,
-			payment_qrcode: data.payment_qrcode || data.paymentQrcodeUrl || ''
 		})
 	}
 	return response
@@ -582,33 +658,11 @@ function transformForumCommentResponse(response) {
 	return response
 }
 
-function currentStorageUserId() {
-	const userId = getUniStorage('userId', '')
-	return userId === undefined || userId === null ? '' : String(userId)
-}
-
-function isOtherUserPayload(payload) {
-	const targetUserId = payload.user_id || payload.userId
-	const currentUserId = currentStorageUserId()
-	return !!targetUserId && !!currentUserId && String(targetUserId) !== currentUserId
-}
-
-function bodyForPointsRecharge(payload) {
-	return {
-		delta: Number(payload.points || 0),
-		reason: 'points_recharge',
-		source: 'payment',
-		refId: payload.orderNo || payload.order_no || '',
-		remark: `积分充值 ${payload.points || 0}`
-	}
-}
-
 const SERVICE_ROUTES = {
 	'user-center': {
 		loginByWeixin: route('POST', '/auth/wechat-login'),
 		getUserInfo: authRoute('GET', '/users/me'),
 		updateProfile: authRoute('PATCH', '/users/me'),
-		getWalletInfo: authRoute('GET', '/users/me/wallet', { transform: transformWalletResponse }),
 		getMyStats: authRoute('GET', '/users/me/stats'),
 		bindInviter: authRoute('POST', '/users/me/inviter'),
 		recordTeamInviteView: authRoute('POST', '/users/me/invite-views/team'),
@@ -624,45 +678,33 @@ const SERVICE_ROUTES = {
 			transform: transformArticleResponse
 		}),
 		getList: optionalAuthRoute('GET', '/catalog/articles', { transform: transformArticleResponse }),
-		getDetail: optionalAuthRoute('GET', (payload, args) => `/catalog/articles/${encodedId(payload, args, ['id', 'articleId', 'article_id'], 'id')}`, {
-			query: () => ({}),
-			transform: transformArticleResponse
-		}),
-		likeArticle: authRoute('POST', (payload, args) => `/catalog/articles/${encodedId(payload, args, ['articleId', 'article_id', 'id'], 'articleId')}/like`),
-		like: authRoute('POST', (payload, args) => `/catalog/articles/${encodedId(payload, args, ['id', 'articleId', 'article_id'], 'id')}/like`),
-		collect: authRoute('POST', (payload, args) => `/catalog/articles/${encodedId(payload, args, ['id', 'articleId', 'article_id'], 'id')}/favorite`),
-		unlockArticle: authRoute('POST', (payload, args) => `/catalog/articles/${encodedId(payload, args, ['articleId', 'article_id', 'id'], 'articleId')}/unlock`)
+		unlockArticle: authRoute('POST', (payload, args) => `/catalog/articles/${encodedId(payload, args, ['articleId', 'article_id', 'id'], 'articleId')}/unlock`),
+		batchUpdatePrices: authRoute('POST', '/catalog/admin/articles/default-price')
 	},
 
 	'business-service': {
 		getCategoryList: route('GET', '/catalog/categories', { transform: transformCategoryListResponse }),
-		getCategoryDetail: route('GET', (payload, args) => `/catalog/categories/${encodedId(payload, args, ['categoryId', 'category_id', 'id'], 'categoryId')}`, {
-			query: () => ({}),
-			transform: transformCategoryResponse
+		getLearningNotices: route('GET', '/catalog/learning/notices'),
+		generateBusinessInviteQrcode: authRoute('GET', (payload, args) => `/catalog/business/${encodedId(payload, args, ['businessId', 'business_id', 'id'], 'businessId')}/invite-qrcode`, {
+			query: () => ({})
 		}),
-		getHotCategories: route('GET', '/catalog/categories/hot', { transform: transformCategoryListResponse }),
-		getCategoryStats: route('GET', (payload, args) => `/catalog/categories/${encodedId(payload, args, ['categoryId', 'category_id', 'id'], 'categoryId')}/stats`, {
+		resolveInviteCode: route('GET', (payload, args) => `/catalog/invite-codes/${encodedId(payload, args, ['inviteCode', 'code', 'id'], 'inviteCode')}`, {
 			query: () => ({})
 		}),
 		submitSignup: authRoute('POST', '/signups', { transform: transformSignupResponse }),
 		getSignupDetail: authRoute('GET', (payload, args) => `/signups/${encodedId(payload, args, ['signupId', 'signup_id', 'id'], 'signupId')}`, {
 			query: () => ({})
-		})
+		}),
+		initMissingCategories: authRoute('POST', '/catalog/admin/signup-categories/init'),
+		batchUpdatePrices: authRoute('POST', '/catalog/admin/signup-categories/price')
 	},
 
-	'payment-service': {
-		createOrder: authRoute('POST', '/orders', { transform: transformOrderResponse }),
-		queryOrder: authRoute('GET', (payload, args) => `/orders/${encodedId(payload, args, ['orderNo', 'order_no'], 'orderNo')}`, {
-			query: () => ({}),
-			transform: transformOrderResponse
-		}),
-		confirmPayment: authRoute('POST', '/payments/confirm'),
-		getWithdrawRecords: authRoute('GET', '/finance/withdrawals'),
-		withdraw: authRoute('POST', '/finance/withdrawals')
+	'import-articles': {
+		importData: authRoute('POST', '/catalog/admin/articles/import'),
+		clearDatabase: authRoute('POST', '/catalog/admin/articles/clear')
 	},
 
 	'team-service': {
-		createTeam: authRoute('POST', '/team'),
 		getTeamList: route('GET', '/team'),
 		getTeamDetail: route('GET', (payload, args) => `/team/${encodedId(payload, args, ['teamId', 'team_id', 'id'], 'teamId')}`, {
 			query: () => ({})
@@ -678,15 +720,15 @@ const SERVICE_ROUTES = {
 	},
 
 	'dashboard-service': {
-		getDashboardData: optionalAuthRoute('GET', '/ops/dashboard'),
 		getStatsCard: optionalAuthRoute('GET', '/ops/stats-card'),
 		getTeamDynamics: authRoute('GET', '/ops/team-dynamics'),
-		getRecentCheckIns: route('GET', '/ops/recent-check-ins'),
-		getRecentRecruits: authRoute('GET', '/ops/recent-recruits'),
-		getNewPartners: authRoute('GET', '/users/me/partner/new'),
-		getTodoList: authRoute('GET', '/ops/todos'),
 		getBanners: route('GET', '/ops/banners'),
-		updateBanner: authRoute('PUT', '/ops/banners/home')
+		getAdminBanners: authRoute('GET', '/ops/admin/banners'),
+		createBanner: authRoute('POST', '/ops/admin/banners'),
+		updateBannerStatus: authRoute('PATCH', (payload, args) => `/ops/admin/banners/${encodedId(payload, args, ['bannerId', 'banner_id', 'id'], 'bannerId')}/status`),
+		deleteBanner: authRoute('DELETE', (payload, args) => `/ops/admin/banners/${encodedId(payload, args, ['bannerId', 'banner_id', 'id'], 'bannerId')}`, {
+			query: () => ({})
+		})
 	},
 
 		'forum-service': {
@@ -711,65 +753,27 @@ const SERVICE_ROUTES = {
 		},
 
 	'goal-service': {
-		getMonthGoals: authRoute('GET', '/growth/goals', { fallbackWhen: isOtherUserPayload }),
+		getMonthGoals: authRoute('GET', '/growth/goals'),
 		saveGoals: authRoute('PUT', '/growth/goals')
 	},
 
 	'checkin-service': {
 		checkIn: authRoute('POST', '/growth/check-in'),
-		getCheckInStatus: authRoute('GET', '/growth/check-in/status', { fallbackWhen: isOtherUserPayload }),
-		getCheckInHistory: authRoute('GET', '/growth/check-in/history'),
+		getCheckInStatus: authRoute('GET', '/growth/check-in/status'),
 		getCheckInStats: authRoute('GET', '/growth/check-in/stats')
 	},
 
-	'task-service': {
-		getTaskList: authRoute('GET', '/growth/tasks'),
-		getTaskDetail: authRoute('GET', (payload, args) => `/growth/tasks/${encodedId(payload, args, ['taskId', 'task_id', 'id'], 'taskId')}`, {
-			query: () => ({})
-		}),
-		createTask: authRoute('POST', '/growth/tasks'),
-		updateTask: authRoute('PATCH', (payload, args) => `/growth/tasks/${encodedId(payload, args, ['taskId', 'task_id', 'id'], 'taskId')}`),
-		completeTask: authRoute('POST', (payload, args) => `/growth/tasks/${encodedId(payload, args, ['taskId', 'task_id', 'id'], 'taskId')}/complete`),
-		deleteTask: authRoute('DELETE', (payload, args) => `/growth/tasks/${encodedId(payload, args, ['taskId', 'task_id', 'id'], 'taskId')}`, {
-			query: () => ({})
-		}),
-		getTaskStats: authRoute('GET', '/growth/tasks/stats')
-	},
-
 	'growth-log-service': {
-		createLog: authRoute('POST', '/growth/logs'),
-		getLogList: authRoute('GET', '/growth/logs'),
-		getLogDetail: authRoute('GET', (payload, args) => `/growth/logs/${encodedId(payload, args, ['log_id', 'logId', 'id'], 'log_id')}`, {
-			query: () => ({})
-		}),
-		updateLog: authRoute('PATCH', (payload, args) => `/growth/logs/${encodedId(payload, args, ['log_id', 'logId', 'id'], 'log_id')}`),
-		deleteLog: authRoute('DELETE', (payload, args) => `/growth/logs/${encodedId(payload, args, ['log_id', 'logId', 'id'], 'log_id')}`, {
-			query: () => ({})
-		})
-	},
-
-	'points-service': {
-		changePoints: authRoute('POST', '/finance/points/change'),
-		getUserPoints: authRoute('GET', '/finance/points', { transform: transformPointsStatsResponse }),
-		getUserBadgeData: authRoute('GET', '/finance/points/stats', { transform: transformPointsStatsResponse }),
-		getPointsStats: authRoute('GET', '/finance/points/stats', { transform: transformPointsStatsResponse }),
-		rechargePoints: authRoute('POST', '/finance/points/change', { body: bodyForPointsRecharge, transform: transformPointsStatsResponse })
+		addLog: authRoute('POST', '/growth/logs'),
+		getLogList: authRoute('GET', '/growth/logs')
 	},
 
 	'coin-service': {
-		getCoinBalance: authRoute('GET', '/finance/wallet', { transform: transformWalletResponse }),
 		getCoinStats: authRoute('GET', '/finance/coins/stats', { transform: transformCoinStatsResponse }),
+		getAnnualCoinStats: authRoute('GET', '/finance/coins/annual-stats'),
 		getCoinLogs: authRoute('GET', '/finance/coins/logs'),
 		applyWithdrawCoins: authRoute('POST', '/finance/coins/withdrawals'),
-		applyExchangeCoinsToPoints: authRoute('POST', '/finance/coins/exchange'),
-		getExchangeRequests: authRoute('GET', '/finance/coins/exchanges'),
-		cancelExchangeRequest: authRoute('POST', (payload, args) => `/finance/coins/exchanges/${encodedId(payload, args, ['requestId', 'request_id', 'id'], 'requestId')}/cancel`)
-	},
-
-	'wallet-service': {
-		getBalance: authRoute('GET', '/finance/wallet', { transform: transformWalletResponse }),
-		applyWithdraw: authRoute('POST', '/finance/withdrawals'),
-		getWithdrawList: authRoute('GET', '/finance/withdrawals')
+		applyExchangeCoinsToPoints: authRoute('POST', '/finance/coins/exchange')
 	},
 
 	'withdrawal-service': {
@@ -777,197 +781,47 @@ const SERVICE_ROUTES = {
 		updateWithdrawalStatus: authRoute('POST', (payload, args) => `/finance/coins/withdrawals/${encodedId(payload, args, ['withdrawal_id', 'withdrawalId', 'id'], 'withdrawal_id')}/process`)
 	},
 
-	'partner-service': {
-		becomePartner: authRoute('POST', '/users/me/partner'),
-		invitePartner: authRoute('POST', '/users/me/partner/invite-code'),
-		getMyTeam: authRoute('GET', '/users/me/partner/team'),
-		getTeamStats: authRoute('GET', '/users/me/partner/stats'),
-		getNewPartners: authRoute('GET', '/users/me/partner/new'),
-		getTeamDynamics: authRoute('GET', '/ops/team-dynamics')
-	},
-
-	'admin-service': {
-		getSystemStats: authRoute('GET', '/ops/admin/stats')
+	'storage-service': {
+		createUploadPresign: authRoute('POST', '/storage/uploads/presign')
 	}
 }
 
-function makeMissingMappingResponse(serviceName, methodName) {
-	return Promise.resolve({
-		code: -1,
-		message: `HTTP API mapping missing: ${serviceName}.${methodName}`,
-		data: null,
-		error: 'HTTP_API_MAPPING_MISSING'
-	})
-}
+const HTTP_SERVICE_CACHE = Object.create(null)
 
-function legacyMethodLikelyRequiresAuth(serviceName, methodName) {
-	if (serviceName === 'user-center') return methodName !== 'loginByWeixin'
-	return [
-		'points-service',
-		'coin-service',
-		'wallet-service',
-		'withdrawal-service',
-		'goal-service',
-		'checkin-service',
-		'task-service',
-		'growth-log-service',
-		'partner-service',
-		'admin-service',
-		'payment-service'
-	].indexOf(serviceName) !== -1
-}
-
-function methodMustUseHttp(serviceName, methodName) {
-	return serviceName === 'user-center' && methodName === 'loginByWeixin'
-}
-
-function wrapLegacyResult(result, definition) {
-	const handleResult = (payload) => {
-		if (definition && definition.auth === true && isAuthFailure(payload)) {
-			if (getApiSource() === API_SOURCE_HTTP && isJwtLikeToken(definition.token)) {
-				return {
-					code: -1,
-					message: '该功能暂未接入 HTTP API',
-					data: null,
-					error: 'HTTP_API_MAPPING_MISSING'
-				}
-			}
-			return handleAuthFailure(payload.message || payload.errMsg || '登录状态已失效，请重新登录')
-		}
-		return payload
-	}
-
-	const handleError = (error) => {
-		if (definition && definition.auth === true && isAuthException(error)) {
-			if (getApiSource() === API_SOURCE_HTTP && isJwtLikeToken(definition.token)) {
-				return {
-					code: -1,
-					message: '该功能暂未接入 HTTP API',
-					data: null,
-					error: 'HTTP_API_MAPPING_MISSING'
-				}
-			}
-			return handleAuthFailure(error.message || error.errMsg || '登录状态已失效，请重新登录')
-		}
-		throw error
-	}
-
-	if (result && typeof result.then === 'function') {
-		return result.then(handleResult, handleError)
-	}
-	return handleResult(result)
-}
-
-function createSwitchableService(serviceName, options, originalImportObject) {
+function createHttpService(serviceName) {
 	const serviceRoutes = SERVICE_ROUTES[serviceName] || {}
-	let legacyService = null
-
-	function getLegacyService() {
-		if (!originalImportObject) return null
-		if (!legacyService) legacyService = originalImportObject(serviceName, options)
-		return legacyService
-	}
-
-	function callLegacy(methodName, args, definition) {
-		const service = getLegacyService()
-		if (!service || typeof service[methodName] !== 'function') {
-			return makeMissingMappingResponse(serviceName, methodName)
-		}
-		const payload = objectPayload(args)
-		const legacyDefinition = definition
-			? Object.assign({}, definition, { token: tokenFromPayload(payload) })
-			: definition
-
-		try {
-			return wrapLegacyResult(service[methodName].apply(service, args), legacyDefinition)
-		} catch (error) {
-			return wrapLegacyResult(Promise.reject(error), legacyDefinition)
-		}
-	}
 
 	const target = {}
 	Object.keys(serviceRoutes).forEach((methodName) => {
 		target[methodName] = function () {
 			const args = Array.prototype.slice.call(arguments)
 			const definition = serviceRoutes[methodName]
-			const payload = objectPayload(args)
-			const token = tokenFromPayload(payload)
-
-			if (definition.auth === true && !token) {
-				return Promise.resolve(handleAuthFailure('请先登录'))
-			}
-			if (definition.auth === true && !isHttpAuthTokenCompatible(token)) {
-				return Promise.resolve(handleAuthFailure('登录状态已失效，请重新登录'))
-			}
-			if (definition.auth === 'optional' && token && !isHttpAuthTokenCompatible(token)) {
-				return Promise.resolve(handleAuthFailure('登录状态已失效，请重新登录'))
-			}
-
-				if (!methodMustUseHttp(serviceName, methodName) && getApiSource() === API_SOURCE_UNICLOUD) {
-					return callLegacy(methodName, args, definition)
-				}
-
-				if (definition.fallbackWhen && definition.fallbackWhen(payload) && !isStrictHttpApi()) {
-					return callLegacy(methodName, args, definition)
-				}
-
-				return requestHttp(definition, args)
-			}
-		})
-
-	if (typeof Proxy !== 'function') return target
-
-	return new Proxy(target, {
-		get(obj, prop) {
-			if (prop in obj) return obj[prop]
-			if (prop === 'then') return undefined
-			if (prop === '__isApiSwitchService') return true
-			if (typeof prop !== 'string') return obj[prop]
-
-			return function () {
-				const args = Array.prototype.slice.call(arguments)
-				const definition = {
-					auth: legacyMethodLikelyRequiresAuth(serviceName, prop)
-				}
-				const payload = objectPayload(args)
-
-				if (definition.auth === true && !tokenFromPayload(payload)) {
-					return Promise.resolve(handleAuthFailure('请先登录'))
-				}
-				if (definition.auth === true && !isHttpAuthTokenCompatible(tokenFromPayload(payload))) {
-					return Promise.resolve(handleAuthFailure('登录状态已失效，请重新登录'))
-				}
-
-				if (getApiSource() === API_SOURCE_UNICLOUD || !isStrictHttpApi()) {
-					return callLegacy(prop, args, definition)
-				}
-				return makeMissingMappingResponse(serviceName, prop)
-			}
+			return requestHttp(definition, args)
 		}
 	})
+
+	return target
 }
 
-function getHttpCurrentUserInfo() {
-	const userInfo = getUniStorage('userInfo', {}) || {}
-	const userId = getUniStorage('userId', userInfo.uid || userInfo.userId || userInfo.id || '')
-	const token = getUniStorage('token', '')
+export function getHttpService(serviceName) {
+	const normalizedName = String(serviceName || '').trim()
+	if (!normalizedName) {
+		throw new Error('serviceName is required')
+	}
 
-	return Object.assign({}, userInfo, {
-		uid: userInfo.uid || userId,
-		userId: userInfo.userId || userInfo.id || userId,
-		token,
-		inviter_uid: userInfo.inviter_uid || userInfo.inviterUserId || ''
-	})
+	if (!HTTP_SERVICE_CACHE[normalizedName]) {
+		HTTP_SERVICE_CACHE[normalizedName] = createHttpService(normalizedName)
+	}
+
+	return HTTP_SERVICE_CACHE[normalizedName]
 }
 
 export const apiSwitch = {
 	API_SOURCE_HTTP,
-	API_SOURCE_UNICLOUD,
 	getApiSource,
 	setApiSource,
 	toggleApiSource,
 	useHttp: useHttpApi,
-	useUniCloud: useUniCloudApi,
 	getApiBaseUrl,
 	setApiBaseUrl,
 	isStrictHttp: isStrictHttpApi,
@@ -975,29 +829,10 @@ export const apiSwitch = {
 }
 
 export function installApiSwitch() {
-	if (typeof uni === 'undefined' || typeof uniCloud === 'undefined') return apiSwitch
-	if (uniCloud.__xuechuangApiSwitchInstalled) return apiSwitch
-
-	const originalImportObject = uniCloud.__xuechuangOriginalImportObject ||
-		(typeof uniCloud.importObject === 'function' ? uniCloud.importObject.bind(uniCloud) : null)
-	const originalGetCurrentUserInfo = uniCloud.__xuechuangOriginalGetCurrentUserInfo ||
-		(typeof uniCloud.getCurrentUserInfo === 'function' ? uniCloud.getCurrentUserInfo.bind(uniCloud) : null)
-
-	uniCloud.__xuechuangOriginalImportObject = originalImportObject
-	uniCloud.__xuechuangOriginalGetCurrentUserInfo = originalGetCurrentUserInfo
-
-	uniCloud.importObject = function (serviceName, options) {
-		return createSwitchableService(serviceName, options, originalImportObject)
+	if (typeof uni !== 'undefined') {
+		uni.$apiSwitch = apiSwitch
 	}
 
-	uniCloud.getCurrentUserInfo = function () {
-		if (getApiSource() === API_SOURCE_HTTP) return getHttpCurrentUserInfo()
-		return originalGetCurrentUserInfo ? originalGetCurrentUserInfo() : getHttpCurrentUserInfo()
-	}
-
-	uniCloud.__xuechuangApiSwitchInstalled = true
-	uni.$apiSwitch = apiSwitch
-
-	console.log(`[api-switch] installed, source=${getApiSource()}, baseUrl=${getApiBaseUrl()}`)
+	console.log(`[api-switch] installed, source=${API_SOURCE_HTTP}, baseUrl=${getApiBaseUrl()}`)
 	return apiSwitch
 }

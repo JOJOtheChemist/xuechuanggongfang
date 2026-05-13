@@ -10,8 +10,12 @@
           <image class="avatar" :src="post.user_avatar || avatarUrl" mode="aspectFill" />
           <text class="username">{{ post.user_name || '同学' }}</text>
         </view>
-        <view class="like-row">
-          <text class="like-icon">❤</text>
+        <view class="like-row" :class="{ active: !!post.is_liked }">
+          <image
+            class="like-icon"
+            :src="post.is_liked ? likeActiveIcon : likeIcon"
+            mode="aspectFit"
+          />
           <text class="like-count">{{ formatCount(post.like_count) }}</text>
         </view>
       </view>
@@ -36,7 +40,9 @@ export default {
   data() {
     return {
       suppressTapOnce: false,
-      suppressTapTimer: null
+      suppressTapTimer: null,
+      likeIcon: '/static/forum/like.png',
+      likeActiveIcon: '/static/forum/like-active.png'
     }
   },
   beforeDestroy() {
@@ -190,13 +196,18 @@ export default {
 }
 
 .like-icon {
-  color: #ef4444;
-  font-size: 22rpx;
+  width: 24rpx;
+  height: 24rpx;
+  flex-shrink: 0;
 }
 
 .like-count {
   font-size: 22rpx;
   color: #64748b;
+}
+
+.like-row.active .like-count {
+  color: #ef4444;
 }
 
 .extra-row {

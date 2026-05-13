@@ -9,7 +9,7 @@
 			</view>
 			<view v-else class="order-list">
 				<view v-for="(item, index) in list" :key="index" class="order-card" @tap="viewDetail(item)">
-					<image class="avatar" :src="item.inviter_avatar || defaultAvatar" mode="aspectFill" />
+					<image class="avatar" :src="normalizeAvatarUrl(item.inviter_avatar, defaultAvatar)" mode="aspectFill" />
 					<view class="info-content">
 						<view class="info-header">
 							<text class="name">{{ item.inviter_name || '未知用户' }}</text>
@@ -38,12 +38,13 @@
 	</view>
 </template>
 <script>
+import { getHttpService } from '@/utils/http-services'
 	export default {
 		data() {
 			return {
 				list: [],
 				loading: true,
-				defaultAvatar: 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png'
+				defaultAvatar: '/static/icons/default-avatar.svg'
 			}
 		},
 		onLoad() {
@@ -68,7 +69,7 @@
 						return
 					}
 					
-					const dashboardService = uniCloud.importObject('dashboard-service')
+					const dashboardService = getHttpService('dashboard-service')
 					// Reuse getTeamDynamics for now as requested
 					const res = await dashboardService.getTeamDynamics({ _token: token, limit: 50 })
 					

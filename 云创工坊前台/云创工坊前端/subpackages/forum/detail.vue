@@ -10,12 +10,12 @@
       </view>
 
       <view v-else>
-        <swiper v-if="post.images && post.images.length > 0" class="post-swiper" circular :indicator-dots="post.images.length > 1">
-          <swiper-item v-for="(img, index) in post.images" :key="img + index">
+        <swiper v-if="postImageItems.length > 0" class="post-swiper" circular :indicator-dots="postImageItems.length > 1">
+          <swiper-item v-for="(img, index) in postImageItems" :key="img.renderKey">
             <image
               class="post-image"
-              :src="img"
-              :mode="getImageMode(img)"
+              :src="img.url"
+              :mode="getImageMode(img.url)"
               @tap="previewImage(index)"
             />
           </swiper-item>
@@ -104,6 +104,14 @@
       </button>
     </view>
 
+    <view class="debug-panel">
+      <view class="debug-panel-head">
+        <text class="debug-panel-title">Debug Panel</text>
+        <button class="debug-copy-btn" @tap="copyDebugInfo">复制</button>
+      </view>
+      <text class="debug-panel-text">{{ debugInfo }}</text>
+    </view>
+
     <ForumContentSafetyNotice
       :visible="safetyNoticeVisible"
       :message="safetyNoticeMessage"
@@ -113,6 +121,7 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
 import ForumContentSafetyNotice from './components/ForumContentSafetyNotice.vue'
 import {
   CONTENT_SECURITY_SERVICE_UNAVAILABLE_MESSAGE,
@@ -120,6 +129,7 @@ import {
   isContentSecurityViolation,
   normalizeContentSafetyMessage
 } from '@/utils/contentSafety.js'
+import { isJwtLikeToken } from '@/utils/http-services'
 
 export default {
   components: {
@@ -141,7 +151,8 @@ export default {
       keyboardHeight: 0,
       imageModeMap: {},
       safetyNoticeVisible: false,
-      safetyNoticeMessage: ''
+      safetyNoticeMessage: '',
+      lastError: ''
     }
   },
   computed: {
@@ -162,6 +173,16 @@ export default {
       if (school.toLowerCase() === 'campus' || school === '其他') return '神秘学校'
       return school
     },
+    postImageItems() {
+      const images = this.post && Array.isArray(this.post.images) ? this.post.images : []
+      return images.map((item, index) => {
+        const url = String(item || '').trim()
+        return {
+          url,
+          renderKey: `post-image-${index}-${url || 'empty'}`
+        }
+      })
+    },
     commentBarStyle() {
       return {
         bottom: `${this.keyboardHeight}px`
@@ -171,6 +192,29 @@ export default {
       return {
         height: `${140 + this.keyboardHeight}px`
       }
+    },
+    debugInfo() {
+      const token = this.getToken()
+      const userInfo = uni.getStorageSync('userInfo') || {}
+      const imageKeys = Object.keys(this.imageModeMap || {})
+      const firstComment = Array.isArray(this.comments) && this.comments.length > 0 ? this.comments[0] : null
+      return [
+        '这里应该立刻显示评论',
+        `postId: ${this.postId || '-'}`,
+        `loading: ${this.loading}`,
+        `commentsLoading: ${this.commentsLoading}`,
+        `sendingComment: ${this.sendingComment}`,
+        `comments: ${(this.comments && this.comments.length) || 0}`,
+        `comment_count: ${this.post && this.post.comment_count != null ? this.post.comment_count : '-'}`,
+        `hasMore: ${this.commentsHasMore}`,
+        `token: ${token ? 'yes' : 'no'}`,
+        `tokenIsJwt: ${token ? isJwtLikeToken(token) : false}`,
+        `userId: ${uni.getStorageSync('userId') || userInfo.uid || '-'}`,
+        `lastError: ${this.lastError || '-'}`,
+        `imageModeKeys: ${imageKeys.length}`,
+        `draftLength: ${String(this.commentText || '').length}`,
+        `topComment: ${firstComment ? String(firstComment.content || '').slice(0, 40) : '-'}`
+      ].join('\n')
     }
   },
   onLoad(options) {
@@ -190,7 +234,7 @@ export default {
     async loadDetail() {
       this.loading = true
       try {
-        const forumService = uniCloud.importObject('forum-service')
+        const forumService = getHttpService('forum-service')
         const params = { postId: this.postId }
         const token = this.getToken()
         if (token) params._token = token
@@ -204,6 +248,7 @@ export default {
         this.detectPostImageModes()
       } catch (error) {
         console.error('[forum][detail] loadDetail failed:', error)
+        this.lastError = error && error.message ? error.message : '加载失败'
         uni.showToast({ title: error.message || '加载失败', icon: 'none' })
       } finally {
         this.loading = false
@@ -215,17 +260,22 @@ export default {
       if (images.length === 0) return
 
       images.forEach((src) => {
-        if (!src) return
+        const safeSrc = String(src || '').trim()
+        if (!safeSrc) return
         uni.getImageInfo({
-          src,
+          src: safeSrc,
           success: (info) => {
             const width = Number(info && info.width) || 0
             const height = Number(info && info.height) || 0
             const mode = height > width ? 'aspectFit' : 'aspectFill'
-            this.$set(this.imageModeMap, src, mode)
+            const nextMap = Object.assign({}, this.imageModeMap || {})
+            nextMap[safeSrc] = mode
+            this.imageModeMap = nextMap
           },
           fail: () => {
-            this.$set(this.imageModeMap, src, 'aspectFill')
+            const nextMap = Object.assign({}, this.imageModeMap || {})
+            nextMap[safeSrc] = 'aspectFill'
+            this.imageModeMap = nextMap
           }
         })
       })
@@ -248,7 +298,7 @@ export default {
       if (this.commentsLoading) return
       this.commentsLoading = true
       try {
-        const forumService = uniCloud.importObject('forum-service')
+        const forumService = getHttpService('forum-service')
         const res = await forumService.getCommentList({
           postId: this.postId,
           page: this.commentsPage,
@@ -265,6 +315,7 @@ export default {
         this.commentsHasMore = !!data.has_more
       } catch (error) {
         console.error('[forum][detail] loadComments failed:', error)
+        this.lastError = error && error.message ? error.message : '加载评论失败'
         if (!reset) {
           this.commentsPage -= 1
         }
@@ -329,7 +380,7 @@ export default {
       if (!token) return
 
       try {
-        const forumService = uniCloud.importObject('forum-service')
+        const forumService = getHttpService('forum-service')
         const res = await forumService.toggleLike({
           _token: token,
           postId: this.post.id
@@ -341,8 +392,14 @@ export default {
 
         this.post.is_liked = !!res.data.liked
         this.post.like_count = Number(res.data.like_count || 0)
+        uni.$emit('forum-post-liked', {
+          id: this.post.id,
+          is_liked: this.post.is_liked,
+          like_count: this.post.like_count
+        })
       } catch (error) {
         console.error('[forum][detail] toggleLike failed:', error)
+        this.lastError = error && error.message ? error.message : '点赞失败'
         uni.showToast({ title: error.message || '点赞失败', icon: 'none' })
       }
     },
@@ -360,7 +417,7 @@ export default {
 
       this.sendingComment = true
       try {
-        const forumService = uniCloud.importObject('forum-service')
+        const forumService = getHttpService('forum-service')
         const res = await forumService.createComment({
           _token: token,
           postId: this.post.id,
@@ -371,15 +428,22 @@ export default {
           throw new Error((res && res.message) || '评论失败')
         }
 
+        const createdComment = Object.assign({}, res.data)
         this.commentText = ''
-        this.comments.unshift(res.data)
+        this.comments = [createdComment].concat(Array.isArray(this.comments) ? this.comments : [])
         this.post.comment_count = Number(this.post.comment_count || 0) + 1
         this.commentInputFocus = false
         this.keyboardHeight = 0
         uni.hideKeyboard()
         uni.showToast({ title: '评论成功', icon: 'success' })
+
+        setTimeout(() => {
+          this.loadComments(true)
+          this.loadDetail()
+        }, 120)
       } catch (error) {
         console.error('[forum][detail] submitComment failed:', error)
+        this.lastError = error && error.message ? error.message : '评论失败'
         const message = extractRequestErrorMessage(error, '评论失败', {
           assumeContentViolationOn400: true
         })
@@ -387,6 +451,17 @@ export default {
       } finally {
         this.sendingComment = false
       }
+    },
+    copyDebugInfo() {
+      uni.setClipboardData({
+        data: this.debugInfo,
+        success: () => {
+          uni.showToast({ title: '已复制', icon: 'none' })
+        },
+        fail: () => {
+          uni.showToast({ title: '复制失败', icon: 'none' })
+        }
+      })
     },
     previewImage(index) {
       if (!this.post || !Array.isArray(this.post.images) || this.post.images.length === 0) return
@@ -651,6 +726,53 @@ export default {
   border-top: 1rpx solid #f1f5f9;
   z-index: 50;
   transition: bottom 0.2s ease;
+}
+
+.debug-panel {
+  position: fixed;
+  left: 16rpx;
+  right: 16rpx;
+  bottom: 176rpx;
+  z-index: 49;
+  background: rgba(15, 23, 42, 0.92);
+  border-radius: 16rpx;
+  padding: 18rpx;
+  box-sizing: border-box;
+}
+
+.debug-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10rpx;
+}
+
+.debug-panel-title {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.debug-copy-btn {
+  margin: 0;
+  height: 54rpx;
+  line-height: 54rpx;
+  padding: 0 20rpx;
+  background: #38bdf8;
+  color: #0f172a;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.debug-panel-text {
+  display: block;
+  white-space: pre-wrap;
+  font-size: 22rpx;
+  line-height: 1.6;
+  color: #e2e8f0;
+  max-height: 260rpx;
+  overflow: hidden;
 }
 
 .comment-input {

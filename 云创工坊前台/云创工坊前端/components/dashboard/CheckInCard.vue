@@ -51,44 +51,45 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
 	export default {
 		name: 'CheckInCard',
-		data() {
-			return {
-				isChecked: false,
-				streakDays: 7,
-				checkinRewardPoints: 5
-			}
-		},
+	data() {
+		return {
+			isChecked: false,
+			streakDays: 0,
+			checkinRewardPoints: 5
+		}
+	},
 		mounted() {
 			this.refresh();
 		},
 		methods: {
 			refresh() {
-				this.checkLocalStatus();
-				this.checkStatus();
-			},
-			checkLocalStatus() {
-				const today = new Date().toISOString().split('T')[0]
-				const lastCheckInDate = uni.getStorageSync('daily_checkin_date')
-				if (lastCheckInDate === today) {
-					this.isChecked = true
-				}
-			},
-			async checkStatus() {
 				const token = uni.getStorageSync('token')
-				if (!token) return
-
+				if (!token) {
+					this.isChecked = false
+					this.streakDays = 0
+					return
+				}
+				this.loadCheckInSummary(token)
+			},
+			async loadCheckInSummary(token) {
 				try {
-					const checkinService = uniCloud.importObject('checkin-service')
-					const res = await checkinService.getCheckInStatus({ _token: token })
-					if (res && res.code === 0) {
-						this.isChecked = res.data.is_checked_in
+					const checkinService = getHttpService('checkin-service')
+					const [statusRes, statsRes] = await Promise.all([
+						checkinService.getCheckInStatus({ _token: token }),
+						checkinService.getCheckInStats({ _token: token })
+					])
+
+					if (statusRes && statusRes.code === 0 && statusRes.data) {
+						this.isChecked = !!statusRes.data.is_checked_in
 					}
-					// Update streak locally or fetch from backend if available (Currently using local storage for streak as fallback/simplified)
-					const savedStreak = uni.getStorageSync('daily_checkin_streak')
-					if (savedStreak) {
-						this.streakDays = parseInt(savedStreak)
+
+					if (statsRes && statsRes.code === 0 && statsRes.data) {
+						this.streakDays = Number(statsRes.data.consecutive_days || statsRes.data.total_days || 0)
+					} else if (statusRes && statusRes.code === 0 && statusRes.data) {
+						this.streakDays = Number(statusRes.data.streak_days || statusRes.data.total_days || 0)
 					}
 				} catch (e) {
 					console.error('[CheckInCard] 检查签到状态失败', e)
@@ -106,16 +107,15 @@
 				uni.showLoading({ title: '签到中...' })
 				
 				try {
-					const checkinService = uniCloud.importObject('checkin-service')
+					const checkinService = getHttpService('checkin-service')
 					const res = await checkinService.checkIn({ _token: token })
 					
 					uni.hideLoading()
 					
 					if (res && res.code === 0) {
 						this.isChecked = true
-						this.streakDays += 1
-						uni.setStorageSync('daily_checkin_streak', this.streakDays)
-						uni.setStorageSync('daily_checkin_date', new Date().toISOString().split('T')[0])
+						this.streakDays = Number(res.data && (res.data.streak_days || res.data.total_days)) || this.streakDays
+						await this.loadCheckInSummary(token)
 						
 						const msg = res.message || '打卡成功'
 						uni.showToast({ title: msg, icon: 'none', duration: 2000 })

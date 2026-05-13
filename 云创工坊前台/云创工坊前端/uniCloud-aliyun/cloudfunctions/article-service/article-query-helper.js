@@ -1,6 +1,35 @@
 // 文章查询辅助模块
 // 处理所有文章查询相关的操作
 
+function buildGuestPreviewContent(article = {}) {
+    const summary = article.summary || '当前内容已切换为游客模式预览，登录后可继续查看完整正文、附件和积分解锁内容。'
+    const title = article.title || '文章详情'
+
+    return [
+        `<section class="guest-preview">`,
+        `<h3>游客模式</h3>`,
+        `<p>你当前正在浏览《${title}》的预览内容，审核和新用户都可以先体验页面详情，无需立即授权登录。</p>`,
+        `<p>${summary}</p>`,
+        `<p>登录后可查看完整正文、附件资料，以及需要积分解锁的延伸内容。</p>`,
+        `</section>`
+    ].join('')
+}
+
+function buildLockedArticlePreview(article = {}) {
+    return {
+        _id: article._id,
+        title: article.title,
+        summary: article.summary,
+        cover_image: article.cover_image,
+        author_name: article.author_name,
+        publish_time: article.publish_time,
+        price_points: article.price_points,
+        stats: article.stats,
+        tags: article.tags || [],
+        unlocked: false
+    }
+}
+
 /**
  * 获取热门文章（按浏览量排序）
  * @param {Object} params - 参数对象
@@ -113,17 +142,6 @@ async function getArticleDetail({
     }
 
     try {
-        // 使用自定义 token 解析当前用户
-        const tokenData = authUtils.parseToken(_token)
-        const userId = tokenData && tokenData.uid
-
-        if (!userId) {
-            return {
-                code: 401,
-                message: '请先登录'
-            }
-        }
-
         // 查询文章信息
         const articleRes = await db.collection('articles')
             .doc(articleId)
@@ -138,6 +156,8 @@ async function getArticleDetail({
 
         const article = articleRes.data[0]
         const pricePoints = article.price_points || 0
+        const tokenData = authUtils.parseToken(_token)
+        const userId = tokenData && tokenData.uid
 
         // 增加浏览量
         await db.collection('articles')
@@ -146,12 +166,48 @@ async function getArticleDetail({
                 'stats.views': dbCmd.inc(1)
             })
 
-        // 记录查看行为
-        await db.collection('article_interactions').add({
-            article_id: articleId,
-            user_id: userId,
-            type: 'view'
-        })
+        // 登录用户记录查看行为，游客只累计浏览量
+        if (userId) {
+            await db.collection('article_interactions').add({
+                article_id: articleId,
+                user_id: userId,
+                type: 'view'
+            })
+        }
+
+        if (!userId) {
+            if (pricePoints <= 0) {
+                return {
+                    code: 0,
+                    data: {
+                        ...article,
+                        unlocked: true,
+                        guest_mode: true,
+                        preview_mode: false
+                    }
+                }
+            }
+
+            return {
+                code: 0,
+                data: {
+                    _id: article._id,
+                    title: article.title,
+                    summary: article.summary,
+                    cover_image: article.cover_image,
+                    author_name: article.author_name,
+                    publish_time: article.publish_time,
+                    price_points: article.price_points,
+                    stats: article.stats,
+                    tags: article.tags || [],
+                    attachments: [],
+                    content: buildGuestPreviewContent(article),
+                    unlocked: true,
+                    guest_mode: true,
+                    preview_mode: true
+                }
+            }
+        }
 
         // 如果文章免费，直接返回完整内容
         if (pricePoints <= 0) {
@@ -188,18 +244,7 @@ async function getArticleDetail({
             // 未解锁，只返回基本信息
             return {
                 code: 0,
-                data: {
-                    _id: article._id,
-                    title: article.title,
-                    summary: article.summary,
-                    cover_image: article.cover_image,
-                    author_name: article.author_name,
-                    publish_time: article.publish_time,
-                    price_points: article.price_points,
-                    stats: article.stats,
-                    unlocked: false
-                    // 不返回 content 字段
-                }
+                data: buildLockedArticlePreview(article)
             }
         }
     } catch (error) {

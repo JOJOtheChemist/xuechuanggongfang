@@ -92,7 +92,7 @@
 </template>
 
 <script>
-import AdminPasswordDialog from '@/components/common/AdminPasswordDialog.vue'
+import AdminPasswordDialog from './components/AdminPasswordDialog.vue'
 import { verifyAdminPassword } from '@/common/admin-auth'
 
 export default {

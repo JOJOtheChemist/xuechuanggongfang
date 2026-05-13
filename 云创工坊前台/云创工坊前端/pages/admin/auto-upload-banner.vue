@@ -11,6 +11,9 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
+import { uploadImageWithPresign } from '@/utils/presigned-upload'
+
 export default {
 	data() {
 		return {
@@ -37,45 +40,40 @@ export default {
 				const tempFilePath = downloadRes.tempFilePath
 				this.log += `临时文件: ${tempFilePath}\n\n`
 				
-				// 2. 上传到云存储
-				this.log += '正在上传到云存储...\n'
-				const cloudPath = `banners/banner-${Date.now()}.png`
-				const uploadRes = await uniCloud.uploadFile({
+				// 2. 上传到对象存储
+				this.log += '正在上传到对象存储...\n'
+				const uploadRes = await uploadImageWithPresign({
+					scene: 'banner-image',
 					filePath: tempFilePath,
-					cloudPath: cloudPath
+					token: uni.getStorageSync('token'),
+					fileNamePrefix: 'auto-banner'
 				})
 				
 				console.log('上传结果:', uploadRes)
-				const fileID = uploadRes.fileID
+				const fileUrl = uploadRes.url
 				
-				if (!fileID) {
-					throw new Error('上传失败，未返回 fileID')
+				if (!fileUrl) {
+					throw new Error('上传失败，未返回图片地址')
 				}
 				
-				this.log += `上传成功！\nfileID: ${fileID}\n\n`
+				this.log += `上传成功！\nURL: ${fileUrl}\n\n`
 				
-				// 3. 删除旧的 banner
-				this.log += '正在清理旧数据...\n'
-				const db = uniCloud.database()
-				const oldRes = await db.collection('banners').get()
-				
-				if (oldRes.result && oldRes.result.data && oldRes.result.data.length > 0) {
-					for (const item of oldRes.result.data) {
-						await db.collection('banners').doc(item._id).remove()
-					}
-					this.log += `已删除 ${oldRes.result.data.length} 条旧记录\n\n`
-				}
-				
-				// 4. 插入新的 banner
-				this.log += '正在写入数据库...\n'
-				await db.collection('banners').add({
+				// 3. 写入后端 Banner 表
+				this.log += '正在写入 Banner 数据...\n'
+				const dashboardService = getHttpService('dashboard-service')
+				const createRes = await dashboardService.createBanner({
+					_token: uni.getStorageSync('token'),
 					title: '首页 Banner',
-					image_url: fileID,
+					image_url: fileUrl,
 					link_url: '',
 					status: 'online',
-					sort_order: 1,
-					create_date: Date.now()
+					position: 'home',
+					sort_order: 1
 				})
+
+				if (!createRes || createRes.code !== 0) {
+					throw new Error((createRes && createRes.message) || '写入 Banner 失败')
+				}
 				
 				this.log += '✅ 全部完成！\n\n现在可以回到首页查看效果了'
 				
@@ -84,7 +82,7 @@ export default {
 					content: '已自动上传并配置 banner',
 					showCancel: false,
 					success: () => {
-						uni.switchTab({ url: '/pages/dashboard/index' })
+						uni.reLaunch({ url: '/pages/volunteer/index' })
 					}
 				})
 			} catch (e) {

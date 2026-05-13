@@ -20,7 +20,7 @@
 			<!-- 市场分析报告 -->
 			<view class="grid-item" @tap="goList('cat_kb_002', '市场分析报告')">
 				<view class="grid-img bg-purple">
-					<image class="grid-icon" src="/static/icons/nav-chart.svg" mode="aspectFit" />
+					<image class="grid-icon" src="/static/tabbar/nav-startup-normal.png" mode="aspectFit" />
 				</view>
 				<view class="grid-text">
 					<text class="grid-title">市场分析报告</text>

@@ -34,15 +34,13 @@
 </template>
 
 <script>
-	// 引入 JS 数据文件（比 JSON import 更稳定）
-	// 注意：此文件过大，不应打包进小程序。仅在本地调试/导入时取消注释并提供文件。
-	// import localArticlesData from '@/static/articles_data.js'
-	const localArticlesData = [] // 默认空数据，防报错
+import { getHttpService } from '@/utils/http-services'
+import { importArticlesInBatches, loadStaticJson } from '@/utils/admin-catalog'
 
 	export default {
 		data() {
 			return {
-				baseUrl: 'https://mp-46bd4293-7b92-444c-b936-5777a228063a.cdn.bspapp.com/all_pdf_images/',
+				baseUrl: 'https://mp-46bd4293-7b92-444c-b936-5777a228063a.cdn.bspapp.com/',
 				localPrefix: '/Users/yeya/Documents/HBuilderProjects/云创工坊/所有PDF资料/',
 				dryRun: false,
 				processing: false,
@@ -60,16 +58,15 @@
 			},
 			
 			async loadArticles() {
-				this.addLog('正在读取 articles_data.js...')
+				this.addLog('正在读取 articles_data.json...')
 				try {
-					// 直接赋值并增加容错
-					if (localArticlesData && Array.isArray(localArticlesData) && localArticlesData.length > 0) {
-						this.articles = localArticlesData
+					const data = await loadStaticJson('/pages/admin/static/articles_data.json')
+					if (Array.isArray(data) && data.length > 0) {
+						this.articles = data
 						this.addLog(`成功加载 ${this.articles.length} 篇文章数据`, 'success')
 					} else {
-						// 尝试即使为空也不要报错，可能是空文件
 						this.articles = [] 
-						this.addLog('数据加载为空或格式错误 (可能文件为空)', 'error')
+						this.addLog('数据加载为空或格式错误', 'error')
 					}
 				} catch (e) {
 					this.articles = []
@@ -91,21 +88,20 @@
 			async verifyData() {
 				this.addLog('正在验证数据库数据...')
 				try {
-					const db = uniCloud.database()
-					const res = await db.collection('articles')
-						.where({
-							title: new RegExp('高频图推考点')
-						})
-						.limit(1)
-						.get()
+					const articleService = getHttpService('article-service')
+					const res = await articleService.getList({
+						keyword: '高频图推考点',
+						pageSize: 1
+					})
+					const articles = Array.isArray(res && res.data && res.data.list) ? res.data.list : []
 					
-					if (res.result && res.result.data && res.result.data.length > 0) {
-						const art = res.result.data[0]
+					if (articles.length > 0) {
+						const art = articles[0]
 						this.addLog('查询成功: ' + art.title, 'success')
-						this.addLog('cover_image: ' + (art.cover_image || 'None'), 'detail')
+						this.addLog('cover_image: ' + (art.cover_image || art.coverImageUrl || 'None'), 'detail')
 						if (art.attachments && art.attachments.length > 0) {
 							// 增加容错
-							const firstImg = (art.attachments[0].images && art.attachments[0].images.length ) ? art.attachments[0].images[0] : 'None'
+							const firstImg = art.attachments[0].fileUrl || art.attachments[0].fileID || 'None'
 							this.addLog('attachments[0]: ' + firstImg, 'detail')
 						} else {
 							this.addLog('attachments: 空', 'error')
@@ -143,11 +139,13 @@
 				}
 
 				const parts = relativePath.split(/[/\\\\]/)
-				// Remove the last part (filename) and the second to last part (usually Title_图片 folder)
-				if (parts.length <= 2) return [] // No category folders
-				
-				// Filter out the last two and return the rest
-				const rawTags = parts.slice(0, parts.length - 2)
+				if (parts.length <= 1) return []
+
+				const lastPart = parts[parts.length - 1] || ''
+				const removeCount = /\.(webp|png|jpe?g|gif)$/i.test(lastPart) ? 2 : 1
+				if (parts.length <= removeCount) return []
+
+				const rawTags = parts.slice(0, parts.length - removeCount)
 				const tags = rawTags.filter(t => t && t.trim() !== '')
 
                 // 【关键修复】标签映射：确保包含UI所需的标准标签
@@ -185,115 +183,63 @@
 				let skipCount = 0
 				let errorCount = 0
 
-				try {
-					const importArticles = uniCloud.importObject('import-articles')
-					
-					for (let i = 0; i < this.articles.length; i++) {
-						const article = this.articles[i]
-						if (!article) continue
+					try {
+						const payloads = this.articles
+							.map((article) => {
+								const attachments = Array.isArray(article.attachments) ? article.attachments : []
+								const firstAttachment = attachments[0] || {}
+								const sourcePath =
+									firstAttachment.fileID ||
+									firstAttachment.fileUrl ||
+									article.cover_image ||
+									article.coverImageUrl ||
+									''
+								const tags = this.extractTags(sourcePath)
 
-						const localImages = article.local_images || []
-						
-						// Strategy for Tags Extraction:
-						let tags = []
-						// 1. Try first local image path (contains folder info)
-						if (localImages.length > 0 && typeof localImages[0] === 'string') {
-							tags = this.extractTags(localImages[0])
-						}
-						// 2. Fallback to cover_image if it contains info
-						if (tags.length === 0 && article.cover_image && typeof article.cover_image === 'string') {
-							tags = this.extractTags(article.cover_image)
+								if (!article.title) {
+									skipCount += 1
+									return null
+								}
+
+								return {
+									title: article.title,
+									category_id: article.category_id || article.categoryId || '',
+									tags: tags.length > 0 ? tags : (Array.isArray(article.tags) ? article.tags : [])
+								}
+							})
+							.filter(Boolean)
+
+						if (this.dryRun) {
+							successCount = payloads.length
+							this.addLog(`Dry Run 预览完成，共 ${successCount} 篇文章将更新标签`, 'success')
+							payloads.slice(0, 20).forEach((item) => {
+								this.addLog(`${item.title} -> ${item.tags.join(' / ')}`, 'detail')
+							})
+							this.processing = false
+							return
 						}
 
-						// Prepare Remote URLs (for full update)
-						let remoteUrls = []
-						if (!this.tagsOnly) {
-							for (const imgPath of localImages) {
-								if (typeof imgPath === 'string') {
-									const remoteUrl = this.convertLocalToRemote(imgPath)
-									if (remoteUrl) remoteUrls.push(remoteUrl)
+						const result = await importArticlesInBatches({
+							articles: payloads,
+							updateTagsOnly: true,
+							batchSize: 100,
+							onProgress: (progress) => {
+								if (progress.stage === 'after') {
+									this.addLog(`已完成第 ${progress.batchIndex}/${progress.batchCount} 批`, 'detail')
 								}
 							}
-							if (remoteUrls.length === 0 && article.cover_image && typeof article.cover_image === 'string' && article.cover_image.startsWith('http')) {
-								remoteUrls = [article.cover_image] // Use existing if valid
-							}
-						}
+						})
 
-						// Condition to proceed: 
-						// TagsOnly mode: Always proceed (to update tags)
-						// Normal mode: Proceed if we have remote URLs
-						if (this.tagsOnly || remoteUrls.length > 0) {
-							// Console log only to avoid UI lag for massive lists
-							console.log(`[${i + 1}] Processing ${article.title || 'Untitled'}`)
-                            
-                            // 总是显示检测到的标签，方便调试
-                            if (tags.length > 0) {
-                                this.addLog(`[${i+1}] ${article.title} 标签: ${tags.join(', ')}`, 'detail')
-                            } else {
-                                this.addLog(`[${i+1}] ${article.title} 未检测到标签!`, 'error')
-                            }
-							
-							if (!this.dryRun) {
-								let articleData = { ...article }
-								
-								// 容错处理：确保 title 存在
-								if (!articleData.title) {
-									skipCount++
-									continue
-								}
-
-								if (this.tagsOnly) {
-									// In Tags Only mode, we ONLY send tags and ID/Title matches
-									articleData = {
-										title: article.title,
-										category_id: article.category_id, // 也要保留分类ID
-										tags: tags,
-									}
-								} else {
-									const attachments = [{
-										type: 'pdf-images',
-										name: article.title + ' (图集)',
-										images: remoteUrls,
-										pageCount: remoteUrls.length
-									}]
-									articleData.cover_image = remoteUrls[0] || ''
-									articleData.attachments = attachments
-									articleData.tags = tags
-									delete articleData.local_images
-								}
-
-								try {
-									const res = await importArticles.importData({
-										articles: [articleData],
-										updateTagsOnly: this.tagsOnly 
-									})
-									
-									if (res && res.success > 0) {
-										// this.addLog(`  ✅ [${i+1}] ${article.title} 更新成功`, 'success')
-										successCount++
-									} else {
-										this.addLog(`  ⚠️ [${i+1}] ${article.title} 更新失败`, 'error')
-										if (res && res.errors && res.errors.length) {
-											// this.addLog('  Err: ' + JSON.stringify(res.errors), 'error')
-										}
-										errorCount++
-									}
-								} catch (e) {
-									this.addLog(`  ❌ [${i+1}] ${article.title} 请求失败: ` + e.message, 'error')
-									errorCount++
-								}
-							} else {
-								// Dry Run
-								this.addLog(`[DRY] ${article.title} - Tags: ${tags.join(',')}`, 'info')
-								successCount++
-							}
-						} else {
-							skipCount++
-						}
+						successCount = result.success
+						errorCount = result.failed
+						skipCount = Math.max(skipCount, result.total - result.success - result.failed)
+						;(result.errors || []).slice(0, 20).forEach((item) => {
+							this.addLog(`${item.title}: ${item.error}`, 'error')
+						})
+					} catch(err) {
+						this.addLog('初始化对象/执行过程失败: ' + (err ? err.message : 'Unknown'), 'error')
+						errorCount += 1
 					}
-				} catch(err) {
-					this.addLog('初始化对象/执行过程失败: ' + (err ? err.message : 'Unknown'), 'error')
-				}
 				
 				this.addLog('====================================')
 				this.addLog(`任务完成。成功/预览: ${successCount}, 失败: ${errorCount}, 跳过: ${skipCount}`, 'success')

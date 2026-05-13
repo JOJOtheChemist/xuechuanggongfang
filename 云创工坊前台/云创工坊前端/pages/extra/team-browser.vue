@@ -17,10 +17,10 @@
 				</view>
 				<view
 					v-else
-					v-for="team in list"
-					:key="team._id"
+					v-for="(team, index) in displayTeams"
+					:key="team.renderKey"
 					class="team-card"
-					@tap="handleJoinTeam(team)"
+					@tap="handleJoinTeamByIndex(index)"
 				>
 					<view class="meta">
 						<text class="title">{{ team.team_name }}</text>
@@ -38,7 +38,7 @@
 					</view>
 					<!-- 团队头像/图标占位 -->
 					<view class="thumb-container">
-						<image v-if="team.avatar" :src="team.avatar" class="thumb" mode="aspectFill" />
+						<image v-if="normalizeAvatarUrl(team.avatar, '')" :src="normalizeAvatarUrl(team.avatar, '')" class="thumb" mode="aspectFill" />
 						<view v-else class="thumb empty-thumb">
 							<text class="thumb-icon">👥</text>
 						</view>
@@ -60,6 +60,7 @@
 </template>
 
 <script>
+import { getCurrentUserInfo, getHttpService } from '@/utils/http-services'
 export default {
 	data() {
 		return {
@@ -69,19 +70,57 @@ export default {
 			debugToken: ''
 		}
 	},
+	computed: {
+		displayTeams() {
+			return (Array.isArray(this.list) ? this.list : []).map((team, index) => {
+				const safeTeam = team && typeof team === 'object' ? team : {}
+				const fallbackKey = `${safeTeam.team_name || 'team'}-${safeTeam.leader_user_id || index}`
+				return Object.assign({}, safeTeam, {
+					renderKey: `team-${this.getTeamId(safeTeam) || fallbackKey}`
+				})
+			})
+		}
+	},
 	onShow() {
-		const userInfo = uniCloud.getCurrentUserInfo()
+		const userInfo = getCurrentUserInfo()
 		this.currentUid = userInfo.uid
 		this.debugToken = uni.getStorageSync('token')
 		this.loadData()
 	},
 	onLoad() {
-		const userInfo = uniCloud.getCurrentUserInfo()
+		const userInfo = getCurrentUserInfo()
 		this.currentUid = userInfo.uid
 		this.debugToken = uni.getStorageSync('token')
 		this.loadData()
 	},
 	methods: {
+		normalizeTeam(team) {
+			const safeTeam = team && typeof team === 'object' ? team : {}
+			const teamId = this.getTeamId(safeTeam)
+			return Object.assign({}, safeTeam, {
+				team_id: safeTeam.team_id || safeTeam.teamId || safeTeam.id || safeTeam._id || teamId || '',
+				id: safeTeam.id || safeTeam.team_id || safeTeam.teamId || safeTeam._id || teamId || '',
+				_id: safeTeam._id || safeTeam.team_id || safeTeam.teamId || safeTeam.id || teamId || ''
+			})
+		},
+		getTeamId(team) {
+			if (!team || typeof team !== 'object') return ''
+			const nestedTeam = team.team && typeof team.team === 'object' ? team.team : {}
+			return String(
+				team.team_id ||
+				team.teamId ||
+				team.id ||
+				team._id ||
+				nestedTeam.team_id ||
+				nestedTeam.teamId ||
+				nestedTeam.id ||
+				nestedTeam._id ||
+				''
+			).trim()
+		},
+		getTeamKey(team) {
+			return this.getTeamId(team) || `${team.team_name || 'team'}-${team.leader_user_id || 'unknown'}`
+		},
 		goBack() {
 			uni.navigateBack()
 		},
@@ -94,7 +133,7 @@ export default {
 			
 			this.loading = true
 			try {
-				const teamService = uniCloud.importObject('team-service')
+				const teamService = getHttpService('team-service')
 				const res = await teamService.getTeamList({
 					page: 1,
 					pageSize: 50,
@@ -102,7 +141,13 @@ export default {
 				})
 
 				if (res && res.code === 0 && res.data) {
-					this.list = res.data.list || []
+					const rawList = Array.isArray(res.data.list) ? res.data.list : []
+					this.list = rawList.map(item => this.normalizeTeam(item))
+					this.list.forEach(item => {
+						if (!this.getTeamId(item)) {
+							console.warn('[team-browser] 团队列表项缺少 teamId:', JSON.stringify(item))
+						}
+					})
 				} else {
 					this.list = []
 					uni.showToast({
@@ -118,23 +163,75 @@ export default {
 				this.loading = false
 			}
 		},
-		async handleJoinTeam(team) {
-			if (!team || !team._id) return
+		async refreshTeamForJoin(index, fallbackTeam) {
+			const token = uni.getStorageSync('token')
+			if (!token) return this.normalizeTeam(fallbackTeam)
+
+			try {
+				const teamService = getHttpService('team-service')
+				const res = await teamService.getTeamList({
+					page: 1,
+					pageSize: 50,
+					_token: token
+				})
+
+				const remoteList = res && res.code === 0 && res.data && Array.isArray(res.data.list)
+					? res.data.list.map(item => this.normalizeTeam(item))
+					: []
+				const fallbackName = String((fallbackTeam && fallbackTeam.team_name) || '').trim()
+				let matchedTeam = remoteList[index] || null
+
+				if ((!matchedTeam || !this.getTeamId(matchedTeam)) && fallbackName) {
+					matchedTeam = remoteList.find(item => String(item.team_name || '').trim() === fallbackName) || matchedTeam
+				}
+
+				if (matchedTeam && this.getTeamId(matchedTeam)) {
+					const nextList = Array.isArray(this.list) ? this.list.slice() : []
+					nextList[index] = matchedTeam
+					this.list = nextList
+					return matchedTeam
+				}
+			} catch (e) {
+				console.error('[team-browser] 二次刷新团队列表失败:', e)
+			}
+
+			return this.normalizeTeam(fallbackTeam)
+		},
+		async handleJoinTeamByIndex(index) {
+			const team = Array.isArray(this.list) ? this.list[index] : null
+			if (!team) {
+				console.error('[team-browser] 点击加入时索引越界:', index, JSON.stringify(this.list))
+				uni.showToast({ title: '【A-team-browser】列表索引异常', icon: 'none' })
+				return
+			}
+			let normalizedTeam = this.normalizeTeam(team)
+			let teamId = this.getTeamId(normalizedTeam)
+			if (!teamId) {
+				normalizedTeam = await this.refreshTeamForJoin(index, normalizedTeam)
+				teamId = this.getTeamId(normalizedTeam)
+			}
+			if (!teamId) {
+				console.error('[team-browser] 点击加入时缺少 teamId:', JSON.stringify(team))
+				uni.showToast({ title: '【A-team-browser】列表页 teamId 丢失', icon: 'none' })
+				return
+			}
 			const token = uni.getStorageSync('token')
 			if (!token) return
 
 			const confirmRes = await new Promise(resolve => {
 				uni.showModal({
 					title: '确认加入合伙人',
-					content: `确认加入【${team.team_name}】吗？`,
+					content: `确认加入【${team.team_name || '该团队'}】吗？`,
 					success: resolve,
 					fail: () => resolve({ confirm: false })
 				})
 			})
 			if (!confirmRes.confirm) return
 
+			uni.setStorageSync('pending_join_team_snapshot', normalizedTeam)
+
 			uni.navigateTo({
-				url: `/pages/extra/join-team-confirm?team_id=${team._id}`
+				url: `/pages/extra/join-team-confirm?team_id=${encodeURIComponent(teamId)}`
 			})
 		}
 	}

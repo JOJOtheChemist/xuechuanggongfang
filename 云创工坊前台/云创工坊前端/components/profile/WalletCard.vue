@@ -23,17 +23,17 @@
       <view class="stats-row">
         <view class="stat-item">
           <text class="stat-label">今日新增</text>
-          <text class="stat-value">+{{ todayIncome }}</text>
+          <text class="stat-value">+{{ displayTodayIncome }}</text>
         </view>
         <view class="stat-divider"></view>
         <view class="stat-item">
           <text class="stat-label">累计收入</text>
-          <text class="stat-value">{{ totalIncome }}</text>
+          <text class="stat-value">{{ displayTotalIncome }}</text>
         </view>
       </view>
 
       <!-- 审核中提示（合并显示，只显示一条） -->
-      <view class="audit-status-bar" v-if="combinedPendingCount > 0" @tap="openModal">
+      <view v-if="combinedPendingCount > 0" class="audit-status-bar" @tap="openModal">
         <view class="audit-info">
           <view class="audit-dot"></view>
           <text>有 {{ combinedPendingCount }} 笔申请在审核中</text>
@@ -45,20 +45,16 @@
       <view class="btn-row">
         <button class="action-btn exch" @tap="showWithdrawModal">兑换积分</button>
         <button class="action-btn cash" @tap="showWithdrawCashModal">提现</button>
-        <button class="action-btn qr" @tap="showPaymentQrcode">收款码</button>
       </view>
     </view>
 
-
-
     <!-- 资金明细弹窗逻辑已移除，改为事件触发 -->
-
-    <!-- Withdrawal QR Code Modal -->
-    </view>
   </view>
 </template>
 
 <script>
+import { getHttpService, getCurrentUserInfo, getCurrentUserToken } from '@/utils/http-services'
+
 export default {
   name: 'WalletCard',
   data() {
@@ -69,16 +65,19 @@ export default {
       // 新币统计
       todayIncome: 0,
       totalIncome: 0,
-      // Payment QR Code
-      paymentQrcode: '',
-      showQrcodeModal: false
+      pendingCount: 0,
+      withdrawPendingCount: 0
     }
   },
   computed: {
     displayAmount() {
-      const n = Number(this.amount) || 0
-      // 新币显示为整数，不带小数
-      return Math.floor(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+      return this.formatCoinAmount(this.amount)
+    },
+    displayTodayIncome() {
+      return this.formatCoinAmount(this.todayIncome)
+    },
+    displayTotalIncome() {
+      return this.formatCoinAmount(this.totalIncome)
     },
     calcPoints() {
       const val = parseFloat(this.withdrawAmount)
@@ -93,6 +92,46 @@ export default {
     }
   },
   methods: {
+    getToken() {
+      return getCurrentUserToken()
+    },
+    getMissingAuthMessage() {
+      const cachedUser = getCurrentUserInfo()
+      if (cachedUser && (cachedUser.uid || cachedUser.userId || cachedUser.nickname || cachedUser.username)) {
+        return '本地有用户信息，但登录令牌缺失或失效，请重新登录'
+      }
+      return '未登录，无法获取余额'
+    },
+    normalizeWalletErrorMessage(input, fallback = '获取余额失败') {
+      const message = String(
+        (input && (input.message || input.errMsg || input.error)) ||
+        fallback
+      )
+
+      if (/ERR_CONNECTION_CLOSED|request:fail|HTTP_REQUEST_FAILED|network|socket/i.test(message)) {
+        return '网络连接异常，请稍后重试'
+      }
+      if (/401|未登录|登录状态|token|Unauthorized|AUTH_REQUIRED/i.test(message)) {
+        return '登录状态已失效，请重新登录'
+      }
+      return message || fallback
+    },
+    formatCoinAmount(value) {
+      const numericValue = Number(value)
+      if (!Number.isFinite(numericValue)) {
+        return '0'
+      }
+
+      const fixed = numericValue.toFixed(2)
+      const [integerPart, decimalPart] = fixed.split('.')
+      const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+
+      if (!decimalPart || decimalPart === '00') {
+        return formattedInteger
+      }
+
+      return `${formattedInteger}.${decimalPart.replace(/0+$/, '')}`
+    },
     openModal() {
       this.$emit('showHistory')
     },
@@ -103,10 +142,10 @@ export default {
     async loadPendingCount() {
       // 只统计“审核中”的新币记录数量
       try {
-        const token = uni.getStorageSync('token')
+        const token = this.getToken()
         if (!token) return
 
-        const coinService = uniCloud.importObject('coin-service')
+        const coinService = getHttpService('coin-service')
         const res = await coinService.getCoinLogs({
           limit: 1,
           offset: 0,
@@ -135,57 +174,35 @@ export default {
         url: `/pages/extra/wallet-withdraw?balance=${this.amount}`
       })
     },
-    showPaymentQrcode() {
-       uni.navigateTo({
-         url: '/pages/extra/payment-qrcode'
-       })
-    },
-
     async loadBalance() {
       try {
         this.loading = true
         this.error = ''
 
-        const token = uni.getStorageSync('token')
+        const token = this.getToken()
         if (!token) {
-          this.error = '未登录，无法获取余额'
+          this.error = this.getMissingAuthMessage()
           this.amount = 0
           this.todayIncome = 0
           this.totalIncome = 0
           return
         }
 
-        const coinService = uniCloud.importObject('coin-service')
+        const coinService = getHttpService('coin-service')
         // 使用新的统计接口，同时获取余额和统计数据
         const res = await coinService.getCoinStats({ _token: token })
 
-        // Prefer fetch payment_qrcode from coinStats if available, otherwise fetch specifically
-        // Assuming user object might be returned or we need another call? 
-        // coin-service currently returns coin stats. Let's make a separate lightweight call or update coin-service.
-        // For now, let's fetch user profile to get payment_qrcode to be safe.
         if (!res || res.code !== 0 || !res.data) {
-          this.error = (res && res.message) || '获取余额失败'
+          this.error = this.normalizeWalletErrorMessage(res, '获取余额失败')
           return
         }
 
         this.amount = res.data.current_balance || 0
         this.todayIncome = res.data.today_income || 0
         this.totalIncome = res.data.total_income || 0
-
-        // Fetch payment_qrcode safely
-        // Fetch payment_qrcode safely via Cloud Object
-        try {
-          const userCenter = uniCloud.importObject('user-center')
-          const qrRes = await userCenter.getPaymentQrcode({ _token: token })
-          if (qrRes.code === 0 && qrRes.data) {
-            this.paymentQrcode = qrRes.data.payment_qrcode || ''
-          }
-        } catch(qrError) {
-           console.warn('Failed to load payment qrcode', qrError)
-        }
       } catch (e) {
         console.error('[WalletCard] 获取新币余额失败', e)
-        this.error = e.message || '获取余额失败'
+        this.error = this.normalizeWalletErrorMessage(e, '获取余额失败')
       } finally {
         this.loading = false
       }
@@ -193,9 +210,9 @@ export default {
 
     async loadWithdrawPendingCount() {
       try {
-        const token = uni.getStorageSync('token')
+        const token = this.getToken()
         if (!token) return
-        const coinService = uniCloud.importObject('coin-service')
+        const coinService = getHttpService('coin-service')
         const res = await coinService.getCoinLogs({ _token: token, limit: 1, offset: 0, status: 'processing', type: 'withdraw' })
         if (res && res.code === 0 && res.data) {
           this.withdrawPendingCount = res.data.total || 0
@@ -217,62 +234,6 @@ export default {
     onSelectContactType(e) {
       // e.detail.value 是索引
       this.contactTypeIndex = parseInt(e.detail.value || 0)
-    },
-    // QR Code Methods
-    openQrcodeModal() {
-      this.showQrcodeModal = true
-    },
-    closeQrcodeModal() {
-      this.showQrcodeModal = false
-    },
-    uploadQrcode() {
-      uni.chooseImage({
-        count: 1,
-        success: (res) => {
-          const tempFilePath = res.tempFilePaths[0]
-          uni.showLoading({ title: '上传中...' })
-          uniCloud.uploadFile({
-            filePath: tempFilePath,
-            cloudPath: `payment_qrcode/${Date.now()}.jpg`,
-            success: async (uploadRes) => {
-              this.paymentQrcode = uploadRes.fileID
-              // Update DB
-              try {
-                 const db = uniCloud.database()
-                 await db.collection('uni-id-users').where('_id==$cloudEnv_uid').update({
-                   'wallet.payment_qrcode': this.paymentQrcode
-                 })
-                 uni.showToast({ title: '更新成功', icon: 'success' })
-              } catch(e) {
-                 console.error(e)
-                 uni.showToast({ title: '保存失败但上传成功', icon: 'none' })
-              }
-              uni.hideLoading()
-            },
-            fail: (err) => {
-              console.error(err)
-              uni.hideLoading()
-              uni.showToast({ title: '上传失败', icon: 'none' })
-            }
-          })
-        }
-      })
-    },
-    saveQrcodeImage() {
-      if (!this.paymentQrcode) return
-      uni.downloadFile({
-        url: this.paymentQrcode,
-        success: (res) => {
-          if (res.statusCode === 200) {
-            uni.saveImageToPhotosAlbum({
-              filePath: res.tempFilePath,
-              success: () => uni.showToast({ title: '保存成功', icon: 'success' }),
-              fail: () => uni.showToast({ title: '保存失败', icon: 'none' })
-            })
-          }
-        },
-        fail: () => uni.showToast({ title: '下载失败', icon: 'none' })
-      })
     }
   },
   created() {
@@ -302,8 +263,8 @@ export default {
 /* 钱包卡片 */
 .wallet-card {
   background: linear-gradient(135deg, #7C3AED, #5B21B6);
-  border-radius: 56rpx;
-  padding: 48rpx;
+  border-radius: var(--profile-card-radius, 20rpx);
+  padding: 40rpx 36rpx;
   color: white;
   box-shadow: 0 20rpx 50rpx rgba(124, 58, 237, 0.18); /* softer shadow to avoid affecting next card */
   position: relative;
@@ -311,7 +272,7 @@ export default {
   display: flex;
   flex-direction: column;
   /* justify-content: space-between;  <-- 去掉这个，避免强制拉开间距 */
-  margin-bottom: 24rpx; /* a bit tighter to reduce visual overlap */
+  margin-bottom: 0;
 }
 
 /* 装饰背景圆 */
@@ -384,6 +345,7 @@ export default {
   display: flex;
   align-items: center;
   gap: 12rpx;
+  flex-shrink: 0;
 }
 
 .wallet-icon {
@@ -436,7 +398,7 @@ export default {
   justify-content: space-around;
   background: rgba(255, 255, 255, 0.15);
   backdrop-filter: blur(16rpx);
-  border-radius: 20rpx;
+  border-radius: var(--profile-card-soft-radius, 16rpx);
   padding: 16rpx 24rpx;
   margin-bottom: 24rpx;
   position: relative;
@@ -472,7 +434,7 @@ export default {
 .audit-status-bar {
   background: rgba(255, 255, 255, 0.15);
   backdrop-filter: blur(16rpx);
-  border-radius: 24rpx;
+  border-radius: var(--profile-card-soft-radius, 16rpx);
   padding: 16rpx 24rpx; /* 稍微减小 padding */
   display: flex;
   align-items: center;
@@ -534,7 +496,6 @@ export default {
 .action-btn.exch { color: #6D28D9; }
 .action-btn.exch { color: #6D28D9; }
 .action-btn.cash { color: #2563EB; }
-.action-btn.qr { color: #059669; }
 
 
 

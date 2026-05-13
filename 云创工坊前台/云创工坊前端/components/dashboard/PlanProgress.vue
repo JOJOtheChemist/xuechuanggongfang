@@ -33,6 +33,7 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
 	export default {
 		name: 'PlanProgress',
 		data() {
@@ -51,7 +52,7 @@
 				if (!token) return
 
 				try {
-					const goalService = uniCloud.importObject('goal-service')
+					const goalService = getHttpService('goal-service')
 
 					const now = new Date()
 					const year = now.getFullYear()

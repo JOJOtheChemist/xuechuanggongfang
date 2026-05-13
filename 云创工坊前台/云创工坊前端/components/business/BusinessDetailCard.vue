@@ -50,6 +50,7 @@
 </template>
 
 <script>
+	import { getHttpService } from '@/utils/http-services'
 	import ArticleList from '@/components/business/ArticleList.vue'
 	import BusinessDetailInfo from '@/components/business/BusinessDetailInfo.vue'
 	import BusinessDetailQr from '@/components/business/BusinessDetailQr.vue'
@@ -97,16 +98,6 @@
 			handleViewDetail() {
 				if (!this.item || !this.item.id) {
 					uni.showToast({ title: '请先选择业务板块', icon: 'none' })
-					return
-				}
-				
-				// 先检查是否已登录
-				const token = uni.getStorageSync('token')
-				if (!token) {
-					uni.showToast({ title: '请先登录', icon: 'none' })
-					setTimeout(() => {
-						uni.reLaunch({ url: '/pages/auth/login/index' })
-					}, 800)
 					return
 				}
 
@@ -187,23 +178,20 @@
 						}
 						try {
 							uni.showLoading({ title: '执行中...' })
-							const updater = uniCloud.importObject('update-article-prices')
-							const result = await updater.updateAllArticlePrices()
+							const articleService = getHttpService('article-service')
+							const result = await articleService.batchUpdatePrices({
+								price: 5,
+								_token: token
+							})
 							uni.hideLoading()
-							if (result && result.code === 0) {
-								const details = (result.data && result.data.details) || []
-								const lines = details.map(d => `《${d.title}》已变为 ${d.newPrice} 积分`)
-								const content = lines.length ? lines.join('\n') : '没有发现需要更新为 5 积分的文章'
-								if (this.item && Array.isArray(this.item.articles)) {
-									this.item.articles = this.item.articles.map(a => ({
-										...a,
-										pricePoints: (a.pricePoints && a.pricePoints > 0) ? a.pricePoints : 5
-									}))
-								}
-								uni.showModal({ title: '批量设置完成', content, showCancel: false })
-							} else {
-								uni.showModal({ title: '操作失败', content: (result && result.message) || '未知错误', showCancel: false })
+							if (!result || result.code !== 0 || !result.data) {
+								throw new Error((result && result.message) || '操作失败')
 							}
+							uni.showModal({
+								title: '更新成功',
+								content: `已更新 ${result.data.updated || 0} 篇文章为 5 积分`,
+								showCancel: false
+							})
 						} catch (e) {
 							uni.hideLoading()
 							console.error('[BusinessDetailCard] 批量设置失败', e)

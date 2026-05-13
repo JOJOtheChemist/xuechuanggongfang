@@ -1,6 +1,20 @@
 // uniCloud is global in cloud functions
 // internal imports not needed for this function based on analysis
 const INVITE_REWARD_POINTS = 5
+const DEFAULT_WECHAT_NICKNAME = '删旧版下新版'
+
+function isLegacyGeneratedWechatNickname(value) {
+    if (typeof value !== 'string') {
+        return false
+    }
+
+    const nickname = value.trim()
+    if (!nickname) {
+        return false
+    }
+
+    return /^用户[\w-]{6}$/.test(nickname) || /^微信用户[\w-]{6}$/.test(nickname)
+}
 
 async function getOrCreatePointsAccount(db, userId) {
     const pointsCollection = db.collection('user_points')
@@ -152,7 +166,7 @@ async function loginByWeixin({ code, inviterId }) {
                 wx_openid: {
                     'mp-weixin': openid
                 },
-                nickname: '用户' + openid.substr(-6),
+                nickname: DEFAULT_WECHAT_NICKNAME,
                 role: ['user'],
                 wallet: {
                     balance: 0,
@@ -236,6 +250,10 @@ async function loginByWeixin({ code, inviterId }) {
             // 默认只更新登录时间
             let updateData = {
                 last_login_date: Date.now()
+            }
+
+            if (!existingUser.nickname || isLegacyGeneratedWechatNickname(existingUser.nickname)) {
+                updateData.nickname = DEFAULT_WECHAT_NICKNAME
             }
 
             // [新增] 老用户绑定邀请关系逻辑

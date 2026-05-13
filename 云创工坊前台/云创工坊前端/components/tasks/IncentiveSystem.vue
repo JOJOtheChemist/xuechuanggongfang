@@ -1,18 +1,13 @@
 <template>
 	<view class="section">
-		<view class="section-header">
-			<view class="section-title-bar yellow" />
-			<text class="section-title-text">激励系统</text>
-		</view>
 		<view class="incentive-list">
 			<view class="badge-card">
 				<view class="badge-header">
 					<text class="badge-title">积分徽章</text>
-					<text class="badge-subtitle">基于历史累计积分解锁，已获得徽章永久保留</text>
-				</view>
-				<view v-if="totalPoints !== null" class="current-points">
-					<text class="points-label">历史累计积分：</text>
-					<text class="points-value">{{ totalPoints }}</text>
+					<view v-if="totalPoints !== null" class="current-points">
+						<text class="points-label">历史累计积分</text>
+						<text class="points-value">{{ totalPoints }}</text>
+					</view>
 				</view>
 				<scroll-view class="badge-scroll" scroll-x="true" show-scrollbar="false">
 					<view class="badge-row">
@@ -24,10 +19,11 @@
 						>
 							<view
 								class="badge-circle"
-								:class="badge.unlocked ? badge.colorClass : 'gray'"
+								:class="{ gray: !badge.unlocked }"
 							>
-								<text class="badge-level">Lv.{{ badge.level }}</text>
+								<image class="badge-image" :src="badge.imageUrl" mode="aspectFill" />
 							</view>
+							<text class="badge-level">Lv.{{ badge.level }}</text>
 							<text class="badge-text">{{ badge.name }}</text>
 							<text class="badge-unlock-info" :class="{ unlocked: badge.unlocked }">
 								{{ badge.unlocked ? '已获得' : badge.min + '分解锁' }}
@@ -41,19 +37,33 @@
 </template>
 
 <script>
+import { getUserBadgeData } from '../../utils/points-api'
+import { getCachedImageSync, resolveCachedImages } from '@/utils/remote-image-cache'
+
+const BADGE_IMAGE_BASE_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/profile/badges'
+const BADGE_CONFIG = [
+	{ level: 1, name: '校园新人徽章', min: 0, max: 200, imageUrl: `${BADGE_IMAGE_BASE_URL}/campus-newcomer-badge-v1.png` },
+	{ level: 2, name: '活力社员徽章', min: 201, max: 500, imageUrl: `${BADGE_IMAGE_BASE_URL}/active-member-badge-v1.png` },
+	{ level: 3, name: '校园达人徽章', min: 501, max: 1500, imageUrl: `${BADGE_IMAGE_BASE_URL}/campus-expert-badge-v1.png` },
+	{ level: 4, name: '校园领袖徽章', min: 1501, max: 3500, imageUrl: `${BADGE_IMAGE_BASE_URL}/campus-leader-badge-v1.png` },
+	{ level: 5, name: '校园合伙人徽章', min: 3501, max: Infinity, imageUrl: `${BADGE_IMAGE_BASE_URL}/campus-partner-badge-v1.png` }
+]
+
+function createBadgeConfig() {
+	return BADGE_CONFIG.map(badge => ({
+		...badge,
+		remoteImageUrl: badge.imageUrl,
+		imageUrl: getCachedImageSync(badge.imageUrl)
+	}))
+}
+
 export default {
 	name: 'IncentiveSystem',
 	data() {
 		return {
 			loading: false,
 			totalPoints: null,
-			badgeConfig: [
-				{ level: 1, name: '校园时新徽章', min: 0, max: 200, colorClass: 'level1' },
-				{ level: 2, name: '活力社员徽章', min: 201, max: 500, colorClass: 'level2' },
-				{ level: 3, name: '校园达人徽章', min: 501, max: 1500, colorClass: 'level3' },
-				{ level: 4, name: '校园领袖徽章', min: 1501, max: 3500, colorClass: 'level4' },
-				{ level: 5, name: '校园合伙人徽章', min: 3501, max: Infinity, colorClass: 'level5' }
-			]
+			badgeConfig: createBadgeConfig()
 		}
 	},
 	computed: {
@@ -66,6 +76,19 @@ export default {
 		}
 	},
 	methods: {
+		async loadBadgeImages() {
+			try {
+				const remoteUrls = this.badgeConfig.map(badge => badge.remoteImageUrl || badge.imageUrl)
+				const cachedUrls = await resolveCachedImages(remoteUrls)
+
+				this.badgeConfig = this.badgeConfig.map((badge, index) => ({
+					...badge,
+					imageUrl: cachedUrls[index] || badge.imageUrl
+				}))
+			} catch (error) {
+				console.warn('[IncentiveSystem] 预热徽章图片失败', error)
+			}
+		},
 		async loadBadgeData() {
 			try {
 				const token = uni.getStorageSync('token')
@@ -74,13 +97,10 @@ export default {
 					return
 				}
 
-				const pointsService = uniCloud.importObject('points-service')
-				const res = await pointsService.getUserBadgeData({
-					_token: token
-				})
+				const res = await getUserBadgeData()
 
 				if (res && res.code === 0 && res.data) {
-					this.totalPoints = res.data.total_points || 0
+					this.totalPoints = res.data.total_points || res.data.totalPoints || 0
 				}
 			} catch (e) {
 				console.error('[IncentiveSystem] 获取徽章数据失败', e)
@@ -89,6 +109,7 @@ export default {
 		}
 	},
 	created() {
+		this.loadBadgeImages()
 		this.loadBadgeData()
 	}
 }
@@ -96,79 +117,53 @@ export default {
 
 <style scoped>
 .section {
-	margin-bottom: 64rpx;
-}
-
-.section-header {
-	flex-direction: row;
-	align-items: center;
-	display: flex;
-	margin-bottom: 24rpx;
-}
-
-.section-title-bar {
-	width: 6rpx;
-	height: 32rpx;
-	border-radius: 4rpx;
-	background-color: #6667ab;
-	margin-right: 12rpx;
-}
-
-.section-title-bar.yellow {
-	background-color: #facc15;
-}
-
-.section-title-text {
-	font-size: 26rpx;
-	font-weight: 700;
-	color: #1f2937;
+	margin-bottom: 0;
 }
 
 .incentive-list {
 	flex-direction: column;
 	display: flex;
-	row-gap: 24rpx;
+	row-gap: 0;
 }
 
 .badge-card {
-	border-radius: 24rpx;
+	border-radius: var(--profile-card-radius, 20rpx);
 	background-color: #ffffff;
 	padding: 24rpx 24rpx 20rpx;
-	box-shadow: 0 10rpx 30rpx rgba(148, 163, 184, 0.18);
 }
 
-.badge-header {
-	margin-bottom: 12rpx;
-}
+	.badge-header {
+		margin-bottom: 18rpx;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16rpx;
+	}
 
-.badge-title {
-	font-size: 22rpx;
-	font-weight: 700;
-	color: #111827;
-	margin-bottom: 4rpx;
-}
+	.badge-title {
+		font-size: 22rpx;
+		font-weight: 700;
+		color: #111827;
+		flex-shrink: 0;
+	}
 
-.badge-subtitle {
-	font-size: 18rpx;
-	color: #9ca3af;
-	display: block;
-	margin-bottom: 8rpx;
-}
+	.current-points {
+		padding: 10rpx 16rpx;
+		background-color: #f3f4f6;
+		border-radius: 999rpx;
+		display: flex;
+		align-items: baseline;
+		justify-content: center;
+		gap: 8rpx;
+	}
 
-.current-points {
-	margin-bottom: 16rpx;
-	padding: 12rpx 16rpx;
-	background-color: #f3f4f6;
-	border-radius: 12rpx;
-}
+	.points-label {
+		font-size: 18rpx;
+		color: #6b7280;
+	}
 
-.points-label {
-	font-size: 20rpx;
-	color: #6b7280;
-}
-
-.points-value {
-	font-size: 24rpx;
+	.points-value {
+		font-size: 24rpx;
 	font-weight: 700;
 	color: #2563eb;
 }
@@ -194,49 +189,37 @@ export default {
 	margin-right: 0;
 }
 
-.badge-circle {
-	width: 88rpx;
-	height: 88rpx;
-	border-radius: 44rpx;
-	align-items: center;
-	justify-content: center;
-	display: flex;
-	margin-bottom: 8rpx;
-	position: relative;
-}
+	.badge-circle {
+		width: 108rpx;
+		height: 108rpx;
+		border-radius: 54rpx;
+		margin-bottom: 8rpx;
+		position: relative;
+		overflow: hidden;
+		background: #f8fafc;
+		box-shadow: 0 10rpx 24rpx rgba(245, 158, 11, 0.16);
+	}
+
+	.badge-image {
+		width: 100%;
+		height: 100%;
+		display: block;
+	}
 
 .badge-level {
-	font-size: 20rpx;
+	font-size: 18rpx;
 	font-weight: 700;
-	color: #ffffff;
+	color: #64748b;
+	margin-bottom: 6rpx;
 }
 
-.badge-circle.level1 {
-	background: linear-gradient(135deg, #94a3b8 0%, #cbd5e1 100%);
-}
+	.badge-circle.gray {
+		background: #eef2f7;
+		box-shadow: none;
+	}
 
-.badge-circle.level2 {
-	background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
-}
-
-.badge-circle.level3 {
-	background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%);
-}
-
-.badge-circle.level4 {
-	background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
-}
-
-.badge-circle.level5 {
-	background: linear-gradient(135deg, #ef4444 0%, #f87171 100%);
-}
-
-.badge-circle.gray {
-	background-color: #e5e7eb;
-}
-
-.badge-circle.gray .badge-level {
-	color: #9ca3af;
+.badge-circle.gray .badge-image {
+	opacity: 0.38;
 }
 
 .badge-item.dim {
@@ -258,9 +241,8 @@ export default {
 	text-align: center;
 }
 
-.badge-unlock-info.unlocked {
-	color: #16a34a;
-	font-weight: 600;
-}
-</style>
-</style>
+	.badge-unlock-info.unlocked {
+		color: #16a34a;
+		font-weight: 600;
+	}
+	</style>

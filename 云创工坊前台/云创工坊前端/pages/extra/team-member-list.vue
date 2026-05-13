@@ -8,7 +8,15 @@
 		</view>
 
 		<view class="content">
-			<scroll-view scroll-y class="list-scroll">
+			<scroll-view
+				scroll-y
+				class="list-scroll"
+				:lower-threshold="120"
+				:refresher-enabled="true"
+				:refresher-triggered="refreshing"
+				@scrolltolower="loadMore"
+				@refresherrefresh="handleRefresh"
+			>
 				<view v-if="loading" class="list-loading">
 					<text class="loading-text">加载中...</text>
 				</view>
@@ -16,7 +24,7 @@
 					<text class="list-empty-text">暂无合伙人</text>
 				</view>
 				<block v-else>
-					<view class="member-card" v-for="member in list" :key="member._id">
+					<view class="member-card" v-for="member in list" :key="member.id || member._id || member.user_id">
 						<view class="meta">
 							<view class="name-row">
 								<text class="title">{{ formatMemberName(member) }}</text>
@@ -24,7 +32,7 @@
 									{{ formatMemberRole(member) }}
 								</text>
 							</view>
-							<text class="summary">{{ member.create_date ? '加入时间: ' + formatDate(member.create_date) : '菁英合伙人' }}</text>
+							<text class="summary">{{ member.joined_at || member.create_date ? '加入时间: ' + formatDate(member.joined_at || member.create_date) : '菁英合伙人' }}</text>
 							
 							<!-- 成员标签/状态 -->
 							<view class="member-tags">
@@ -39,51 +47,149 @@
 						<view class="thumb-container">
 							<image 
 								class="thumb" 
-								:src="member.avatar || defaultAvatar" 
+								:src="normalizeAvatarUrl(member.avatar_url || member.avatar, defaultAvatar)" 
 								mode="aspectFill"
 							/>
 						</view>
 					</view>
 				</block>
+				<view v-if="!loading && list.length" class="load-more-state">
+					<text v-if="loadingMore" class="load-more-text">正在加载更多成员...</text>
+					<text v-else-if="hasMore" class="load-more-text">上滑继续查看更多成员</text>
+					<text v-else class="load-more-text">团队成员已全部加载完成</text>
+				</view>
 			</scroll-view>
 		</view>
 	</view>
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
 export default {
 	data() {
 		return {
 			loading: false,
+			loadingMore: false,
 			list: [],
 			teamId: '',
-			defaultAvatar: 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png'
+			defaultAvatar: '/static/icons/default-avatar.svg',
+			page: 1,
+			pageSize: 20,
+			total: 0,
+			hasMore: false,
+			refreshing: false
 		}
 	},
 	onLoad(options) {
 		if (options.teamId) {
 			this.teamId = options.teamId
-			this.loadData()
+			this.loadData(true)
 		}
+	},
+	onPullDownRefresh() {
+		this.refreshList().finally(() => {
+			uni.stopPullDownRefresh()
+		})
 	},
 	methods: {
 		goBack() {
 			uni.navigateBack()
 		},
-		async loadData() {
+		extractListPayload(res) {
+			const data = res && res.data
+			if (Array.isArray(data)) {
+				return {
+					list: data,
+					total: data.length,
+					page: 1,
+					pageSize: data.length || this.pageSize
+				}
+			}
+
+			if (data && Array.isArray(data.list)) {
+				return {
+					list: data.list,
+					total: Number(data.total || 0),
+					page: Number(data.page || this.page),
+					pageSize: Number(data.pageSize || this.pageSize),
+					hasMore: data.hasMore !== undefined ? Boolean(data.hasMore) : data.has_more
+				}
+			}
+
+			return {
+				list: [],
+				total: 0,
+				page: this.page,
+				pageSize: this.pageSize
+			}
+		},
+		updatePagination(payload, reset = false) {
+			const incomingList = Array.isArray(payload.list) ? payload.list : []
+			this.total = Number(payload.total || 0)
+
+			if (reset) {
+				this.list = incomingList
+			} else {
+				const seen = new Set(this.list.map(item => String(item && (item.id || item._id || item.user_id || ''))))
+				const merged = this.list.slice()
+				incomingList.forEach(item => {
+					const key = String(item && (item.id || item._id || item.user_id || ''))
+					if (!key || !seen.has(key)) {
+						if (key) seen.add(key)
+						merged.push(item)
+					}
+				})
+				this.list = merged
+			}
+
+			const resolvedPageSize = Number(payload.pageSize || this.pageSize || 20)
+			const resolvedPage = Number(payload.page || this.page || 1)
+			this.pageSize = resolvedPageSize
+			this.page = resolvedPage
+
+			if (this.total > 0) {
+				this.hasMore = payload.hasMore !== undefined
+					? Boolean(payload.hasMore)
+					: this.list.length < this.total
+				return
+			}
+
+			if (incomingList.length === 0) {
+				this.hasMore = false
+				return
+			}
+
+			this.hasMore = incomingList.length >= resolvedPageSize
+		},
+		async loadData(reset = false) {
 			const token = uni.getStorageSync('token')
 			if (!token) return
-			
-			this.loading = true
+
+			if (!this.teamId) return
+			if (!reset && (!this.hasMore || this.loadingMore || this.loading)) return
+
+			if (reset) {
+				this.loading = true
+				this.page = 1
+				this.total = 0
+				this.hasMore = false
+			} else {
+				this.loadingMore = true
+			}
+
+			const requestPage = reset ? 1 : this.page + 1
 			try {
-				const teamService = uniCloud.importObject('team-service')
+				const teamService = getHttpService('team-service')
 				const res = await teamService.getTeamMembers({ 
 					teamId: this.teamId, 
+					page: requestPage,
+					pageSize: this.pageSize,
 					_token: token 
 				})
 
-				if (res && res.code === 0 && Array.isArray(res.data)) {
-					this.list = res.data
+				if (res && res.code === 0) {
+					const payload = this.extractListPayload(res)
+					this.updatePagination(payload, reset)
 				} else {
 					uni.showToast({
 						title: (res && res.message) || '获取成员失败',
@@ -94,12 +200,30 @@ export default {
 				console.error('获取成员列表失败', e)
 				uni.showToast({ title: '获取成员列表失败', icon: 'none' })
 			} finally {
-				this.loading = false
+				if (reset) {
+					this.loading = false
+				} else {
+					this.loadingMore = false
+				}
 			}
+		},
+		loadMore() {
+			this.loadData(false)
+		},
+		async refreshList() {
+			if (this.loading || this.loadingMore) return
+			await this.loadData(true)
+		},
+		handleRefresh() {
+			if (this.refreshing) return
+			this.refreshing = true
+			this.refreshList().finally(() => {
+				this.refreshing = false
+			})
 		},
 		isAdmin(member) {
 			const roleList = Array.isArray(member.role) ? member.role : []
-			return roleList.includes('admin') || (member.team_info && member.team_info.position === '队长')
+			return member.position === '队长' || roleList.includes('admin') || (member.team_info && member.team_info.position === '队长')
 		},
 		formatDate(timestamp) {
 			if (!timestamp) return ''
@@ -112,10 +236,13 @@ export default {
 			const baseName = member.nickname || realName || member.username
 			if (baseName) return baseName
 
-			const id = member._id || ''
+			const id = member.id || member._id || member.user_id || ''
 			return '用户' + id.slice(-4)
 		},
 		formatMemberRole(member) {
+			if (member.position) {
+				return member.position
+			}
 			if (member.team_info && member.team_info.position) {
 				return member.team_info.position
 			}
@@ -201,6 +328,17 @@ export default {
 }
 
 .loading-text, .list-empty-text {
+	font-size: 24rpx;
+	color: #94a3b8;
+}
+
+.load-more-state {
+	padding: 28rpx 24rpx 40rpx;
+	display: flex;
+	justify-content: center;
+}
+
+.load-more-text {
 	font-size: 24rpx;
 	color: #94a3b8;
 }

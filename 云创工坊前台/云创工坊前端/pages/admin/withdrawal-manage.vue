@@ -39,9 +39,9 @@
 					<view class="item-header">
 						<view class="user-info">
 							<image 
-								v-if="item.user_avatar" 
+								v-if="normalizeAvatarUrl(item.user_avatar, '')" 
 								class="avatar" 
-								:src="item.user_avatar" 
+								:src="normalizeAvatarUrl(item.user_avatar, '')" 
 								mode="aspectFill"
 							/>
 							<view v-else class="avatar-placeholder">
@@ -71,7 +71,18 @@
 						<!-- 收款信息区域 -->
 						<view class="contact-section">
 							<view class="contact-header">
-								<text class="contact-title">💰 收款信息</text>
+								<text class="contact-title">💰 到账信息</text>
+							</view>
+
+							<view class="contact-details" v-if="item.transfer_state_text || item.openid_masked">
+								<view class="contact-row" v-if="item.transfer_state_text">
+									<text class="contact-label">微信状态：</text>
+									<text class="contact-value highlight">{{ item.transfer_state_text }}</text>
+								</view>
+								<view class="contact-row" v-if="item.openid_masked">
+									<text class="contact-label">OpenID：</text>
+									<text class="contact-value">{{ item.openid_masked }}</text>
+								</view>
 							</view>
 							
 							<!-- 传统的联系方式（针对旧数据或备用） -->
@@ -98,8 +109,8 @@
 								<text class="qrcode-hint">点击预览/保存收款码</text>
 							</view>
 							
-							<view class="no-data-hint" v-if="!item.payment_account && !item.payment_qrcode">
-								<text>未上传收款码，也未填写联系方式</text>
+							<view class="no-data-hint" v-if="!item.payment_account && !item.payment_qrcode && !item.transfer_state_text && !item.openid_masked">
+								<text>未记录到账方式</text>
 							</view>
 						</view>
 						
@@ -132,6 +143,7 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
 export default {
 	data() {
 		return {
@@ -172,7 +184,7 @@ export default {
 
 			this.loading = true
 			try {
-				const withdrawalService = uniCloud.importObject('withdrawal-service')
+				const withdrawalService = getHttpService('withdrawal-service')
 				const params = {
 					_token: token
 				}
@@ -248,7 +260,7 @@ export default {
 
 			uni.showLoading({ title: '处理中...' })
 			try {
-				const withdrawalService = uniCloud.importObject('withdrawal-service')
+				const withdrawalService = getHttpService('withdrawal-service')
 				const res = await withdrawalService.updateWithdrawalStatus({
 					_token: token,
 					withdrawal_id: withdrawalId,

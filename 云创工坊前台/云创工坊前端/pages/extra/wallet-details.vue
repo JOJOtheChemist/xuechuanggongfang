@@ -41,6 +41,7 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
 export default {
   data() {
     return {
@@ -72,7 +73,7 @@ export default {
         }
         this.isGuest = false
 
-        const coinService = uniCloud.importObject('coin-service')
+        const coinService = getHttpService('coin-service')
         const res = await coinService.getCoinLogs({
           limit: 20, // 页面可以展示更多
           offset: 0,

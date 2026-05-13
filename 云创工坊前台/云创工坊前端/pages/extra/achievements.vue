@@ -54,44 +54,55 @@
 			</scroll-view>
 		</view>
 
-    <view class="recharge-mask" v-if="showRechargeModal" @tap="closeRechargeModal">
-      <view class="recharge-dialog" @tap.stop>
-        <view class="dialog-title">积分充值</view>
-        <view class="dialog-content">
-          <text class="input-label">充值金额 (元)</text>
-          <view class="input-box">
-            <text class="currency-symbol">¥</text>
-            <input 
-              type="digit" 
-              class="amount-input" 
-              v-model="rechargeAmount" 
-              placeholder="请输入金额" 
-              :focus="showRechargeModal"
-            />
-          </view>
-          <view class="preset-row">
-            <text class="preset-label">测试套餐</text>
-            <view class="preset-chip" :class="{ active: isTestAmount }" @tap="selectRechargeAmount(0.01)">
-              <text class="preset-chip-amount">¥0.01</text>
-              <text class="preset-chip-text">测试支付</text>
-            </view>
-          </view>
-          <text class="balance-tip">{{ rechargeSummaryText }}</text>
-        </view>
-        <view class="dialog-actions">
-          <button class="dialog-btn cancel" @tap="closeRechargeModal">取消</button>
-          <button class="dialog-btn confirm" :loading="recharging" @tap="confirmRecharge">确认支付</button>
-        </view>
-      </view>
-    </view>
+		<view class="annual-section">
+			<view class="section-header annual-section-header">
+				<text class="section-title">年度新币统计</text>
+				<text class="section-desc">这里承接“我的”页移出的年度收入概览，集中查看个人、团队和公司数据。</text>
+			</view>
+			<annual-coin-stats />
+		</view>
+
+		<view class="recharge-mask" v-if="showRechargeModal" @tap="closeRechargeModal">
+			<view class="recharge-dialog" @tap.stop>
+				<view class="dialog-title">积分充值</view>
+				<view class="dialog-content">
+					<text class="input-label">充值金额 (元)</text>
+					<view class="input-box">
+						<text class="currency-symbol">¥</text>
+						<input
+							type="digit"
+							class="amount-input"
+							v-model="rechargeAmount"
+							placeholder="请输入金额"
+							:focus="showRechargeModal"
+						/>
+					</view>
+					<text class="balance-tip">{{ rechargeSummaryText }}</text>
+				</view>
+				<view class="dialog-actions">
+					<button class="dialog-btn cancel" @tap="closeRechargeModal">取消</button>
+					<button class="dialog-btn confirm" :loading="recharging" @tap="confirmRecharge">确认支付</button>
+				</view>
+			</view>
+		</view>
 	</view>
 </template>
 
 <script>
+import {
+	calculateRechargePoints,
+	startPointsRechargePayment
+} from '../../utils/points-recharge'
+import AnnualCoinStats from './components/AnnualCoinStats.vue'
+import { getPointsStats } from '../../utils/points-api'
+
 const POINTS_CACHE_KEY = 'points_stats_cache'
 const POINTS_CACHE_TTL = 5 * 60 * 1000 
 
 export default {
+	components: {
+		AnnualCoinStats
+	},
 	data() {
 		return {
 			pointsBalance: 0,
@@ -111,19 +122,13 @@ export default {
 		}
 	},
 	computed: {
-		isTestAmount() {
-			const val = parseFloat(this.rechargeAmount)
-			return Number.isFinite(val) && Math.abs(val - 0.01) < 0.000001
-		},
 		calcPoints() {
-			const val = parseFloat(this.rechargeAmount)
-			if (isNaN(val) || val <= 0) return 0
-			if (Math.abs(val - 0.01) < 0.000001) return 1
-			return Math.floor(val * 5)
+			return calculateRechargePoints(this.rechargeAmount)
 		},
 		rechargeSummaryText() {
 			if (!this.rechargeAmount) return '预计获得 0 积分 (1元=5积分)'
-			if (this.isTestAmount) return '测试档用于验证支付链路，成功后赠送 1 积分'
+			const amount = Number(this.rechargeAmount)
+			if (Number.isFinite(amount) && amount > 0 && amount < 0.2) return '最低充值金额0.2元'
 			return `预计获得 ${this.calcPoints} 积分 (1元=5积分)`
 		},
 		badgeList() {
@@ -138,10 +143,34 @@ export default {
 		this.loadPointsStats()
 	},
 	methods: {
+		syncPointsCache() {
+			const token = uni.getStorageSync('token')
+			if (!token) return
+
+			uni.setStorageSync(POINTS_CACHE_KEY, {
+				token,
+				balance: this.pointsBalance || 0,
+				todayAdded: this.todayAdded || 0,
+				totalAdded: this.totalAdded || 0,
+				timestamp: Date.now()
+			})
+		},
+		applyRechargeLocally(points) {
+			const delta = Number(points) || 0
+			if (delta <= 0) return
+
+			this.pointsBalance = Number(this.pointsBalance || 0) + delta
+			this.todayAdded = Number(this.todayAdded || 0) + delta
+			this.totalAdded = Number(this.totalAdded || 0) + delta
+			this.syncPointsCache()
+		},
 		async loadPointsStats({ forceRefresh = false } = {}) {
 			try {
 				this.loading = true
-				const token = uni.getStorageSync('token')
+				const token =
+					uni.getStorageSync('token') ||
+					uni.getStorageSync('accessToken') ||
+					uni.getStorageSync('uni_id_token')
 				if (!token) return
 
 				if (!forceRefresh) {
@@ -161,8 +190,7 @@ export default {
 					}
 				}
 
-				const pointsService = uniCloud.importObject('points-service')
-				const res = await pointsService.getPointsStats({ _token: token })
+				const res = await getPointsStats()
 
 				if (res && res.code === 0 && res.data) {
 					this.pointsBalance = res.data.balance || 0
@@ -187,9 +215,6 @@ export default {
 			this.rechargeAmount = ''
 			this.showRechargeModal = true
 		},
-		selectRechargeAmount(amount) {
-			this.rechargeAmount = Number(amount).toFixed(2)
-		},
 		closeRechargeModal() {
 			this.showRechargeModal = false
 		},
@@ -199,8 +224,8 @@ export default {
 				uni.showToast({ title: '请输入有效金额', icon: 'none' })
 				return
 			}
-			if (val < 0.2 && !this.isTestAmount) {
-				uni.showToast({ title: '常规最低0.2元，测试档0.01元', icon: 'none' })
+			if (val < 0.2) {
+				uni.showToast({ title: '最低充值金额0.2元', icon: 'none' })
 				return
 			}
 			if (this.calcPoints <= 0) {
@@ -208,47 +233,25 @@ export default {
 				return
 			}
 
+			await this.processRecharge(val)
+		},
+		async processRecharge(amount) {
 			this.recharging = true
 			try {
-				const token = uni.getStorageSync('token')
-				if (!token) {
-					uni.showToast({ title: '请先登录', icon: 'none' })
-					return
-				}
-
-				const paymentService = uniCloud.importObject('payment-service')
-				const res = await paymentService.createOrder({
-					_token: token,
+				const points = this.calcPoints
+				await startPointsRechargePayment({
+					amount,
+					points,
 					businessId: 'points_recharge',
-					businessName: '积分充值',
-					amount: val
+					businessName: '积分充值'
 				})
 
-				if (res.code !== 0) throw new Error(res.message || '创建订单失败')
-
-				const orderData = res.data
-				await uni.requestPayment({
-					timeStamp: orderData.pay_params.timeStamp,
-					nonceStr: orderData.pay_params.nonceStr,
-					package: orderData.pay_params.package,
-					signType: orderData.pay_params.signType,
-					paySign: orderData.pay_params.paySign
+				uni.showToast({
+					title: '充值成功',
+					icon: 'success'
 				})
-
-				uni.showToast({ title: '支付成功', icon: 'success' })
-				await new Promise(r => setTimeout(r, 800))
-
-				const pointsService = uniCloud.importObject('points-service')
-				await pointsService.rechargePoints({
-					_token: token,
-					amount: val,
-					points: this.calcPoints,
-					orderNo: orderData.order_no
-				})
-				
-				uni.showToast({ title: '充值成功', icon: 'success' })
+				this.applyRechargeLocally(points)
 				this.closeRechargeModal()
-				this.loadPointsStats({ forceRefresh: true })
 			} catch (error) {
 				console.error('Recharge failed', error)
 				const isCancel = error && error.errMsg && error.errMsg.includes('cancel')
@@ -408,44 +411,6 @@ export default {
 	color: #94a3b8;
 }
 
-.preset-row {
-	margin-top: 28rpx;
-}
-
-.preset-label {
-	display: block;
-	font-size: 24rpx;
-	color: #64748b;
-	margin-bottom: 16rpx;
-}
-
-.preset-chip {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 20rpx 24rpx;
-	border-radius: 20rpx;
-	background: #f8fafc;
-	border: 2rpx solid #e2e8f0;
-}
-
-.preset-chip.active {
-	border-color: #4f46e5;
-	background: rgba(79, 70, 229, 0.08);
-}
-
-.preset-chip-amount {
-	font-size: 32rpx;
-	font-weight: 700;
-	color: #0f172a;
-}
-
-.preset-chip-text {
-	font-size: 24rpx;
-	color: #4f46e5;
-	font-weight: 600;
-}
-
 .dialog-actions {
 	display: flex;
 	gap: 20rpx;
@@ -548,5 +513,13 @@ export default {
 
 .badge-item.dim {
 	opacity: 0.6;
+}
+
+.annual-section {
+	margin-top: 40rpx;
+}
+
+.annual-section-header {
+	padding: 0 4rpx;
 }
 </style>

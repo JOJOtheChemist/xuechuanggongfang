@@ -17,6 +17,7 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
 	export default {
 		data() {
 			return {
@@ -60,7 +61,7 @@
 			// 3. 兜底: 延时跳转首页
 			console.log('[InviteHandler] 无有效邀请参数，跳转首页')
 			setTimeout(() => {
-				uni.switchTab({ url: '/pages/dashboard/index' })
+				uni.reLaunch({ url: '/pages/volunteer/index' })
 			}, 1000)
 		},
 		methods: {
@@ -88,7 +89,7 @@
 						if (inviteCode) {
 							console.log('[InviteHandler] 识别到短邀请码:', inviteCode)
 							uni.showLoading({ title: '解析邀请中...' })
-							const service = uniCloud.importObject('business-service')
+							const service = getHttpService('business-service')
 							const res = await service.resolveInviteCode(inviteCode)
 							uni.hideLoading()
 							
@@ -167,12 +168,12 @@
 									if (inputRes.confirm && inputRes.content) {
 										this.parseScene(inputRes.content)
 									} else {
-										uni.switchTab({ url: '/pages/dashboard/index' })
+										uni.reLaunch({ url: '/pages/volunteer/index' })
 									}
 								}
 							})
 						} else {
-							uni.switchTab({ url: '/pages/dashboard/index' })
+							uni.reLaunch({ url: '/pages/volunteer/index' })
 						}
 					}
 				})
@@ -226,7 +227,7 @@
 					
 					// [NEW] 立即补录绑定，确保只要扫了码，即便不填表也能记录拉新
 					try {
-						const userCenter = uniCloud.importObject('user-center')
+						const userCenter = getHttpService('user-center')
 						// 这里用 await 确保后端记录成功，或者不带 await 追求极致跳转速度（建议带，防止跳转太快导致请求取消）
 						await userCenter.bindInviter({ 							_token: token,  // [FIX] 添加 token 参数
 							inviterId: this.inviterId 
@@ -266,25 +267,40 @@
 						}, 150)
 					}
 				} else {
-					console.log('[InviteHandler] 未检测到 Token, 跳转登录页接力')
-					let loginUrl = `/pages/auth/login/index?inviter_id=${this.inviterId}`
-					if (this.isTeamInvite) {
-						loginUrl += '&type=team'
-					} else {
-						loginUrl += `&type=business&scene=${encodeURIComponent(this.scene)}`
-					}
-					
-					console.log('[InviteHandler] 登录页 URL:', loginUrl)
-					
-					// 增加一个小延时，确保 App.vue 的初始 reLaunch 已经完全沉淀
+					const targetUrl = this.resolveGuestInviteTargetUrl()
+					console.log('[InviteHandler] 未检测到 Token, 先进入游客可浏览目标页:', targetUrl)
+
 					setTimeout(() => {
 						uni.redirectTo({
-							url: loginUrl,
-							success: () => console.log('[InviteHandler] 成功跳转至登录页'),
-							fail: (err) => console.error('[InviteHandler] redirectTo 登录页失败:', err)
-						})
-					}, 150)
+							url: targetUrl,
+							success: () => console.log('[InviteHandler] 成功进入游客目标页'),
+								fail: (err) => {
+									console.error('[InviteHandler] redirectTo 游客目标页失败:', err)
+									uni.reLaunch({ url: '/subpackages/forum/index' })
+								}
+							})
+						}, 150)
 				}
+			},
+
+			resolveGuestInviteTargetUrl() {
+				if (this.isTeamInvite) {
+					return `/pages/extra/join-team-confirm?inviter_id=${encodeURIComponent(this.inviterId)}`
+				}
+
+				if (String(this.businessId) === '12') {
+					return '/pages/extra/functions'
+				}
+
+				let url = this.businessId
+					? `/pages/extra/signup/index?id=${encodeURIComponent(this.businessId)}`
+					: '/subpackages/forum/index'
+
+				if (this.inviterId && this.businessId) {
+					url += `&inviter_id=${encodeURIComponent(this.inviterId)}`
+				}
+
+				return url
 			}
 		},
 	}

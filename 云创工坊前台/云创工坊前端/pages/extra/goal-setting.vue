@@ -46,6 +46,7 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
 export default {
 	data() {
 		return {
@@ -90,7 +91,7 @@ export default {
 
 				this.isGuest = false
 				
-				const goalService = uniCloud.importObject('goal-service')
+				const goalService = getHttpService('goal-service')
 				const now = new Date()
 				const res = await goalService.getMonthGoals({
 					_token: token,
@@ -138,7 +139,7 @@ export default {
 				const token = uni.getStorageSync('token')
 				const userId = uni.getStorageSync('userId')
 				
-				const goalService = uniCloud.importObject('goal-service')
+				const goalService = getHttpService('goal-service')
 				const now = new Date()
 				const payload = {
 					_token: token,

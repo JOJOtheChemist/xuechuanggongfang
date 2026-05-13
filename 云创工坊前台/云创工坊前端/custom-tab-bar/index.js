@@ -1,40 +1,45 @@
+const DASHBOARD_ENTRY_PATH = '/pages/dashboard/index'
+const FORUM_SUBPACKAGE_PATH = '/subpackages/forum/index'
+const VOLUNTEER_PATH = '/pages/volunteer/index'
+const VOLUNTEER_ENTRY_PATH = '/subpackages/volunteer/guide-redirect'
+
 Component({
   data: {
     selected: 0,
     color: '#6b7280',
-    selectedColor: '#4f46e5',
-    // 暂时隐藏主菜单发布入口，后续如需恢复改回 true 即可。
+    selectedColor: '#2563eb',
+    // 广场页自带悬浮发布按钮，这里保持普通五栏导航。
     showCenterPublish: false,
     list: [
       {
         pagePath: '/pages/dashboard/index',
         text: '广场',
-        iconPath: '/static/icons/nav-home.svg',
-        selectedIconPath: '/static/icons/nav-home.svg'
+        iconPath: '/static/tabbar/nav-forum-normal.png',
+        selectedIconPath: '/static/tabbar/nav-forum-active.png'
       },
       {
         pagePath: '/pages/business/index',
         text: '学习',
-        iconPath: '/static/icons/nav-chat.svg',
-        selectedIconPath: '/static/icons/nav-chat.svg'
+        iconPath: '/static/tabbar/nav-study-normal.png',
+        selectedIconPath: '/static/tabbar/nav-study-active.png'
       },
       {
-        pagePath: '/pages/volunteer/index',
+        pagePath: VOLUNTEER_PATH,
         text: '志愿',
-        iconPath: '/static/icons/nav-volunteer.svg',
-        selectedIconPath: '/static/icons/nav-volunteer.svg'
+        iconPath: '/static/tabbar/nav-volunteer-normal.png',
+        selectedIconPath: '/static/tabbar/nav-volunteer-active.png'
       },
       {
         pagePath: '/pages/task-center/index',
         text: '创业',
-        iconPath: '/static/icons/nav-chart.svg',
-        selectedIconPath: '/static/icons/nav-chart.svg'
+        iconPath: '/static/tabbar/nav-startup-normal.png',
+        selectedIconPath: '/static/tabbar/nav-startup-active.png'
       },
       {
         pagePath: '/pages/profile/index',
         text: '我的',
-        iconPath: '/static/icons/nav-user.svg',
-        selectedIconPath: '/static/icons/nav-user.svg'
+        iconPath: '/static/tabbar/nav-profile-normal.png',
+        selectedIconPath: '/static/tabbar/nav-profile-active.png'
       }
     ]
   },
@@ -42,6 +47,24 @@ Component({
     switchTab(e) {
       const data = e.currentTarget.dataset
       const url = data.path
+      if (url === DASHBOARD_ENTRY_PATH) {
+        wx.reLaunch({
+          url: FORUM_SUBPACKAGE_PATH,
+          fail: () => {
+            wx.navigateTo({ url: FORUM_SUBPACKAGE_PATH })
+          }
+        })
+        return
+      }
+      if (url === VOLUNTEER_PATH) {
+        wx.navigateTo({
+          url: VOLUNTEER_ENTRY_PATH,
+          fail: () => {
+            wx.reLaunch({ url: VOLUNTEER_ENTRY_PATH })
+          }
+        })
+        return
+      }
       wx.switchTab({
         url,
         fail: () => {
@@ -68,12 +91,10 @@ Component({
       }
 
       wx.showActionSheet({
-        itemList: ['快速发布动态'],
+        itemList: ['发布动态暂未开放'],
         success: (res) => {
           if (res.tapIndex !== 0) return
-          wx.navigateTo({
-            url: '/subpackages/forum/publish'
-          })
+          wx.showToast({ title: '暂未开放', icon: 'none' })
         }
       })
     }

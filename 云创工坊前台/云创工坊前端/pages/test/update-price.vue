@@ -36,6 +36,8 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
+
 export default {
   data() {
     return {
@@ -53,21 +55,23 @@ export default {
     async handleInit() {
       if (this.initLoading) return
       this.initLoading = true
-      this.addLog('开始初始化缺失的业务数据...')
       try {
-        const businessService = uniCloud.importObject('business-service')
-        const res = await businessService.initMissingCategories()
-        if (res.code === 0) {
-          this.addLog(`✅ ${res.message}`)
-          if (res.data && res.data.length) {
-             this.addLog(`详情: ${res.data.join(', ')}`)
-          }
-          uni.showToast({ title: '初始化成功', icon: 'success' })
-        } else {
-          this.addLog(`❌ 初始化错误: ${res.message}`)
+        const businessService = getHttpService('business-service')
+        const result = await businessService.initMissingCategories({
+          _token: uni.getStorageSync('token')
+        })
+
+        if (!result || result.code !== 0 || !result.data) {
+          throw new Error((result && result.message) || '初始化失败')
         }
+
+        const details = Array.isArray(result.data.details) ? result.data.details : []
+        this.addLog(`初始化完成，新建 ${result.data.successCount || 0} 条，更新 ${result.data.skipCount || 0} 条`)
+        details.forEach((item) => this.addLog(`- ${item}`))
+        uni.showToast({ title: '初始化完成', icon: 'success' })
       } catch (e) {
         this.addLog(`❌ 调用异常: ${e.message}`)
+        uni.showToast({ title: '初始化失败', icon: 'none' })
       } finally {
         this.initLoading = false
       }
@@ -76,28 +80,21 @@ export default {
       if (this.loading) return
       
       this.loading = true
-      this.addLog(`开始更新价格为 ${this.price} 元...`)
       
       try {
-        const businessService = uniCloud.importObject('business-service')
-        
-        // 调用我们刚刚添加的 batchUpdatePrices 方法
-        // 注意：如果你还没上传 cloudfunctions，这一步会报错
-        const res = await businessService.batchUpdatePrices({
-          price: Number(this.price)
+        const businessService = getHttpService('business-service')
+        const result = await businessService.batchUpdatePrices({
+          price: Number(this.price || 0),
+          _token: uni.getStorageSync('token')
         })
-        
-        if (res.code === 0) {
-          const { successCount, updatedNames } = res.data
-          this.addLog(`✅ 更新成功！共更新 ${successCount} 条记录`)
-          if (updatedNames && updatedNames.length > 0) {
-            this.addLog(`更新项目: ${updatedNames.join(', ')}`)
-          }
-          uni.showToast({ title: '设置成功', icon: 'success' })
-        } else {
-          this.addLog(`❌ 服务端返回错误: ${res.message}`)
-          uni.showToast({ title: '设置失败', icon: 'none' })
+
+        if (!result || result.code !== 0 || !result.data) {
+          throw new Error((result && result.message) || '更新失败')
         }
+
+        this.addLog(`✅ 更新成功 ${result.data.successCount || 0} 条，价格 ${result.data.price} 元`)
+        ;(result.data.updatedNames || []).forEach((item) => this.addLog(`- ${item}`))
+        uni.showToast({ title: '更新成功', icon: 'success' })
       } catch (e) {
         console.error(e)
         this.addLog(`❌ 调用异常: ${e.message || '未知错误'}`)

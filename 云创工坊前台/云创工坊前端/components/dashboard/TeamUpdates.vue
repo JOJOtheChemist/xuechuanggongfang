@@ -17,7 +17,7 @@
 					<view v-else>
 						<view class="updates-list">
 							<view v-for="item in list" :key="item.id" class="update-item">
-								<image class="update-avatar" :src="item.inviter_avatar" mode="aspectFill" />
+								<image class="update-avatar" :src="normalizeAvatarUrl(item.inviter_avatar)" mode="aspectFill" />
 								<view class="update-content">
 									<view class="update-title">
 										<text class="update-name">{{ item.inviter_name }}</text>
@@ -49,6 +49,7 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
 export default {
 	name: 'TeamUpdates',
 	data() {
@@ -73,7 +74,7 @@ export default {
 			this.loggedIn = true
 			this.loading = true
 			try {
-				const dashboardService = uniCloud.importObject('dashboard-service')
+				const dashboardService = getHttpService('dashboard-service')
 				const res = await dashboardService.getTeamDynamics({ _token: token, limit: 4 })
 				if (res && res.code === 0) {
 					this.list = res.data || []

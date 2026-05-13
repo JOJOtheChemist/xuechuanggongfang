@@ -34,6 +34,7 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
 	export default {
 		name: 'GoalCard',
 		data() {
@@ -64,7 +65,7 @@
 					// The user specifically asked to pass UID, although usually token is enough. 
 					// I will pass _token as per the cloud function expectation.
 					
-					const goalService = uniCloud.importObject('goal-service')
+					const goalService = getHttpService('goal-service')
 					const now = new Date()
 					const res = await goalService.getMonthGoals({
 						_token: token, // Pass token manually

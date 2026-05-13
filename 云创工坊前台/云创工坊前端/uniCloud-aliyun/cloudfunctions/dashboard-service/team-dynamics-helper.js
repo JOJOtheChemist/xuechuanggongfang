@@ -125,7 +125,7 @@ async function getTeamDynamics(db, uid, limit = 5) {
         let fileIDs = []
         const getUserAvatar = (uid) => {
             const u = userMap[uid]
-            if (!u || !u.avatar) return 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png'
+            if (!u || !u.avatar) return '/static/icons/default-avatar.svg'
             if (u.avatar.startsWith('cloud://')) fileIDs.push(u.avatar)
             return u.avatar
         }
@@ -293,7 +293,7 @@ async function getTeamMembersOrders(db, uid, limit = 20) {
         let fileIDs = []
         const getUserAvatar = (uid) => {
             const u = userMap[uid]
-            if (!u || !u.avatar) return 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png'
+            if (!u || !u.avatar) return '/static/icons/default-avatar.svg'
             if (u.avatar.startsWith('cloud://')) fileIDs.push(u.avatar)
             return u.avatar
         }

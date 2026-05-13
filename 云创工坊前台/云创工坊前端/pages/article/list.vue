@@ -17,10 +17,10 @@
 		<!-- 文章列表 -->
 		<scroll-view class="list-scroll" scroll-y @scrolltolower="loadMore">
 			<view class="list-content">
-				<view 
-					v-for="(a, index) in getDisplayList()" 
-					:key="a._id ? a._id : (a.id ? a.id : index)" 
-					class="row" 
+				<view
+					v-for="a in displayList"
+					:key="a.renderKey"
+					class="row"
 					@tap="openDetail(a)"
 				>
 					<view class="meta">
@@ -49,7 +49,8 @@
 </template>
 
 <script>
-import ArticleFilter from '@/components/article/ArticleFilter.vue'
+import { getHttpService } from '@/utils/http-services'
+import ArticleFilter from './components/ArticleFilter.vue'
 
 export default {
 	components: {
@@ -73,6 +74,17 @@ export default {
 			fullList: [],
 			total: 0,
 			loading: false
+		}
+	},
+	computed: {
+		displayList() {
+			return (Array.isArray(this.fullList) ? this.fullList : []).map((item, index) => {
+				const source = item && typeof item === 'object' ? item : {}
+				const rawKey = source.id || source.articleId || source.article_id || source._id || `article-${index}`
+				return Object.assign({}, source, {
+					renderKey: `article-${rawKey}`
+				})
+			})
 		}
 	},
 	onLoad(options) {
@@ -116,7 +128,7 @@ export default {
 				if (this.filterTags.subTag) tags.push(this.filterTags.subTag)
 				if (this.filterTags.thirdTag) tags.push(this.filterTags.thirdTag)
 				
-				const articleService = uniCloud.importObject('article-service')
+				const articleService = getHttpService('article-service')
 				const res = await articleService.getList({
 					pageNum: this.pageNum,
 					pageSize: this.pageSize,
@@ -132,8 +144,8 @@ export default {
 					if (this.pageNum === 1) {
 						this.fullList = list
 					} else {
-						const ids = new Set(this.fullList.map(i => i._id || i.id))
-						const newItems = list.filter(i => !ids.has(i._id || i.id))
+						const ids = new Set(this.fullList.map(i => i.id || i.articleId || i.article_id || i._id))
+						const newItems = list.filter(i => !ids.has(i.id || i.articleId || i.article_id || i._id))
 						this.fullList = this.fullList.concat(newItems)
 					}
 					this.list = this.fullList 
@@ -144,12 +156,8 @@ export default {
 				this.loading = false
 			}
 		},
-		getDisplayList() {
-			// 现在后端已经按标签筛选，直接返回 fullList
-			return this.fullList
-		},
 		openDetail(a) {
-			const id = a._id || a.id || a.article_id || ''
+			const id = a.id || a.articleId || a.article_id || a._id || ''
 			if (!id) return
 			uni.navigateTo({ url: `/pages/article/detail?id=${id}` })
 		}

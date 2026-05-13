@@ -39,6 +39,7 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
 export default {
 	name: 'ArticleList',
 	props: {
@@ -110,16 +111,16 @@ export default {
 		},
 		placeholderTitle() {
 			if (!this.loaded) return '热门文章加载中...'
-			if (!this.isLoggedIn) return '登录后可查看热门文章'
+			if (!this.isLoggedIn) return '游客模式可先浏览文章'
 			return '暂时没有可展示的热门文章'
 		},
 		placeholderDesc() {
 			if (!this.loaded) return '请稍候，我们正在为你请求最新的学习干货'
-			if (!this.isLoggedIn) return '请先登录，确认账号状态后即可查看该板块的热门文章'
+			if (!this.isLoggedIn) return '点击文章可先进入游客模式详情页，确认需要完整内容时再登录。'
 			return '稍后再试，或联系管理员确认该板块的文章配置'
 		},
 		showLoginButton() {
-			return !this.isLoggedIn && this.loaded
+			return false
 		}
 	},
 	methods: {
@@ -139,33 +140,14 @@ export default {
 			if (!article || !article.id) {
 				return
 			}
-			const token = uni.getStorageSync('token')
-			if (!token) {
-				uni.navigateTo({
-					url: '/pages/auth/login/index'
-				})
-				return
-			}
-			if (!article.unlocked && article.pricePoints && article.pricePoints > 0) {
-				uni.showModal({
-					title: '确认解锁',
-					content: `此文章需要消耗 ${article.pricePoints} 积分解锁，确认继续？`,
-					success: async (res) => {
-						if (res.confirm) {
-							await this.unlockArticle(article, token)
-						}
-					}
-				})
-			} else {
-				uni.navigateTo({
-					url: `/pages/article/detail?id=${article.id}`
-				})
-			}
+			uni.navigateTo({
+				url: `/pages/article/detail?id=${article.id}`
+			})
 		},
 		async unlockArticle(article, token) {
 			uni.showLoading({ title: '解锁中...' })
 			try {
-				const articleService = uniCloud.importObject('article-service')
+				const articleService = getHttpService('article-service')
 				const result = await articleService.unlockArticle({
 					articleId: article.id,
 					_token: token

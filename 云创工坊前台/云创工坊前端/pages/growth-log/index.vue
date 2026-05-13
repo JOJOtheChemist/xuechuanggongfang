@@ -28,6 +28,7 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
 export default {
 	data() {
 		return {
@@ -66,7 +67,7 @@ export default {
 
 			try {
 				this.saveBtnText = "保存中..."
-				const growthService = uniCloud.importObject('growth-log-service')
+				const growthService = getHttpService('growth-log-service')
 				const res = await growthService.addLog({
 					_token: token,
 					title: '成长日志 ' + this.formatDate(Date.now()),

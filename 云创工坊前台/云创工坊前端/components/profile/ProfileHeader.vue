@@ -1,32 +1,84 @@
 <template>
 	<view class="profile-header">
-		<view class="avatar-wrapper" @tap="onAvatarTap">
-			<image class="avatar-img" :src="avatarUrl" mode="aspectFill" />
-			<view class="status-dot" />
-		</view>
-		<view class="profile-main">
-			<view class="profile-name-row" @tap="onNameTap">
-				<text class="profile-name">{{ displayName }}</text>
-				<view class="edit-tag">
-					<text class="edit-tag-text">修改</text>
+		<image class="profile-header-bg" :src="profileHeaderBgUrl" mode="widthFix" />
+		<view class="profile-header-content">
+			<view class="avatar-wrapper" @tap="onAvatarTap">
+				<image class="avatar-img" :src="avatarUrl" mode="aspectFill" />
+			</view>
+			<view class="profile-main">
+				<view class="profile-name-row" @tap="onNameTap">
+					<text class="profile-name">{{ displayName }}</text>
+					<image
+						v-if="showCampusPartnerBadge"
+						class="profile-campus-partner-badge"
+						:src="campusPartnerBadgeUrl"
+						mode="widthFix"
+					/>
+					<image
+						class="profile-edit-button"
+						:src="profileEditButtonUrl"
+						mode="widthFix"
+					/>
+				</view>
+				<view class="profile-id-row">
+					<text class="id-text">{{ displayId }}</text>
+					<image
+						class="profile-copy-button"
+						:src="profileCopyButtonUrl"
+						mode="widthFix"
+						@tap.stop="copyDisplayId"
+					/>
+				</view>
+				<view class="profile-tags">
+					<view v-if="displayRole && displayRole !== '已登录'" class="role-tag">
+						<text class="role-text">{{ displayRole }}</text>
+					</view>
 				</view>
 			</view>
-			<view class="profile-tags">
-				<view class="role-tag">
-					<text class="role-text">{{ displayRole }}</text>
-				</view>
-				<text class="id-text">ID: {{ displayId }}</text>
-			</view>
-		</view>
 
-		<!-- Login/Logout Buttons -->
-		<!-- Login/Logout Buttons -->
-		<view class="profile-actions">
-			<view v-if="!isLoggedIn" class="action-btn login-btn" @tap.stop="goToLogin">
-				<text class="btn-text">登录</text>
+			<!-- Login/Logout Buttons -->
+			<!-- Login/Logout Buttons -->
+			<view class="profile-actions">
+				<view v-if="!isLoggedIn" class="action-btn login-btn" @tap.stop="goToLogin">
+					<text class="btn-text">登录</text>
+				</view>
+				<view v-else class="action-btn logout-btn" @tap.stop="handleLogout">
+					<text class="btn-text logout-btn-text">退出</text>
+				</view>
 			</view>
-			<view v-else class="action-btn logout-btn" @tap.stop="handleLogout">
-				<text class="btn-text" style="color: #4b5563;">退出</text>
+		</view>
+		<text v-if="showOverlayMetrics" class="profile-team-name-overlay">
+			{{ overlayTeamName }}
+		</text>
+		<text v-if="showOverlayMetrics" class="profile-team-level-overlay">
+			{{ overlayTeamLevel }}
+		</text>
+		<view v-if="showOverlayMetrics" class="profile-metrics-overlay">
+			<view class="profile-metric-cell">
+				<text class="profile-metric-number">{{ formattedMemberCount }}</text>
+			</view>
+			<view class="profile-metric-cell">
+				<text class="profile-metric-number">{{ formattedTodayNewMembers }}</text>
+			</view>
+			<view class="profile-metric-cell profile-metric-cell-invite">
+				<view class="profile-metric-number-with-label">
+					<text class="profile-metric-number">{{ formattedInviteCount }}</text>
+					<text class="profile-metric-side-label">今日新增</text>
+				</view>
+			</view>
+			<view class="profile-metric-cell profile-metric-qr-cell" @tap="handleQrcodeTap">
+				<view class="profile-metric-qr-box">
+					<image
+						v-if="showOverlayQrcodeImage"
+						class="profile-metric-qr-image"
+						:src="teamQrcodeUrl"
+						mode="aspectFit"
+					/>
+					<text v-else class="profile-metric-qr-placeholder">
+						{{ overlayQrcodeText }}
+					</text>
+					<view v-if="showOverlayQrcodeImage" class="profile-metric-qr-scan-line" />
+				</view>
 			</view>
 		</view>
 
@@ -52,12 +104,48 @@
 </template>
 
 <script>
+import {
+	getHttpService,
+	getCurrentUserInfo,
+	getCurrentUserToken,
+	normalizeUserInfo
+} from '@/utils/http-services'
+import { uploadImageWithPresign } from '@/utils/presigned-upload'
+import {
+	extractRequestErrorMessage,
+	normalizeContentSafetyMessage
+} from '@/utils/contentSafety.js'
+
+const PROFILE_HEADER_BG_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/profile/backgrounds/profile-center-top-bg-v1.webp'
+const PROFILE_EDIT_BUTTON_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/profile/buttons/profile-edit-button-v1.png'
+const PROFILE_COPY_BUTTON_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/profile/buttons/profile-copy-button-v1.png'
+const CAMPUS_PARTNER_BADGE_URL = 'https://xuechuang.xyz/oss/share-assets/admission/admin/images/0/2026/05/13/95a93cff-0ec4-4b1a-8bbd-187a2ec300c2.webp'
+
 export default {
 	name: 'ProfileHeader',
+	props: {
+		teamMetrics: {
+			type: Object,
+			default: () => ({})
+		},
+		teamQrcodeUrl: {
+			type: String,
+			default: ''
+		},
+		teamQrcodeLoading: {
+			type: Boolean,
+			default: false
+		}
+	},
 	data() {
 		return {
 			userInfo: null,
-			defaultAvatar: 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png',
+			hasSession: false,
+			defaultAvatar: '/static/icons/default-avatar.svg',
+			profileHeaderBgUrl: PROFILE_HEADER_BG_URL,
+			profileEditButtonUrl: PROFILE_EDIT_BUTTON_URL,
+			profileCopyButtonUrl: PROFILE_COPY_BUTTON_URL,
+			campusPartnerBadgeUrl: CAMPUS_PARTNER_BADGE_URL,
 			isEditingNickname: false,
 			editNickname: '',
 			isUploadingAvatar: false
@@ -65,15 +153,16 @@ export default {
 	},
 	computed: {
 		isLoggedIn() {
-			return !!this.userInfo
+			return this.hasSession
 		},
 		avatarUrl() {
-			if (this.userInfo && this.userInfo.avatar) return this.userInfo.avatar
-			return this.defaultAvatar
+			return this.normalizeAvatarUrl(this.userInfo && this.userInfo.avatar, this.defaultAvatar)
 		},
 		displayName() {
 			if (this.userInfo && this.userInfo.nickname) return this.userInfo.nickname
+			if (this.userInfo && this.userInfo.name) return this.userInfo.name
 			if (this.userInfo && this.userInfo.username) return this.userInfo.username
+			if (this.isLoggedIn) return '已登录用户'
 			return '点击登录'
 		},
 		displayRole() {
@@ -84,31 +173,152 @@ export default {
 			if (Array.isArray(roles) && roles.length) {
 				// 简单映射一下常见角色
 				if (roles.includes('admin')) return '管理员'
+				if (roles.includes('senior_partner')) return '高级校园合伙人'
 				if (roles.includes('partner')) return '校园合伙人'
 				if (roles.includes('team_member')) return '团队成员'
 			}
+			if (this.teamMetrics && this.teamMetrics.hasTeam) {
+				const level = String((this.teamMetrics && this.teamMetrics.teamLevel) || '').trim()
+				return level || '校园合伙人'
+			}
+			if (this.isLoggedIn) return '已登录'
 			return '游客'
 		},
+		showCampusPartnerBadge() {
+			const partnerInfo = this.userInfo && this.userInfo.partner_info
+			if (partnerInfo && partnerInfo.level) {
+				return true
+			}
+			const roles = (this.userInfo && this.userInfo.role) || []
+			if (Array.isArray(roles) && (roles.includes('partner') || roles.includes('senior_partner'))) {
+				return true
+			}
+			return !!(this.teamMetrics && this.teamMetrics.hasTeam)
+		},
 		displayId() {
-			if (this.userInfo && this.userInfo.uid) {
-				const id = String(this.userInfo.uid)
+			const rawId =
+				this.userInfo &&
+				(this.userInfo.uid ||
+					this.userInfo.userId ||
+					this.userInfo.user_id ||
+					this.userInfo.id)
+			if (rawId) {
+				const id = String(rawId)
 				return id.slice(-6)
 			}
+			if (this.isLoggedIn) return '同步中'
 			return '------'
 		},
-
+		fullDisplayId() {
+			const rawId =
+				this.userInfo &&
+				(this.userInfo.uid ||
+					this.userInfo.userId ||
+					this.userInfo.user_id ||
+					this.userInfo.id)
+			return rawId ? String(rawId) : ''
+		},
+		showOverlayMetrics() {
+			return !!(this.teamMetrics && this.teamMetrics.loggedIn)
+		},
+		formattedMemberCount() {
+			return this.formatMetricValue(this.teamMetrics && this.teamMetrics.memberCount)
+		},
+		formattedTodayNewMembers() {
+			return this.formatMetricValue(this.teamMetrics && this.teamMetrics.todayNewMembers, true)
+		},
+		formattedInviteCount() {
+			return this.formatMetricValue(this.teamMetrics && this.teamMetrics.inviteCount)
+		},
+		overlayTeamName() {
+			const rawName = this.teamMetrics && this.teamMetrics.teamName
+			if (this.teamMetrics && this.teamMetrics.hasTeam && rawName) {
+				return String(rawName)
+			}
+			return '未加入团队，申请加入'
+		},
+		overlayTeamLevel() {
+			const rawLevel = this.teamMetrics && this.teamMetrics.teamLevel
+			if (this.teamMetrics && this.teamMetrics.hasTeam && rawLevel) {
+				return String(rawLevel)
+			}
+			return '-'
+		},
+		overlayQrcodeText() {
+			if (!this.teamMetrics || !this.teamMetrics.hasTeam) {
+				return '-'
+			}
+			return this.teamQrcodeLoading ? '生成中' : '生成二维码'
+		},
+		showOverlayQrcodeImage() {
+			return !!(this.teamMetrics && this.teamMetrics.hasTeam && this.teamQrcodeUrl)
+		}
 	},
 	methods: {
+		handleQrcodeTap() {
+			if (!this.teamMetrics || !this.teamMetrics.hasTeam) {
+				return
+			}
+			this.$emit('show-qrcode')
+		},
+		formatMetricValue(value, withPlus = false) {
+			if (!this.teamMetrics || !this.teamMetrics.hasTeam) {
+				return '-'
+			}
+			const number = Number(value || 0)
+			if (withPlus) {
+				return `+${number}`
+			}
+			return `${number}`
+		},
         // [NEW] 公开给父组件调用
         refreshUserInfo() {
             this.loadUserInfo()
         },
+		syncSessionFromStorage() {
+			const token = this.getToken()
+			const cached = normalizeUserInfo(getCurrentUserInfo())
+
+			this.hasSession = !!token
+
+			if (this.hasSession || cached.nickname || cached.name || cached.avatar || cached.uid) {
+				this.userInfo = cached
+			} else {
+				this.userInfo = null
+			}
+
+			return token
+		},
+		showProfileMessage(message, fallback = '操作失败') {
+			uni.showToast({
+				title: normalizeContentSafetyMessage(message, fallback),
+				icon: 'none'
+			})
+		},
 		getToken() {
-			return uni.getStorageSync('token')
+			return getCurrentUserToken()
 		},
 		goToLogin() {
 			uni.navigateTo({
 				url: '/pages/auth/login/index'
+			})
+		},
+		copyDisplayId() {
+			if (!this.fullDisplayId) {
+				uni.showToast({
+					title: '暂无可复制ID',
+					icon: 'none'
+				})
+				return
+			}
+			uni.setClipboardData({
+				data: this.fullDisplayId,
+				success: () => {
+					uni.showToast({
+						title: 'ID已复制',
+						icon: 'none'
+					})
+				}
 			})
 		},
 		handleLogout() {
@@ -119,6 +329,7 @@ export default {
 					if (res.confirm) {
 						// 清除缓存
 						uni.removeStorageSync('token')
+						uni.removeStorageSync('accessToken')
 						uni.removeStorageSync('userInfo')
 						uni.removeStorageSync('userId') // Ensure userId is also cleared
 						uni.removeStorageSync('uni_id_token')
@@ -126,6 +337,7 @@ export default {
 						
 						// 更新状态
 						this.userInfo = null
+						this.hasSession = false
 						
 						uni.showToast({
 							title: '已退出',
@@ -145,32 +357,23 @@ export default {
 				return { ok: false }
 			}
 			try {
-				const userCenter = uniCloud.importObject('user-center')
+				const userCenter = getHttpService('user-center')
 				const res = await userCenter.updateProfile(Object.assign({ _token: token }, payload))
 				console.log('[ProfileHeader] updateProfile 响应:', res)
 				if (res && res.code === 0) {
 					// 本地同步 userInfo 和缓存
-					this.userInfo = Object.assign({}, this.userInfo || {}, payload)
-					const cached = uni.getStorageSync('userInfo') || {}
-					Object.assign(cached, payload)
+					this.userInfo = normalizeUserInfo(Object.assign({}, this.userInfo || {}, payload))
+					const cached = normalizeUserInfo(Object.assign({}, uni.getStorageSync('userInfo') || {}, payload))
 					uni.setStorageSync('userInfo', cached)
+					this.hasSession = true
 					uni.showToast({ title: '已保存', icon: 'success' })
 					return { ok: true, res }
 				}
-				const msg = (res && res.message) || '更新失败'
-				uni.showModal({
-					title: '更新失败',
-					content: `code: ${res && res.code}\nmessage: ${msg}`,
-					showCancel: false
-				})
+				this.showProfileMessage((res && res.message) || '更新失败', '更新失败')
 				return { ok: false, res }
 			} catch (e) {
 				console.error('[ProfileHeader] 更新资料失败', e)
-				uni.showModal({
-					title: '更新异常',
-					content: (e && (e.errMsg || e.message)) || '未知错误',
-					showCancel: false
-				})
+				this.showProfileMessage(extractRequestErrorMessage(e, '更新失败'), '更新失败')
 				return { ok: false, error: e }
 			}
 		},
@@ -205,41 +408,23 @@ export default {
 					const filePath = res.tempFilePaths[0]
 					try {
 						this.isUploadingAvatar = true
-						const uid = (this.userInfo && this.userInfo.uid) || uni.getStorageSync('userId') || 'anonymous'
-						const cloudPath = `user-avatar/${uid}-${Date.now()}.jpg`
-						const uploadRes = await uniCloud.uploadFile({
+						const uploadResult = await uploadImageWithPresign({
+							scene: 'user-avatar',
 							filePath,
-							cloudPath
+							token: this.getToken(),
+							fileNamePrefix: 'user-avatar'
 						})
-						console.log('[ProfileHeader] uploadFile 响应:', uploadRes)
-						const fileID = uploadRes.fileID || (uploadRes.success && uploadRes.success[0] && uploadRes.success[0].fileID)
-						if (!fileID) {
-							uni.showModal({
-								title: '上传失败',
-								content: '未返回 fileID，原始响应已打印在控制台',
-								showCancel: false
-							})
-							return
-						}
-						await this.updateProfileField({ avatar: fileID })
+						await this.updateProfileField({ avatar: uploadResult.url })
 					} catch (e) {
 						console.error('[ProfileHeader] 上传头像失败', e)
-						uni.showModal({
-							title: '上传失败',
-							content: (e && (e.errMsg || e.message)) || '未知错误',
-							showCancel: false
-						})
+						this.showProfileMessage(extractRequestErrorMessage(e, '上传失败'), '上传失败')
 					} finally {
 						this.isUploadingAvatar = false
 					}
 				},
 				fail: (err) => {
 					console.error('[ProfileHeader] 选择头像失败', err)
-					uni.showModal({
-						title: '选择图片失败',
-						content: (err && err.errMsg) || '未知错误',
-						showCancel: false
-					})
+					this.showProfileMessage(extractRequestErrorMessage(err, '选择图片失败'), '选择图片失败')
 				}
 			})
 		},
@@ -312,11 +497,7 @@ export default {
 						}
 					} catch (e) {
 						console.error('[ProfileHeader] 同步微信头像昵称失败', e)
-						uni.showModal({
-							title: '同步失败',
-							content: (e && (e.errMsg || e.message)) || '未知错误',
-							showCancel: false
-						})
+						this.showProfileMessage(extractRequestErrorMessage(e, '同步失败'), '同步失败')
 					}
 				},
 				fail: (err) => {
@@ -330,29 +511,24 @@ export default {
 			})
 		},
 		async loadUserInfo() {
-			// 先从本地缓存拿一份，保证渲染不中断
-			const cached = uni.getStorageSync('userInfo') || null
-			if (cached) {
-				this.userInfo = cached
-			} else {
-                this.userInfo = null // Clear if nothing/logout
-            }
+			const token = this.syncSessionFromStorage()
 
 			// 如有 token，尝试从后端刷新一次用户信息
-			const token = this.getToken()
 			if (!token) {
-                this.userInfo = null // Ensure cleared
-                return
-            }
+				return
+			}
 
 			try {
-				const userCenter = uniCloud.importObject('user-center')
+				const userCenter = getHttpService('user-center')
 				const res = await userCenter.getUserInfo({ _token: token })
 				if (res && res.code === 0 && res.data) {
-					this.userInfo = res.data
-					uni.setStorageSync('userInfo', res.data)
+					const latestUserInfo = normalizeUserInfo(res.data)
+					this.userInfo = latestUserInfo
+					this.hasSession = true
+					uni.setStorageSync('userInfo', latestUserInfo)
 				} else if (res && (res.error === 'AUTH_REQUIRED' || res.statusCode === 401)) {
 					this.userInfo = null
+					this.hasSession = false
 				}
 			} catch (e) {
 				console.error('[ProfileHeader] 获取用户信息失败', e)
@@ -367,50 +543,185 @@ export default {
 
 <style scoped>
 	.profile-header {
-		padding: 48rpx 32rpx 24rpx;
+		position: relative;
+		padding-top: 0;
+		box-sizing: border-box;
+		overflow: hidden;
+		background: transparent;
+	}
+
+	.profile-header-bg {
+		display: block;
+		width: 100%;
+		height: auto;
+	}
+
+	.profile-header-content {
+		position: absolute;
+		left: 50rpx;
+		right: 50rpx;
+		top: calc(var(--status-bar-height, 0px) + 190rpx);
 		display: flex;
 		flex-direction: row;
 		align-items: center;
-		background-color: #ffffff;
-		border-bottom-width: 2rpx;
-		border-bottom-color: #e5e7eb;
-		border-bottom-style: solid;
+	}
+
+	.profile-team-name-overlay {
+		position: absolute;
+		left: 190rpx;
+		width: 260rpx;
+		bottom: 258rpx;
+		font-size: 24rpx;
+		font-weight: 700;
+		line-height: 1.2;
+		text-align: left;
+		color: #111111;
+	}
+
+	.profile-team-level-overlay {
+		position: absolute;
+		right: 132rpx;
+		bottom: 270rpx;
+		font-size: 24rpx;
+		font-weight: 700;
+		line-height: 1.2;
+		text-align: left;
+		color: #111111;
+	}
+
+	.profile-metrics-overlay {
+		position: absolute;
+		left: 88rpx;
+		right: 104rpx;
+		bottom: 134rpx;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.profile-metric-cell {
+		flex: 1 1 0;
+		min-width: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.profile-metric-cell:nth-child(-n + 3) {
+		justify-content: flex-start;
+	}
+
+	.profile-metric-cell:nth-child(2) {
+		transform: translateX(-12rpx);
+	}
+
+	.profile-metric-number {
+		min-width: 92rpx;
+		font-size: 34rpx;
+		font-weight: 800;
+		line-height: 1;
+		text-align: center;
+		color: #111111;
+	}
+
+	.profile-metric-cell-invite {
+		justify-content: flex-start;
+	}
+
+	.profile-metric-number-with-label {
+		display: flex;
+		align-items: flex-end;
+		gap: 10rpx;
+	}
+
+	.profile-metric-side-label {
+		font-size: 20rpx;
+		font-weight: 600;
+		line-height: 1.2;
+		color: #111111;
+		padding-bottom: 4rpx;
+		white-space: nowrap;
+	}
+
+	.profile-metric-qr-cell {
+		flex: 0 0 96rpx;
+	}
+
+	.profile-metric-qr-box {
+		width: 84rpx;
+		height: 68rpx;
+		border-radius: 16rpx;
+		background: rgba(255, 255, 255, 0.96);
+		position: relative;
+		overflow: hidden;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.profile-metric-qr-image {
+		width: 56rpx;
+		height: 56rpx;
+	}
+
+	.profile-metric-qr-scan-line {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 4rpx;
+		background-color: #4f46e5;
+		box-shadow: 0 0 8rpx #4f46e5;
+		animation: profile-team-scan 2s linear infinite;
+	}
+
+	@keyframes profile-team-scan {
+		0% {
+			top: 0;
+			opacity: 0;
+		}
+		10% {
+			opacity: 1;
+		}
+		90% {
+			opacity: 1;
+		}
+		100% {
+			top: 100%;
+			opacity: 0;
+		}
+	}
+
+	.profile-metric-qr-placeholder {
+		font-size: 17rpx;
+		font-weight: 700;
+		line-height: 1.2;
+		text-align: center;
+		color: #111111;
 	}
 
 	.avatar-wrapper {
-		width: 128rpx;
-		height: 128rpx;
-		border-radius: 64rpx;
-		border-width: 6rpx;
-		border-color: #e5e7eb;
-		border-style: solid;
+		width: 105rpx;
+		height: 105rpx;
+		border-radius: 105rpx;
 		position: relative;
 		overflow: hidden;
 		margin-right: 24rpx;
+		margin-top: -10rpx;
 	}
 
 	.avatar-img {
 		width: 100%;
 		height: 100%;
-		border-radius: 64rpx;
-		background-color: #eef2ff;
-	}
-
-	.status-dot {
-		position: absolute;
-		width: 28rpx;
-		height: 28rpx;
-		border-radius: 14rpx;
-		background-color: #22c55e;
-		border-width: 4rpx;
-		border-color: #ffffff;
-		border-style: solid;
-		bottom: 4rpx;
-		right: 4rpx;
+		border-radius: 48rpx;
+		background-color: transparent;
 	}
 
 	.profile-main {
 		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 10rpx;
 	}
 	
 	.profile-actions {
@@ -419,7 +730,7 @@ export default {
 		flex-shrink: 0;
 		margin-left: 16rpx;
 	}
-	
+
 	.action-btn {
 		padding: 12rpx 32rpx;
 		border-radius: 999rpx;
@@ -429,14 +740,13 @@ export default {
 	}
 	
 	.login-btn {
-		background-color: #4f46e5;
+		background: #4f46e5;
+		border: none;
 	}
 	
 	.logout-btn {
-		background-color: #f3f4f6;
-		border-width: 2rpx;
-		border-color: #e5e7eb;
-		border-style: solid;
+		background: #ffffff;
+		border: none;
 	}
 	
 	.btn-text {
@@ -448,47 +758,65 @@ export default {
 		color: #ffffff;
 	}
 
+	.logout-btn-text {
+		color: #4b5563;
+	}
+
 	.profile-name-row {
 		display: flex;
 		flex-direction: row;
 		align-items: center;
-		margin-bottom: 8rpx;
+		gap: 14rpx;
 	}
 
-	.edit-tag {
-		margin-left: 16rpx;
-		background: #f1f5f9;
-		padding: 4rpx 16rpx;
-		border-radius: 999rpx;
-		border: 1rpx solid #e2e8f0;
+	.profile-edit-button {
+		width: 20rpx;
+		height: auto;
+		flex: 0 0 auto;
+		margin-top: 12rpx;
+	}
+
+	.profile-campus-partner-badge {
+		width: 106rpx;
+		height: auto;
+		flex: 0 0 auto;
+		margin-top: 14rpx;
+	}
+
+	.profile-id-row {
 		display: flex;
 		align-items: center;
-		justify-content: center;
+		gap: 10rpx;
+		margin-top: -2rpx;
+		margin-left: 30rpx;
 	}
 
-	.edit-tag-text {
-		font-size: 20rpx;
-		color: #64748b;
-		font-weight: 600;
+	.profile-copy-button {
+		width: 21rpx;
+		height: auto;
+		flex: 0 0 auto;
 	}
 
 	.profile-name {
-		font-size: 36rpx;
-		font-weight: 800;
-		color: #0f172a;
+		font-size: 30rpx;
+		font-weight: 400;
+		color: #111111;
+		margin-top: 24rpx;
 	}
 
 	.profile-tags {
 		display: flex;
 		flex-direction: row;
 		align-items: center;
+		flex-wrap: wrap;
+		gap: 12rpx;
 	}
 
 	.role-tag {
 		padding: 6rpx 16rpx;
 		border-radius: 999rpx;
-		background-color: #e0e7ff;
-		margin-right: 12rpx;
+		background: #ffffff;
+		border: none;
 	}
 
 	.role-text {
@@ -499,7 +827,7 @@ export default {
 
 	.id-text {
 		font-size: 20rpx;
-		color: #9ca3af;
+		color: #4b5563;
 	}
 
 

@@ -37,6 +37,7 @@
 </template>
 
 <script>
+import { getHttpService } from '@/utils/http-services'
 export default {
 	data() {
 		return {
@@ -68,7 +69,7 @@ export default {
 			}
 			this.isGuest = false
 			try {
-				const coinService = uniCloud.importObject('coin-service')
+				const coinService = getHttpService('coin-service')
 				const res = await coinService.getCoinStats({ _token: token })
 				if (res && res.code === 0 && res.data) {
 					this.balance = res.data.current_balance || 0
@@ -104,7 +105,7 @@ export default {
 					this.loading = false
 					return
 				}
-				const coinService = uniCloud.importObject('coin-service')
+				const coinService = getHttpService('coin-service')
 				const res = await coinService.applyExchangeCoinsToPoints({
 					coins: val,
 					_token: token

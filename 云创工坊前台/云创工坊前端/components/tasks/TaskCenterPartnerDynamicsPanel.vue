@@ -213,6 +213,7 @@ export default {
 	margin-top: 8rpx;
 	margin-left: -4rpx;
 	margin-right: -4rpx;
+	transform: translateY(10rpx);
 }
 
 .task-center-dynamics-item {

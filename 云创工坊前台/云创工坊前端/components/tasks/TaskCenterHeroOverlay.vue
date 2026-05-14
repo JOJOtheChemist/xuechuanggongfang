@@ -339,6 +339,7 @@ export default {
 
 .task-center-hero-panel-plan {
 	min-height: 116rpx;
+	margin-top: 35rpx;
 	padding: 10rpx 14rpx;
 	align-items: stretch;
 	justify-content: flex-start;

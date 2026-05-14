@@ -73,7 +73,7 @@
 </template>
 
 <script>
-import { getHttpService, getCurrentUserInfo, normalizeUserInfo } from '@/utils/http-services'
+import { getHttpService, getCurrentUserInfo, getCurrentUserToken, normalizeUserInfo } from '@/utils/http-services'
 export default {
   data() {
     return {
@@ -148,19 +148,8 @@ export default {
     }
 
     // 进入登录页时，先检查本地是否已有登录态
-    const currentUser = getCurrentUserInfo()
-
-    if (currentUser.token) {
-      this.isLoggedIn = true
-      this.userId = currentUser.userId || currentUser.uid || ''
-      this.userNickname = currentUser.nickname || currentUser.username || ''
-      this.userAvatar = currentUser.avatar || ''
-      // 已登录则直接执行跳转逻辑
-      this.handleLoginSuccess()
-      return
-    }
-
     this.initInviterInfo()
+    this.tryRestoreSession()
   },
   computed: {
     inviterDisplay() {
@@ -170,6 +159,61 @@ export default {
     }
   },
   methods: {
+    clearLocalSession() {
+      uni.removeStorageSync('token')
+      uni.removeStorageSync('accessToken')
+      uni.removeStorageSync('refreshToken')
+      uni.removeStorageSync('userInfo')
+      uni.removeStorageSync('userId')
+      uni.removeStorageSync('uni_id_token')
+      uni.removeStorageSync('uni_id_token_expired')
+      this.isLoggedIn = false
+      this.userId = ''
+      this.userNickname = ''
+      this.userAvatar = ''
+    },
+
+    async tryRestoreSession() {
+      const token = getCurrentUserToken()
+      if (!token) {
+        this.clearLocalSession()
+        return
+      }
+
+      const cachedUser = getCurrentUserInfo()
+      this.userId = cachedUser.userId || cachedUser.uid || ''
+      this.userNickname = cachedUser.nickname || cachedUser.username || ''
+      this.userAvatar = cachedUser.avatar || ''
+
+      try {
+        const userCenter = getHttpService('user-center')
+        const res = await userCenter.getUserInfo({ _token: token })
+
+        if (res && res.code === 0 && res.data) {
+          const latestUserInfo = normalizeUserInfo(res.data)
+          this.isLoggedIn = true
+          this.userId = latestUserInfo.userId || latestUserInfo.uid || ''
+          this.userNickname = latestUserInfo.nickname || latestUserInfo.username || ''
+          this.userAvatar = latestUserInfo.avatar || ''
+          uni.setStorageSync('userInfo', latestUserInfo)
+          this.handleLoginSuccess()
+          return
+        }
+
+        if (res && (res.error === 'AUTH_REQUIRED' || res.statusCode === 401)) {
+          console.warn('[login] 本地 token 已失效，清理登录态')
+          this.clearLocalSession()
+          return
+        }
+
+        console.warn('[login] 会话校验未通过，停留登录页:', res)
+      } catch (error) {
+        console.error('[login] 会话校验异常:', error)
+      }
+
+      this.isLoggedIn = false
+    },
+
     goHome() {
       // 尝试返回上一页
       const pages = getCurrentPages()

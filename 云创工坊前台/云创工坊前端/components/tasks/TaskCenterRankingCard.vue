@@ -186,6 +186,7 @@ export default {
 	min-height: 100%;
 	width: 100%;
 	align-self: stretch;
+	padding-top: 15rpx;
 	box-sizing: border-box;
 }
 

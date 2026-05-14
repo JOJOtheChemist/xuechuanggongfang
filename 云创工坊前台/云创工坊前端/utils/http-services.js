@@ -58,7 +58,7 @@ export function normalizeUserInfo(userInfo = {}) {
 		source.user_id ||
 		source.id ||
 		getStorageValue('userId', '')
-	const token = source.token || getCurrentUserToken()
+	const token = getCurrentUserToken()
 
 	return Object.assign({}, source, {
 		uid,

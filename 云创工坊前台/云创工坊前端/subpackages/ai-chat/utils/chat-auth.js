@@ -1,7 +1,7 @@
 import { getApiBaseUrl } from '@/utils/api-switch.js'
 import { getCurrentUserToken } from '@/utils/http-services.js'
 
-export const DEFAULT_AGENT_ID = 'yunnan-gaokao-volunteer-consultant'
+export const DEFAULT_AGENT_ID = 'yunnan-gaokao-volunteer-consultant-v2'
 export const DAILY_NOTICE_KEY_PREFIX = 'ai_chat_daily_notice_'
 export const CHAT_PATH = '/subpackages/ai-chat/index'
 

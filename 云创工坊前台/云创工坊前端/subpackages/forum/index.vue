@@ -212,10 +212,12 @@ export default {
     registerEvents() {
       uni.$on('forum-post-created', this.handlePostCreated)
       uni.$on('forum-post-liked', this.handlePostLiked)
+      uni.$on('forum-post-commented', this.handlePostCommented)
     },
     unregisterEvents() {
       uni.$off('forum-post-created', this.handlePostCreated)
       uni.$off('forum-post-liked', this.handlePostLiked)
+      uni.$off('forum-post-commented', this.handlePostCommented)
     },
     handlePostCreated() {
       this.refreshingFromEvent = true
@@ -231,6 +233,18 @@ export default {
         return Object.assign({}, item, {
           is_liked: nextLiked,
           like_count: nextLikeCount
+        })
+      })
+    },
+    handlePostCommented(payload = {}) {
+      const targetId = String(payload.id || '').trim()
+      if (!targetId) return
+
+      const nextCommentCount = Math.max(0, Number(payload.comment_count || 0))
+      this.posts = (Array.isArray(this.posts) ? this.posts : []).map((item) => {
+        if (!item || String(item.id || '') !== targetId) return item
+        return Object.assign({}, item, {
+          comment_count: nextCommentCount
         })
       })
     },

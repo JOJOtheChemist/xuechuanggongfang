@@ -15,7 +15,7 @@
             <image
               class="post-image"
               :src="img.url"
-              :mode="getImageMode(img.url)"
+              :mode="img.mode"
               @tap="previewImage(index)"
             />
           </swiper-item>
@@ -149,7 +149,7 @@ export default {
       sendingComment: false,
       commentInputFocus: false,
       keyboardHeight: 0,
-      imageModeMap: {},
+      postImageModes: [],
       safetyNoticeVisible: false,
       safetyNoticeMessage: '',
       lastError: ''
@@ -179,6 +179,7 @@ export default {
         const url = String(item || '').trim()
         return {
           url,
+          mode: this.postImageModes[index] || 'aspectFill',
           renderKey: `post-image-${index}-${url || 'empty'}`
         }
       })
@@ -196,7 +197,7 @@ export default {
     debugInfo() {
       const token = this.getToken()
       const userInfo = uni.getStorageSync('userInfo') || {}
-      const imageKeys = Object.keys(this.imageModeMap || {})
+      const imageModeCount = Array.isArray(this.postImageModes) ? this.postImageModes.length : 0
       const firstComment = Array.isArray(this.comments) && this.comments.length > 0 ? this.comments[0] : null
       return [
         '这里应该立刻显示评论',
@@ -211,7 +212,7 @@ export default {
         `tokenIsJwt: ${token ? isJwtLikeToken(token) : false}`,
         `userId: ${uni.getStorageSync('userId') || userInfo.uid || '-'}`,
         `lastError: ${this.lastError || '-'}`,
-        `imageModeKeys: ${imageKeys.length}`,
+        `imageModeKeys: ${imageModeCount}`,
         `draftLength: ${String(this.commentText || '').length}`,
         `topComment: ${firstComment ? String(firstComment.content || '').slice(0, 40) : '-'}`
       ].join('\n')
@@ -255,33 +256,34 @@ export default {
       }
     },
     detectPostImageModes() {
-      this.imageModeMap = {}
       const images = this.post && Array.isArray(this.post.images) ? this.post.images : []
+      const fallbackModes = images.map(() => 'aspectFill')
+      this.postImageModes = fallbackModes
+
       if (images.length === 0) return
 
-      images.forEach((src) => {
+      const nextModes = fallbackModes.slice()
+      const updateModeAt = (index, mode) => {
+        nextModes[index] = mode
+        this.postImageModes = nextModes.slice()
+      }
+
+      images.forEach((src, index) => {
         const safeSrc = String(src || '').trim()
         if (!safeSrc) return
+
         uni.getImageInfo({
           src: safeSrc,
           success: (info) => {
             const width = Number(info && info.width) || 0
             const height = Number(info && info.height) || 0
-            const mode = height > width ? 'aspectFit' : 'aspectFill'
-            const nextMap = Object.assign({}, this.imageModeMap || {})
-            nextMap[safeSrc] = mode
-            this.imageModeMap = nextMap
+            updateModeAt(index, height > width ? 'aspectFit' : 'aspectFill')
           },
           fail: () => {
-            const nextMap = Object.assign({}, this.imageModeMap || {})
-            nextMap[safeSrc] = 'aspectFill'
-            this.imageModeMap = nextMap
+            updateModeAt(index, 'aspectFill')
           }
         })
       })
-    },
-    getImageMode(src) {
-      return this.imageModeMap[src] || 'aspectFill'
     },
     async resetComments() {
       this.commentsPage = 1
@@ -432,15 +434,14 @@ export default {
         this.commentText = ''
         this.comments = [createdComment].concat(Array.isArray(this.comments) ? this.comments : [])
         this.post.comment_count = Number(this.post.comment_count || 0) + 1
+        uni.$emit('forum-post-commented', {
+          id: this.post.id,
+          comment_count: this.post.comment_count
+        })
         this.commentInputFocus = false
         this.keyboardHeight = 0
         uni.hideKeyboard()
         uni.showToast({ title: '评论成功', icon: 'success' })
-
-        setTimeout(() => {
-          this.loadComments(true)
-          this.loadDetail()
-        }, 120)
       } catch (error) {
         console.error('[forum][detail] submitComment failed:', error)
         this.lastError = error && error.message ? error.message : '评论失败'

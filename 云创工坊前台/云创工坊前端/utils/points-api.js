@@ -14,12 +14,57 @@ function normalizePointsStats(data = {}) {
 }
 
 function normalizeLeaderboardItem(item = {}) {
+  const nestedUser = item.user && typeof item.user === 'object' ? item.user : {}
   return {
     ...item,
     user_id: item.user_id || item.userId || item.uid || '',
     nickname: item.nickname || item.username || '用户',
-    avatar: item.avatar || item.avatar_url || item.avatarUrl || '',
+    avatar:
+      item.avatar ||
+      item.avatar_url ||
+      item.avatarUrl ||
+      item.user_avatar ||
+      item.userAvatar ||
+      nestedUser.avatar ||
+      nestedUser.avatar_url ||
+      nestedUser.avatarUrl ||
+      '',
     balance: Number(item.balance || 0)
+  }
+}
+
+function hasLeaderboardProfile(item = {}) {
+  if (!item || typeof item !== 'object') return false
+  const nickname = String(item.nickname || item.username || '').trim()
+  const avatar = String(item.avatar || item.avatar_url || item.avatarUrl || '').trim()
+  return Boolean(nickname || avatar)
+}
+
+let legacyPointsService = null
+
+function getLegacyPointsService() {
+  if (legacyPointsService) return legacyPointsService
+  if (typeof uniCloud === 'undefined' || !uniCloud || typeof uniCloud.importObject !== 'function') {
+    return null
+  }
+
+  legacyPointsService = uniCloud.importObject('points-service')
+  return legacyPointsService
+}
+
+async function getPointsLeaderboardFromLegacy(payload = {}) {
+  const service = getLegacyPointsService()
+  if (!service || typeof service.getPointsLeaderboard !== 'function') {
+    return null
+  }
+
+  const result = await service.getPointsLeaderboard({
+    limit: payload.limit
+  })
+
+  return {
+    ...result,
+    data: Array.isArray(result && result.data) ? result.data.map(normalizeLeaderboardItem) : []
   }
 }
 
@@ -81,17 +126,51 @@ export async function getPointsStats() {
 }
 
 export async function getPointsLeaderboard(payload = {}) {
-  const result = await requestHttpApi({
-    path: '/finance/points/leaderboard',
-    method: 'GET',
-    query: {
-      limit: payload.limit
+  let httpResult = null
+
+  try {
+    const result = await requestHttpApi({
+      path: '/finance/points/leaderboard',
+      method: 'GET',
+      query: {
+        limit: payload.limit
+      }
+    })
+
+    httpResult = {
+      ...result,
+      data: Array.isArray(result.data) ? result.data.map(normalizeLeaderboardItem) : []
     }
-  })
+  } catch (error) {
+    httpResult = null
+  }
+
+  const httpData = Array.isArray(httpResult && httpResult.data) ? httpResult.data : []
+  const hasUsableHttpData =
+    httpData.length > 0 &&
+    httpData.some(hasLeaderboardProfile)
+
+  if (hasUsableHttpData) {
+    return httpResult
+  }
+
+  try {
+    const legacyResult = await getPointsLeaderboardFromLegacy(payload)
+    if (legacyResult && Array.isArray(legacyResult.data) && legacyResult.data.length) {
+      return legacyResult
+    }
+  } catch (error) {
+    console.warn('[points-api] legacy leaderboard fallback failed', error)
+  }
+
+  if (httpResult) {
+    return httpResult
+  }
 
   return {
-    ...result,
-    data: Array.isArray(result.data) ? result.data.map(normalizeLeaderboardItem) : []
+    code: 0,
+    message: '获取成功',
+    data: []
   }
 }
 

@@ -50,6 +50,7 @@
 
 <script>
 import { getHttpService } from '@/utils/http-services'
+import { extractArticleId, openArticleDetail } from '@/utils/article-navigation'
 import ArticleFilter from './components/ArticleFilter.vue'
 
 export default {
@@ -80,7 +81,7 @@ export default {
 		displayList() {
 			return (Array.isArray(this.fullList) ? this.fullList : []).map((item, index) => {
 				const source = item && typeof item === 'object' ? item : {}
-				const rawKey = source.id || source.articleId || source.article_id || source._id || `article-${index}`
+				const rawKey = extractArticleId(source) || `article-${index}`
 				return Object.assign({}, source, {
 					renderKey: `article-${rawKey}`
 				})
@@ -144,8 +145,11 @@ export default {
 					if (this.pageNum === 1) {
 						this.fullList = list
 					} else {
-						const ids = new Set(this.fullList.map(i => i.id || i.articleId || i.article_id || i._id))
-						const newItems = list.filter(i => !ids.has(i.id || i.articleId || i.article_id || i._id))
+						const ids = new Set(this.fullList.map(i => extractArticleId(i)).filter(Boolean))
+						const newItems = list.filter(i => {
+							const id = extractArticleId(i)
+							return id && !ids.has(id)
+						})
 						this.fullList = this.fullList.concat(newItems)
 					}
 					this.list = this.fullList 
@@ -157,9 +161,7 @@ export default {
 			}
 		},
 		openDetail(a) {
-			const id = a.id || a.articleId || a.article_id || a._id || ''
-			if (!id) return
-			uni.navigateTo({ url: `/pages/article/detail?id=${id}` })
+			openArticleDetail(a)
 		}
 	}
 }

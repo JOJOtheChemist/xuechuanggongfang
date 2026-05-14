@@ -19,6 +19,8 @@
 </template>
 
 <script>
+import { openArticleDetail } from '@/utils/article-navigation'
+
 export default {
 	name: 'ChatArticleCardList',
 	props: {
@@ -33,11 +35,7 @@ export default {
 			return value > 0 ? `${value} 积分` : '免费'
 		},
 		openArticle(card = {}) {
-			const articleId = card.id || card.articleId || card.article_id || card._id
-			if (!articleId) return
-			uni.navigateTo({
-				url: `/pages/article/detail?id=${articleId}`
-			})
+			openArticleDetail(card)
 		}
 	}
 }

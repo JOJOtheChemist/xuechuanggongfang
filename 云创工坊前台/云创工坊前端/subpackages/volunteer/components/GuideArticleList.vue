@@ -35,6 +35,8 @@
 </template>
 
 <script>
+import { buildArticleDetailUrl, extractArticleId, openArticleDetail } from '@/utils/article-navigation'
+
 export default {
 	name: 'GuideArticleList',
 	props: {
@@ -74,9 +76,7 @@ export default {
 				return null
 			}
 
-			const articleId = String(
-				article.id || article.articleId || article.article_id || article._id || ''
-			).trim()
+			const articleId = extractArticleId(article)
 			const targetUrl = String(
 				article.targetUrl || article.target_url || ''
 			).trim()
@@ -90,6 +90,7 @@ export default {
 			return {
 				renderKey: articleId || targetUrl || title || `guide-article-${index}`,
 				articleId,
+				detailUrl: buildArticleDetailUrl(article),
 				targetUrl,
 				title,
 				summary: String(article.summary || article.desc || '').trim(),
@@ -108,9 +109,7 @@ export default {
 			const targetUrl = String(dataset.targetUrl || '').trim()
 
 			if (articleId) {
-				uni.navigateTo({
-					url: `/pages/article/detail?id=${articleId}`
-				})
+				openArticleDetail({ id: articleId })
 				return
 			}
 

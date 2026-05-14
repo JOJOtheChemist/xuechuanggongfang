@@ -211,12 +211,12 @@
 	}
 
 	.detail-card {
-		background-color: #ffffff;
+		background: transparent;
 		border-radius: 32rpx;
 		padding: 32rpx 28rpx;
 		margin: 0 20rpx;
-		box-shadow: 0 16rpx 40rpx rgba(15, 23, 42, 0.16);
-		border: 2rpx solid #e5e7eb;
+		box-shadow: none;
+		border: none;
 		position: relative;
 		overflow: hidden;
 	}
@@ -263,7 +263,7 @@
 		position: fixed;
 		top: 0; left: 0; right: 0; bottom: 0;
 		background: rgba(0,0,0,0.4);
-		backdrop-filter: blur(8rpx);
+		backdrop-filter: none;
 		display: flex;
 		align-items: center;
 		justify-content: center;

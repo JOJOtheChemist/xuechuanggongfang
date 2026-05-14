@@ -24,7 +24,7 @@
 						<text class="item-label">多级直推人数（含1-10级）</text>
 						<view class="item-content">
 							<text class="item-value">{{ teamCount }}</text>
-							<view class="badge badge-orange">累计</view>
+							<view class="badge badge-orange">+{{ todayMultiLevelInviteCount }}</view>
 						</view>
 					</view>
 				</view>
@@ -79,10 +79,6 @@
 				</view>
 			</view>
 		</view>
-		<view class="bento-summary-row">
-			<text class="bento-summary-label">多级直推总人数</text>
-			<text class="bento-summary-value">{{ teamCount }}</text>
-		</view>
 	</view>
 </template>
 
@@ -100,6 +96,7 @@ export default {
 				newUsers: 0,
 				totalPromotedUsers: 0,
 				teamCount: 0, // 多级直推累计人数（从开始到现在）
+				todayMultiLevelInviteCount: 0, // 多级直推今日新增
 				// 订单统计
 				orderCount: 0, // 成功报名的订单总量
 				todayNewOrders: 0, // 今日新增订单
@@ -114,6 +111,19 @@ export default {
 	methods: {
 		getToken() {
 			return getCurrentUserToken()
+		},
+		resolveMultiLevelInviteCount(userStatsRes) {
+			const multiLevelCount = Number(
+				userStatsRes &&
+				userStatsRes.code === 0 &&
+				userStatsRes.data &&
+				(
+					userStatsRes.data.multiLevelInviteTotalCount ||
+					userStatsRes.data.multi_level_invite_total_count
+				)
+			) || 0
+
+			return Math.max(this.totalPromotedUsers || 0, multiLevelCount)
 		},
 		resolveInviteCount({ inviteRes, statsRes, userStatsRes }) {
 			const inviteStatsCount = Number(
@@ -150,6 +160,16 @@ export default {
 			return totalInviteCount
 		},
 		resolveTotalPromotedUsers({ userStatsRes, inviteRes, statsRes }) {
+			const directInviteCount = Number(
+				userStatsRes &&
+				userStatsRes.code === 0 &&
+				userStatsRes.data &&
+				(
+					userStatsRes.data.directInviteTotalCount ||
+					userStatsRes.data.direct_invite_total_count
+				)
+			) || 0
+
 			const totalInviteCount = Number(
 				userStatsRes &&
 				userStatsRes.code === 0 &&
@@ -171,6 +191,7 @@ export default {
 				statsRes.data.newUsers
 			) || 0
 
+			if (directInviteCount > 0) return directInviteCount
 			if (totalInviteCount > 0) return totalInviteCount
 			if (inviteStatsCount > 0) return inviteStatsCount
 			return dashboardCount
@@ -187,6 +208,7 @@ export default {
 				this.newUsers = 0
 				this.totalPromotedUsers = 0
 				this.teamCount = 0
+				this.todayMultiLevelInviteCount = 0
 				this.orderCount = 0
 				this.todayNewOrders = 0
 				this.isChecked = false
@@ -226,15 +248,16 @@ export default {
 				// 拉新人数优先走独立后端的专用邀请统计接口，避免旧聚合口返回 0。
 				this.newUsers = this.resolveInviteCount({ inviteRes, statsRes, userStatsRes })
 				this.totalPromotedUsers = this.resolveTotalPromotedUsers({ userStatsRes, inviteRes, statsRes })
+				this.teamCount = this.resolveMultiLevelInviteCount(userStatsRes)
 
 				if (userStatsRes && userStatsRes.code === 0 && userStatsRes.data) {
-					this.teamCount = Number(
-						userStatsRes.data.multiLevelInviteTotalCount ||
-						userStatsRes.data.multi_level_invite_total_count ||
+					this.todayMultiLevelInviteCount = Number(
+						userStatsRes.data.todayMultiLevelInviteCount ||
+						userStatsRes.data.today_multi_level_invite_count ||
 						0
 					)
 				} else {
-					this.teamCount = 0
+					this.todayMultiLevelInviteCount = 0
 				}
 
 				if (goalRes && goalRes.code === 0 && goalRes.data && goalRes.data.stats) {
@@ -244,6 +267,7 @@ export default {
 				await this.loadCheckInSummary(token)
 			} catch (e) {
 				console.error('[BentoStatsCard] 加载统计数据失败', e)
+				this.teamCount = Math.max(this.teamCount || 0, this.totalPromotedUsers || 0)
 			} finally {
 				this.loading = false
 			}
@@ -329,30 +353,6 @@ export default {
 	overflow: hidden;
 	box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.04);
 	border: 1rpx solid #e2e8f0;
-}
-
-.bento-summary-row {
-	margin-top: 18rpx;
-	padding: 24rpx 28rpx;
-	border-radius: 24rpx;
-	background: linear-gradient(135deg, #fff7ed 0%, #fffbeb 100%);
-	border: 1rpx solid #fed7aa;
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	box-shadow: 0 8rpx 24rpx rgba(249, 115, 22, 0.08);
-}
-
-.bento-summary-label {
-	font-size: 26rpx;
-	color: #9a3412;
-	font-weight: 600;
-}
-
-.bento-summary-value {
-	font-size: 36rpx;
-	color: #c2410c;
-	font-weight: 800;
 }
 
 /* Flex 容器：固定高度 */

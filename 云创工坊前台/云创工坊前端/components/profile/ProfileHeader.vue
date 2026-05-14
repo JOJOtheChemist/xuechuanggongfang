@@ -30,7 +30,7 @@
 					/>
 				</view>
 				<view class="profile-tags">
-					<view v-if="displayRole && displayRole !== '已登录'" class="role-tag">
+					<view v-if="showDisplayRoleTag" class="role-tag">
 						<text class="role-text">{{ displayRole }}</text>
 					</view>
 				</view>
@@ -63,7 +63,6 @@
 			<view class="profile-metric-cell profile-metric-cell-invite">
 				<view class="profile-metric-number-with-label">
 					<text class="profile-metric-number">{{ formattedInviteCount }}</text>
-					<text class="profile-metric-side-label">今日新增</text>
 				</view>
 			</view>
 			<view class="profile-metric-cell profile-metric-qr-cell" @tap="handleQrcodeTap">
@@ -183,6 +182,10 @@ export default {
 			}
 			if (this.isLoggedIn) return '已登录'
 			return '游客'
+		},
+		showDisplayRoleTag() {
+			const role = String(this.displayRole || '').trim()
+			return !!role && role !== '已登录' && role !== '初级'
 		},
 		showCampusPartnerBadge() {
 			const partnerInfo = this.userInfo && this.userInfo.partner_info

@@ -2,6 +2,8 @@
 	<view class="page-root">
 		<!-- 增加 render guard，防止初始渲染阻塞 switchTab -->
 		<view v-if="pageMounted" class="app-container">
+			<view class="bg-circle circle-top-right"></view>
+			<view class="bg-circle circle-bottom-left"></view>
 			<!-- 用户信息栏 -->
 			<view class="user-info-bar">
 				<image 
@@ -25,33 +27,21 @@
 					:notices="learningNotices"
 				/>
 				<view class="section-list">
-					<quick-nav 
-						:business-data="businessItems" 
-						@click="handleQuickNavClick" 
+					<quick-nav
+						:business-data="businessItems"
+						@click="handleQuickNavClick"
 					/>
-				<view class="detail-section" id="detail-card-anchor">
-					<!-- 直接展示详情卡片，不再使用弹窗 -->
-					<business-detail-card
-						v-if="activeItem"
-						:item="activeItem"
-						:tag="activeTag"
-						:category-id="activeCategoryId"
-						:is-logged-in="isLoggedIn"
-						@show-all="openAllArticlesSheet"
-					/>
+					<view class="detail-section" id="detail-card-anchor">
+						<business-detail-card
+							v-if="activeItem"
+							:item="activeItem"
+							:tag="activeTag"
+							:category-id="activeCategoryId"
+							:is-logged-in="isLoggedIn"
+							@show-all="openAllArticlesSheet"
+						/>
+					</view>
 				</view>
-
-                    <!-- Unified Debug Footer (Inside Scroll) -->
-                    <!-- Hidden recruitment debug tags
-                    <view class="global-debug" style="margin-top: 40rpx; padding-bottom: 60rpx; font-size: 20rpx; color: #ccc; text-align: center; display: flex; flex-direction: column; gap: 6rpx;">
-                        <text>UID: {{ global_uid || '未登录' }}</text>
-                        <text>终身: {{ global_lifetime_inviter }}</text>
-                        <text>团队: {{ global_team_inviter }}</text>
-                        <text>业务: {{ global_business_inviter }}</text>
-                    </view>
-                    -->
-
-			</view> <!-- End of section-list -->
 			</scroll-view>
 		</view>
 		
@@ -518,7 +508,7 @@ const STATIC_BUSINESS_ITEMS = [
 				}
 
 				try {
-					const articleService = uniCloud.importObject('article-service')
+					const articleService = getHttpService('article-service')
 					const token = uni.getStorageSync('token')
 					const params = {
 						category_id: categoryId,
@@ -545,14 +535,16 @@ const STATIC_BUSINESS_ITEMS = [
 							? result.data
 							: []
 
-					const mapped = rawList.map(a => ({
-						id: a.id || a._id,
+					const mapped = rawList
+						.map(a => ({
+						id: a.id || '',
 						title: a.title,
 						summary: a.summary || a.desc || '',
 						image: a.image || a.cover_image || a.cover || a.cover_url || a.thumb || '',
 						pricePoints: typeof a.price_points === 'number' ? a.price_points : 5,
 						unlocked: a.unlocked || false
 					}))
+						.filter(item => item.id !== '' && item.id !== null && item.id !== undefined)
 
 					this.$set(this.businessItems[idx], 'articles', mapped)
 					this.$set(this.businessItems[idx], 'articlesError', '')
@@ -580,26 +572,47 @@ const STATIC_BUSINESS_ITEMS = [
 	flex-direction: row;
 	justify-content: center;
 	min-height: 100vh;
-	background-color: #F3F0FF;
+	background: #ffffff;
 }
 
 .app-container {
 	flex: 1;
 	width: 100%;
 	max-width: 750rpx;
-	background-color: #F3F0FF;
+	background: transparent;
 	box-shadow: 0 20rpx 60rpx rgba(15, 23, 42, 0.35);
 	position: relative;
 	display: flex;
 	flex-direction: column;
+	overflow: hidden;
+}
+
+.bg-circle {
+	display: none;
+}
+
+.circle-top-right {
+	width: 500rpx;
+	height: 500rpx;
+	background: rgba(99, 102, 241, 0.15);
+	top: -100rpx;
+	right: -150rpx;
+}
+
+.circle-bottom-left {
+	width: 600rpx;
+	height: 600rpx;
+	background: rgba(139, 92, 246, 0.15);
+	bottom: 100rpx;
+	left: -150rpx;
 }
 
 .user-info-bar {
 	display: flex;
 	align-items: center;
 	padding: 48rpx 32rpx 24rpx;
-	background-color: #F3F0FF;
-	border-bottom: 1rpx solid #e5e7eb;
+	background: transparent;
+	border-bottom: none;
 	display: none; /* Hiding user info as requested */
 }
 
@@ -652,9 +665,9 @@ const STATIC_BUSINESS_ITEMS = [
 	.section-list {
 		margin-top: -76rpx;
 		padding: 24rpx 24rpx 200rpx;
-		background: #ffffff;
+		background: transparent;
 		border-radius: 36rpx 36rpx 0 0;
-		box-shadow: 0 -12rpx 30rpx rgba(15, 23, 42, 0.06);
+		box-shadow: none;
 		box-sizing: border-box;
 	}
 

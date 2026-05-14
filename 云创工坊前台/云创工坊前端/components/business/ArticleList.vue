@@ -40,6 +40,7 @@
 
 <script>
 import { getHttpService } from '@/utils/http-services'
+import { extractArticleId, openArticleDetail } from '@/utils/article-navigation'
 export default {
 	name: 'ArticleList',
 	props: {
@@ -79,6 +80,9 @@ export default {
 		}
 	},
 	computed: {
+		safeArticles() {
+			return (Array.isArray(this.articles) ? this.articles : []).filter(article => extractArticleId(article))
+		},
 		hasArticlesToShow() {
 			return Array.isArray(this.filteredArticles) && this.filteredArticles.length > 0
 		},
@@ -103,9 +107,9 @@ export default {
 			return Array.from(tagSet)
 		},
 		filteredArticles() {
-			if (!this.selectedTag) return this.articles
-			if (!this.articles) return []
-			return this.articles.filter(art =>
+			if (!this.selectedTag) return this.safeArticles
+			if (!this.safeArticles) return []
+			return this.safeArticles.filter(art =>
 				art.tags && Array.isArray(art.tags) && art.tags.includes(this.selectedTag)
 			)
 		},
@@ -137,12 +141,7 @@ export default {
 			}
 		},
 		handleArticleClick(article) {
-			if (!article || !article.id) {
-				return
-			}
-			uni.navigateTo({
-				url: `/pages/article/detail?id=${article.id}`
-			})
+			openArticleDetail(article)
 		},
 		async unlockArticle(article, token) {
 			uni.showLoading({ title: '解锁中...' })
@@ -167,9 +166,7 @@ export default {
 						showCancel: false
 					})
 					setTimeout(() => {
-						uni.navigateTo({
-							url: `/pages/article/detail?id=${article.id}`
-						})
+						openArticleDetail(article)
 					}, 1000)
 				} else {
 					uni.showModal({

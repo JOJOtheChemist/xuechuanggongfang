@@ -51,7 +51,8 @@
 			"path": "pages/task-center/index",
 			"style": {
 				"navigationBarTitleText": "创业中心",
-				"navigationStyle": "custom"
+				"navigationStyle": "custom",
+				"backgroundColor": "#ffffff"
 			}
 		},
 		{

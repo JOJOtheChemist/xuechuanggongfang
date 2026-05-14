@@ -148,6 +148,7 @@
 
 <script>
 import { getHttpService } from '@/utils/http-services'
+import { extractArticleId } from '@/utils/article-navigation'
 export default {
 	components: {
 	},
@@ -521,10 +522,10 @@ export default {
 	onLoad(options) {
 		this.loadUserInfo()
 		
-		this.articleId = options.id || options.articleId || options.article_id || ''
+		this.articleId = extractArticleId(options)
 		
 		if (!this.articleId) {
-			this.error = '文章 ID 不存在'
+			this.error = '文章 ID 无效'
 			this.loading = false
 			return
 		}

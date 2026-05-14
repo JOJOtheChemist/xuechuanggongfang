@@ -7,26 +7,13 @@
 			</view>
 			<scroll-view class="app-main" scroll-y="true">
 				<view class="list-wrapper">
-						<view
-							v-for="(item, index) in leaderboardRows"
-							:key="item.renderKey"
-							class="row"
-					>
-						<text class="rank-index" :class="{ top1: index === 0, top2: index === 1, top3: index === 2 }">{{ index + 1 }}</text>
-						<image
-							class="avatar"
-							:src="normalizeAvatarUrl(item.avatar, defaultAvatar)"
-							mode="aspectFill"
-						/>
-						<view class="info">
-							<text class="name">{{ item.nickname }}</text>
-							<text class="score">{{ item.balance }} 分</text>
-						</view>
-						<text v-if="isMe(item)" class="tag-me">我</text>
-					</view>
-					<view v-if="!loading && !leaderboard.length" class="empty">
-						<text class="empty-text">暂无积分数据</text>
-					</view>
+					<points-leaderboard-rows
+						:items="leaderboardRows"
+						:loading="loading"
+						empty-text="暂无积分数据"
+						loading-text="加载中..."
+						:show-me-tag="true"
+					/>
 				</view>
 			</scroll-view>
 		</view>
@@ -35,13 +22,16 @@
 
 <script>
 import { getPointsLeaderboard } from '../../utils/points-api'
+import PointsLeaderboardRows from '@/components/leaderboard/PointsLeaderboardRows.vue'
 
 export default {
+	components: {
+		PointsLeaderboardRows
+	},
 	data() {
 		return {
 			leaderboard: [],
-			loading: false,
-			defaultAvatar: '/static/icons/default-avatar.svg'
+			loading: false
 		}
 	},
 	computed: {
@@ -56,12 +46,6 @@ export default {
 		}
 	},
 	methods: {
-		isMe(item) {
-			const cached = uni.getStorageSync('userInfo') || {}
-			const userId = uni.getStorageSync('userId') || ''
-			const uid = cached.uid || userId
-			return uid && item.user_id === uid
-		},
 		async loadLeaderboard() {
 			try {
 				this.loading = true
@@ -142,84 +126,5 @@ export default {
 .list-wrapper {
 	padding: 0 32rpx 40rpx;
 	box-sizing: border-box;
-}
-
-.row {
-	flex-direction: row;
-	align-items: center;
-	display: flex;
-	padding: 20rpx 16rpx;
-	margin-bottom: 12rpx;
-	border-radius: 20rpx;
-	background-color: #ffffff;
-	border-width: 2rpx;
-	border-style: solid;
-	border-color: #e5e7eb;
-}
-
-.rank-index {
-	width: 50rpx;
-	text-align: center;
-	font-size: 26rpx;
-	font-weight: 700;
-	color: #6b7280;
-}
-
-.rank-index.top1 {
-	color: #f97316;
-}
-
-.rank-index.top2 {
-	color: #facc15;
-}
-
-.rank-index.top3 {
-	color: #22c55e;
-}
-
-.avatar {
-	width: 72rpx;
-	height: 72rpx;
-	border-radius: 36rpx;
-	margin: 0 16rpx;
-	background-color: #e5e7eb;
-}
-
-.info {
-	flex: 1;
-	flex-direction: column;
-	display: flex;
-}
-
-.name {
-	font-size: 26rpx;
-	font-weight: 600;
-	color: #111827;
-}
-
-.score {
-	margin-top: 4rpx;
-	font-size: 22rpx;
-	color: #6b7280;
-}
-
-.tag-me {
-	padding: 4rpx 12rpx;
-	border-radius: 999rpx;
-	background-color: #eef2ff;
-	font-size: 20rpx;
-	color: #4f46e5;
-}
-
-.empty {
-	padding: 40rpx 0;
-	align-items: center;
-	justify-content: center;
-	display: flex;
-}
-
-.empty-text {
-	font-size: 24rpx;
-	color: #9ca3af;
 }
 </style>

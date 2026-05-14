@@ -22,6 +22,7 @@
 
 <script>
 import { getHttpService } from '@/utils/http-services'
+import { extractArticleId } from '@/utils/article-navigation'
 import { resolveCachedImages } from '@/utils/remote-image-cache'
 import GuideHeroImage from './components/GuideHeroImage.vue'
 import GuideActionButton from './components/GuideActionButton.vue'
@@ -111,16 +112,14 @@ export default {
 		mapArticles(rawList) {
 			const source = Array.isArray(rawList) ? rawList : []
 			return source.map((item) => ({
-				id: item.id || item.articleId || item.article_id || item._id || '',
-				articleId: item.articleId || item.id || item.article_id || item._id || '',
-				article_id: item.article_id || item.articleId || item.id || item._id || '',
+				id: extractArticleId(item),
 				targetUrl: item.targetUrl || item.target_url || '',
 				title: item.title || '',
 				summary: item.summary || item.desc || '高考志愿与查分资讯',
 				image: item.image || item.cover_image || item.coverImageUrl || item.cover || this.guideImageUrl || GUIDE_IMAGE_URL,
 				pricePoints: typeof item.price_points === 'number' ? item.price_points : 0,
 				unlocked: !!item.unlocked
-			})).filter((item) => item.title)
+			})).filter((item) => item.title && (item.id || item.targetUrl))
 		},
 		applyArticles(sourceArticles, options = {}) {
 			const nextArticles = Array.isArray(sourceArticles) ? sourceArticles : []
@@ -211,7 +210,7 @@ export default {
 		},
 		goToAiChat() {
 			uni.navigateTo({
-				url: '/subpackages/ai-chat/index?agentId=yunnan-gaokao-info-assistant'
+				url: '/subpackages/ai-chat/index?agentId=yunnan-gaokao-volunteer-consultant'
 			})
 		},
 		goToScorePage() {

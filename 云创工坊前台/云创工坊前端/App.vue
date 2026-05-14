@@ -155,6 +155,6 @@
 <style>
 	/*每个页面公共css */
 	page {
-		background-color: #F3F0FF;
+		background-color: #FFFFFF;
 	}
 </style>

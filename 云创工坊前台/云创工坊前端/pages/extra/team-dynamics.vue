@@ -17,7 +17,7 @@
 
 		<scroll-view v-else scroll-y class="content-scroll">
 			<view class="list-container">
-				<view v-if="loading && combinedList.length === 0" class="loading-state">
+				<view v-if="loading && list.length === 0" class="loading-state">
 					<text>加载中...</text>
 				</view>
 				<view v-else-if="list.length === 0" class="empty-state">

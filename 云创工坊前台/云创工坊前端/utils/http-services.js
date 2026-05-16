@@ -31,6 +31,12 @@ export function isJwtLikeToken(token) {
 	return typeof token === 'string' && token.split('.').length === 3
 }
 
+function isHttpAuthTokenCompatible(token) {
+	// 这里不能只认 JWT。
+	// 项目里既有后端签发的 JWT，也有 uniCloud 等历史登录态 token。
+	return typeof token === 'string' && token.trim().length > 0
+}
+
 function clearInvalidHttpTokens() {
 	HTTP_AUTH_STORAGE_KEYS.forEach(removeStorageValue)
 }
@@ -44,7 +50,7 @@ export function getCurrentUserToken() {
 	)
 
 	if (!token) return ''
-	if (isJwtLikeToken(token)) return token
+	if (isHttpAuthTokenCompatible(token)) return token
 
 	clearInvalidHttpTokens()
 	return ''

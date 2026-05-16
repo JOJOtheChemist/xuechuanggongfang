@@ -733,7 +733,9 @@ export const chatPageMethods = {
 		const redirect = encodeURIComponent(
 			`${CHAT_PATH}?agentId=${encodeURIComponent(this.agentId)}&sessionId=${encodeURIComponent(this.sessionId)}`
 		)
-		uni.navigateTo({ url: `/pages/auth/login/index?redirect=${redirect}` })
+		const hasLocalLogin = this.debugInfo && String(this.debugInfo.localLoginState || '').indexOf('已登录') === 0
+		const forceLogin = hasLocalLogin ? '&forceLogin=1' : ''
+		uni.navigateTo({ url: `/pages/auth/login/index?redirect=${redirect}${forceLogin}` })
 	},
 	resetSession() {
 		if (this.isSending) return

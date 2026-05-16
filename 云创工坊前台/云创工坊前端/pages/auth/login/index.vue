@@ -79,6 +79,7 @@ export default {
     return {
       isLoggedIn: false,
       loginLoading: false,
+      forceLogin: false,
       userId: '',
       userNickname: '',
       userAvatar: '',
@@ -94,6 +95,7 @@ export default {
   onLoad(options) {
     console.log('[login] 页面 onLoad 入参:', JSON.stringify(options))
     this.redirectUrl = options.redirect ? decodeURIComponent(options.redirect) : ''
+    this.forceLogin = String(options.forceLogin || options.force_login || '').trim() === '1'
     
     // [双重保险] 优先从 URL 参数（桌号）获取邀请人信息
     if (options.inviter_id) {
@@ -149,6 +151,11 @@ export default {
 
     // 进入登录页时，先检查本地是否已有登录态
     this.initInviterInfo()
+    if (this.forceLogin) {
+      console.log('[login] 检测到 forceLogin，清理本地会话后等待重新登录')
+      this.clearLocalSession()
+      return
+    }
     this.tryRestoreSession()
   },
   computed: {
@@ -417,13 +424,14 @@ export default {
         '/pages/profile/index'
       ]
       const targetPath = targetUrl.split('?')[0]
+      const isAiChatTarget = targetPath === '/subpackages/ai-chat/index'
       const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
       const previousPage = pages.length > 1 ? pages[pages.length - 2] : null
       const previousPath = previousPage && previousPage.route
         ? `/${String(previousPage.route).replace(/^\/+/, '')}`
         : ''
 
-      if (previousPath && previousPath === targetPath) {
+      if (previousPath && previousPath === targetPath && !isAiChatTarget) {
         uni.navigateBack()
         return
       }

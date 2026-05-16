@@ -33,6 +33,18 @@ function clipInlineText(value, limit = 120) {
 	return text.length > limit ? `${text.slice(0, Math.max(0, limit - 1)).trim()}…` : text
 }
 
+function stringifyPreview(value, fallback = '-', limit = 220) {
+	if (value === undefined || value === null || value === '') return fallback
+	try {
+		if (typeof value === 'string') {
+			return clipInlineText(value, limit)
+		}
+		return clipInlineText(JSON.stringify(value), limit)
+	} catch (error) {
+		return fallback
+	}
+}
+
 const TEAM_BROWSER_ROUTE = '/pages/extra/team-browser'
 const TEAM_DYNAMICS_ROUTE = '/pages/extra/team-dynamics'
 const GOAL_SETTING_ROUTE = '/pages/extra/goal-setting'
@@ -337,6 +349,8 @@ export function createDefaultDebugInfo() {
 		lastAction: '初始化',
 		lastStatusCode: '-',
 		lastMessage: '-',
+		avatar: '-',
+		userInfoPreview: '-',
 		updatedAt: '-'
 	}
 }
@@ -346,6 +360,7 @@ export const chatPageMethods = {
 		const tokenEntry = getStoredTokenByPriority()
 		const refreshToken = getStoredRefreshToken()
 		const userInfo = extractDisplayUserInfo()
+		const rawUserInfo = getStoredValue('userInfo', {})
 		const hasLocalLogin = !!tokenEntry.value
 		const tokenIsJwt = isJwtLikeToken(tokenEntry.value)
 		const localLoginState = !hasLocalLogin
@@ -362,6 +377,8 @@ export const chatPageMethods = {
 			refreshTokenState: refreshToken ? '有' : '无',
 			userId: userInfo.userId || '-',
 			nickname: userInfo.nickname || '-',
+			avatar: userInfo.avatar || '-',
+			userInfoPreview: stringifyPreview(rawUserInfo, '-'),
 			lastAction: reason || this.debugInfo.lastAction,
 			updatedAt: nowTimeText()
 		})
@@ -774,9 +791,11 @@ export const chatPageMethods = {
 			`Refresh Token: ${normalizeText(debugInfo.refreshTokenState, '-')}`,
 			`User ID: ${normalizeText(debugInfo.userId, '-')}`,
 			`昵称: ${normalizeText(debugInfo.nickname, '-')}`,
+			`头像: ${normalizeText(debugInfo.avatar, '-')}`,
 			`最近动作: ${normalizeText(debugInfo.lastAction, '-')}`,
 			`最近状态码: ${normalizeText(debugInfo.lastStatusCode, '-')}`,
 			`最近响应: ${normalizeText(debugInfo.lastMessage, '-')}`,
+			`UserInfo 缓存: ${normalizeText(debugInfo.userInfoPreview, '-')}`,
 			`最近更新时间: ${normalizeText(debugInfo.updatedAt, '-')}`
 		].join('\n')
 		this.copyText(content)

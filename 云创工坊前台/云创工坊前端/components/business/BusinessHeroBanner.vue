@@ -1,6 +1,6 @@
 <template>
 	<view class="business-hero-banner">
-		<image class="business-hero-image" :src="imageUrl" mode="widthFix" />
+		<image class="business-hero-image" :src="imageUrl" mode="aspectFill" />
 		<swiper
 			v-if="safeNotices.length"
 			class="business-hero-notice business-hero-notice-swiper"
@@ -45,17 +45,18 @@ export default {
 	position: relative;
 	overflow: hidden;
 	background: transparent;
+	height: 320rpx;
 }
 
 .business-hero-image {
 	width: 100%;
-	height: auto;
+	height: 100%;
 	display: block;
 }
 
 .business-hero-notice {
 	position: absolute;
-	top: 198rpx;
+	top: 170rpx;
 	left: 92rpx;
 	min-width: 0;
 	max-width: 560rpx;

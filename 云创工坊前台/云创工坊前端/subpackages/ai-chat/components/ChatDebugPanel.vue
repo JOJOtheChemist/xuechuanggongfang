@@ -41,6 +41,10 @@
 				<text class="debug-value">{{ debugInfo.nickname }}</text>
 			</view>
 			<view class="debug-item">
+				<text class="debug-label">头像</text>
+				<text class="debug-value">{{ debugInfo.avatar }}</text>
+			</view>
+			<view class="debug-item">
 				<text class="debug-label">最近动作</text>
 				<text class="debug-value">{{ debugInfo.lastAction }}</text>
 			</view>
@@ -51,6 +55,10 @@
 			<view class="debug-item debug-item-wide">
 				<text class="debug-label">最近响应</text>
 				<text class="debug-value">{{ debugInfo.lastMessage }}</text>
+			</view>
+			<view class="debug-item debug-item-wide">
+				<text class="debug-label">UserInfo 缓存</text>
+				<text class="debug-value">{{ debugInfo.userInfoPreview }}</text>
 			</view>
 			<view class="debug-item debug-item-wide">
 				<text class="debug-label">最近更新时间</text>

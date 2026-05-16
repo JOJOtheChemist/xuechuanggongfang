@@ -32,22 +32,22 @@
 			</view>
 		</view>
 
-		<view v-if="showFloatingMeta" class="hero-floating-meta">
+		<view v-if="showMetaPanel" class="hero-floating-meta" :class="{ 'hero-floating-meta-visual': shouldRenderVisualHeroImage }">
 			<ChatSessionMetaGrid
+				v-if="showFloatingMeta"
 				:agent-id="agentId"
 				:session-id="sessionId"
 				:ai-power-text="aiPowerText"
 				@copy="$emit('copy', $event)"
 				@refresh-power="$emit('refresh-power')"
 			/>
-
 			<ChatDebugPanel
 				:debug-info="debugInfo"
 				@copy="$emit('copy-debug')"
 				@refresh="$emit('refresh-debug')"
 			/>
 
-			<view class="starter-row">
+			<view v-if="showFloatingMeta" class="starter-row">
 				<ChatQuickActionBar
 					:actions="quickPrompts"
 					:disabled="quickActionDisabled"
@@ -148,6 +148,9 @@ export default {
 		},
 		showFloatingMeta() {
 			return !this.shouldRenderVisualHeroImage
+		},
+		showMetaPanel() {
+			return true
 		}
 	},
 	watch: {
@@ -235,6 +238,10 @@ export default {
 
 .hero-floating-meta {
 	padding: 0 24rpx;
+}
+
+.hero-floating-meta-visual {
+	padding-top: 20rpx;
 }
 
 .hero-top {

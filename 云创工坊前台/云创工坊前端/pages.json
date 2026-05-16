@@ -193,12 +193,12 @@
 						"navigationBarTitleText": "余额提现"
 					}
 				},
-				{
-					"path": "join-team-confirm",
-					"style": {
-						"navigationBarTitleText": "加入团队"
-					}
-				},
+					{
+						"path": "join-team-confirm",
+						"style": {
+							"navigationStyle": "custom"
+						}
+					},
 				{
 					"path": "wallet-details",
 					"style": {

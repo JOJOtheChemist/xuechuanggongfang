@@ -2,8 +2,60 @@ const IMAGE_CACHE_STORAGE_KEY = 'remote_image_cache_v1'
 const IMAGE_CACHE_TTL = 30 * 24 * 60 * 60 * 1000
 const IMAGE_CACHE_MAX_ENTRIES = 40
 const pendingImageTasks = {}
+const STORAGE_BRIDGE_DELAY = 500
+const STORAGE_RETRY_DELAY = 120
+const storageBridgeUnlockedAt = isWeixinMiniProgram() ? Date.now() + STORAGE_BRIDGE_DELAY : 0
+let memoryImageCache = null
 
-function callUniApi(methodName, options) {
+function isWeixinMiniProgram() {
+	return typeof wx !== 'undefined' && typeof wx.getSystemInfo === 'function'
+}
+
+function delay(ms) {
+	return new Promise((resolve) => {
+		setTimeout(resolve, ms)
+	})
+}
+
+function isStorageBridgeReady() {
+	return !storageBridgeUnlockedAt || Date.now() >= storageBridgeUnlockedAt
+}
+
+async function waitForStorageBridgeReady() {
+	if (isStorageBridgeReady()) return
+
+	const remaining = storageBridgeUnlockedAt - Date.now()
+	if (remaining > 0) {
+		await delay(remaining)
+	}
+}
+
+function isTooEarlyError(error) {
+	const message = String(
+		(error && (error.errMsg || error.message || error.errorMessage))
+		|| ''
+	).toLowerCase()
+
+	return message.indexOf('too early') !== -1 || message.indexOf('too eayly') !== -1
+}
+
+function normalizeCache(cache) {
+	return cache && typeof cache === 'object' ? cache : {}
+}
+
+function getFileSystemManager() {
+	if (typeof uni !== 'undefined' && typeof uni.getFileSystemManager === 'function') {
+		return uni.getFileSystemManager()
+	}
+
+	if (typeof wx !== 'undefined' && typeof wx.getFileSystemManager === 'function') {
+		return wx.getFileSystemManager()
+	}
+
+	return null
+}
+
+function invokeUniMethod(methodName, options) {
 	return new Promise((resolve, reject) => {
 		if (typeof uni === 'undefined' || typeof uni[methodName] !== 'function') {
 			reject(new Error(`uni.${methodName} is not available`))
@@ -17,26 +69,96 @@ function callUniApi(methodName, options) {
 	})
 }
 
+async function callUniApi(methodName, options) {
+	await waitForStorageBridgeReady()
+
+	try {
+		return await invokeUniMethod(methodName, options)
+	} catch (error) {
+		if (!isTooEarlyError(error)) {
+			throw error
+		}
+
+		await delay(STORAGE_RETRY_DELAY)
+		return invokeUniMethod(methodName, options)
+	}
+}
+
+async function saveFileToLocal(tempFilePath) {
+	const fileSystemManager = getFileSystemManager()
+
+	if (fileSystemManager && typeof fileSystemManager.saveFile === 'function') {
+		await waitForStorageBridgeReady()
+
+		const saveWithFsManager = () => new Promise((resolve, reject) => {
+			fileSystemManager.saveFile({
+				tempFilePath,
+				success: resolve,
+				fail: reject
+			})
+		})
+
+		try {
+			return await saveWithFsManager()
+		} catch (error) {
+			if (!isTooEarlyError(error)) {
+				throw error
+			}
+
+			await delay(STORAGE_RETRY_DELAY)
+			return saveWithFsManager()
+		}
+	}
+
+	if (typeof uni !== 'undefined' && typeof uni.saveFile === 'function') {
+		return callUniApi('saveFile', { tempFilePath })
+	}
+
+	throw new Error('saveFile is not available')
+}
+
 function isRemoteImageUrl(url) {
 	return typeof url === 'string' && /^https?:\/\//i.test(url)
 }
 
 function readImageCache() {
+	if (memoryImageCache) return memoryImageCache
+	if (!isStorageBridgeReady()) return {}
+
 	try {
-		const cache = uni.getStorageSync(IMAGE_CACHE_STORAGE_KEY)
-		return cache && typeof cache === 'object' ? cache : {}
+		const cache = normalizeCache(uni.getStorageSync(IMAGE_CACHE_STORAGE_KEY))
+		memoryImageCache = cache
+		return cache
 	} catch (error) {
+		if (isTooEarlyError(error)) {
+			return {}
+		}
+
 		console.warn('[image-cache] 读取缓存失败', error)
 		return {}
 	}
 }
 
 function writeImageCache(cache) {
+	memoryImageCache = normalizeCache(cache)
+	if (!isStorageBridgeReady()) return
+
 	try {
-		uni.setStorageSync(IMAGE_CACHE_STORAGE_KEY, cache)
+		uni.setStorageSync(IMAGE_CACHE_STORAGE_KEY, memoryImageCache)
 	} catch (error) {
+		if (isTooEarlyError(error)) {
+			return
+		}
+
 		console.warn('[image-cache] 写入缓存失败', error)
 	}
+}
+
+async function ensureImageCacheLoaded() {
+	if (memoryImageCache) return memoryImageCache
+
+	await waitForStorageBridgeReady()
+	return readImageCache()
 }
 
 function isCacheEntryExpired(entry) {
@@ -48,9 +170,8 @@ function removeSavedFile(filePath) {
 	if (!filePath || typeof uni.removeSavedFile !== 'function') return
 	if (isRemoteImageUrl(filePath)) return
 
-	uni.removeSavedFile({
-		filePath,
-		fail(error) {
+	callUniApi('removeSavedFile', { filePath }).catch((error) => {
+		if (!isTooEarlyError(error)) {
 			console.warn('[image-cache] 删除旧缓存文件失败', error)
 		}
 	})
@@ -119,9 +240,12 @@ async function persistRemoteImage(url) {
 
 		let localPath = tempFilePath
 
-		if (typeof uni.saveFile === 'function') {
+		if (
+			(typeof uni !== 'undefined' && typeof uni.saveFile === 'function')
+			|| (getFileSystemManager() && typeof getFileSystemManager().saveFile === 'function')
+		) {
 			try {
-				const saveResult = await callUniApi('saveFile', { tempFilePath })
+				const saveResult = await saveFileToLocal(tempFilePath)
 				localPath = saveResult && saveResult.savedFilePath ? saveResult.savedFilePath : tempFilePath
 			} catch (error) {
 				console.warn('[image-cache] 保存图片到本地失败，继续使用临时文件', error)
@@ -129,7 +253,7 @@ async function persistRemoteImage(url) {
 		}
 
 		const now = Date.now()
-		const cache = readImageCache()
+		const cache = await ensureImageCacheLoaded()
 		cache[url] = {
 			url,
 			localPath,
@@ -162,7 +286,7 @@ export async function resolveCachedImage(url, options = {}) {
 	if (typeof uni === 'undefined' || typeof uni.downloadFile !== 'function') return url
 
 	const forceRefresh = !!options.forceRefresh
-	const cache = readImageCache()
+	const cache = await ensureImageCacheLoaded()
 	const entry = cache[url]
 
 	if (!forceRefresh && !isCacheEntryExpired(entry)) {

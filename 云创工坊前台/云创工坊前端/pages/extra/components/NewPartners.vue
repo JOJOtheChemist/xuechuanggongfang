@@ -122,7 +122,7 @@ import { getHttpService } from '@/utils/http-services'
 					this.list = sorted.map(item => ({
 						id: item._id,
 						name: item.nickname || item.username || '未命名',
-						avatar: item.avatar || '/static/icons/default-avatar.svg'
+						avatar: item.avatar || 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png'
 					}))
 
 					this.memberCount = String(this.list.length)

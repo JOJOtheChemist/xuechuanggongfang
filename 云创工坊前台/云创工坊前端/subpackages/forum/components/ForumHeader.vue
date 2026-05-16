@@ -95,17 +95,17 @@ export default {
 
 .tabs {
   position: absolute;
-  top: 123rpx;
+  top: 115rpx;
   left: 24rpx;
   display: flex;
   align-items: center;
-  column-gap: 12rpx;
+  column-gap: 14rpx;
 }
 
 .tab-item {
-  min-width: 86rpx;
-  height: 42rpx;
-  padding: 0 22rpx;
+  min-width: 100rpx;
+  height: 52rpx;
+  padding: 0 28rpx;
   border-radius: 999rpx;
   border: 2rpx solid #bfdbfe;
   background: #ffffff;
@@ -116,7 +116,7 @@ export default {
 }
 
 .tab-item text {
-  font-size: 24rpx;
+  font-size: 28rpx;
   font-weight: 600;
   color: #2563eb;
   line-height: 1;

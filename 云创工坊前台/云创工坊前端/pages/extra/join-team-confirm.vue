@@ -1,12 +1,24 @@
 <template>
-	<view class="page-container">
+	<view class="page-container" :style="pageContainerStyle">
 		<view class="content-wrapper">
-			<!-- Header / Invitation Info -->
+			<!-- Invite Hero -->
 			<view class="header-section">
-				<image class="inviter-avatar" :src="normalizeAvatarUrl(inviterAvatar, defaultAvatar)" mode="aspectFill" />
-				<view class="invite-text">
-					<text class="inviter-name">{{ inviterName }}</text>
-					<text class="invite-action">邀请你加入</text>
+				<view class="invite-hero-card">
+					<view class="invite-hero-meta">
+						<text class="invite-hero-label">邀请人</text>
+						<view class="invite-hero-inviter">
+							<image class="inviter-avatar" :src="normalizeAvatarUrl(inviterAvatar, defaultAvatar)" mode="aspectFill" />
+							<text class="inviter-name">{{ displayInviterName }}</text>
+						</view>
+					</view>
+					<view class="invite-hero-title">
+						<image class="invite-word-image" :src="joinWordImageUrl" mode="widthFix" />
+						<view class="team-name-pill">
+							<text class="team-name-pill-text">{{ heroTeamName }}</text>
+						</view>
+						<image class="team-word-image" :src="teamWordImageUrl" mode="widthFix" />
+					</view>
+					<text class="invite-hero-tip">支付 19.9 元后即可完成创建订单并加入该团队</text>
 				</view>
 			</view>
 
@@ -46,15 +58,25 @@
 
 			<!-- Actions -->
 			<view class="action-footer">
-				<button 
-					class="pay-btn" 
-					hover-class="btn-hover" 
-					:loading="loading" 
-					:disabled="loading || !resolvedTeamId"
-					@tap="handlePayAndJoin"
-				>
-					{{ loading ? '处理中...' : '立即支付并加入' }}
-				</button>
+				<view class="pay-btn-shell" :class="{ 'is-disabled': loading || !resolvedTeamId }">
+					<button 
+						class="pay-btn" 
+						hover-class="btn-hover" 
+						:disabled="loading || !resolvedTeamId"
+						@tap="handlePayAndJoin"
+					>
+						<image
+							v-if="!loading"
+							class="pay-btn-art"
+							:src="joinButtonImageUrl"
+							mode="widthFix"
+						/>
+						<view v-else class="pay-btn-loading">
+							<text class="pay-btn-loading-text">创建订单中...</text>
+						</view>
+					</button>
+				</view>
+				<text class="pay-btn-caption">{{ loading ? '正在拉起支付，请稍候' : '点击按钮创建订单并完成支付' }}</text>
 				<view class="cancel-link" @tap="cancelJoin">暂不加入</view>
 				<!-- Unified Debug Footer -->
 				<!-- Unified Debug Footer -->
@@ -75,6 +97,11 @@
 import { getCurrentUserInfo, getHttpService } from '@/utils/http-services'
 import { confirmPayment, createPaymentOrder } from '../../utils/payment-api'
 
+const JOIN_WORD_IMAGE_URL = 'https://xuechuang.xyz/oss/share-assets/admission/admin/images/0/2026/05/14/3fcf46e9-88fe-4972-b06f-77a0bb63d5a1.webp'
+const TEAM_WORD_IMAGE_URL = 'https://xuechuang.xyz/oss/share-assets/admission/admin/images/0/2026/05/14/ee724028-426f-4846-8c74-a832c324f92a.webp'
+const JOIN_BUTTON_IMAGE_URL = 'https://xuechuang.xyz/oss/share-assets/admission/admin/images/0/2026/05/14/041b2a18-8d14-452c-b1bd-2482344622c1.webp'
+const CAMPUS_PARTNER_RECHARGE_BG_URL = '/pages/extra/static/recharge/campus-partner-recharge-bg.webp'
+
 export default {
 	computed: {
 		resolvedTeamId() {
@@ -87,6 +114,22 @@ export default {
 		},
 		displayJoinFee() {
 			return this.joinFeeValue.toFixed(1).replace(/\.0$/, '')
+		},
+		displayInviterName() {
+			const name = String(this.inviterName || '').trim()
+			return name || '专属邀请人'
+		},
+		heroTeamName() {
+			const name = String((this.teamInfo && this.teamInfo.team_name) || '').trim()
+			return name || '校园合伙人'
+		},
+		pageContainerStyle() {
+			return {
+				background:
+					`linear-gradient(180deg, rgba(255, 248, 239, 0.14) 0%, rgba(245, 247, 251, 0.1) 46%, rgba(238, 242, 247, 0.2) 100%), ` +
+					`url('${CAMPUS_PARTNER_RECHARGE_BG_URL}') center top / 100% auto no-repeat, ` +
+					'linear-gradient(180deg, #fff8ef 0%, #f5f7fb 46%, #eef2f7 100%)'
+			}
 		}
 	},
 	data() {
@@ -96,7 +139,10 @@ export default {
 			inviterName: '...',
 			inviterAvatar: '',
 			teamInfo: {}, // 这是一个对象，包含 team_name, team_level 等
-			defaultAvatar: '/static/icons/default-avatar.svg',
+			defaultAvatar: 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png',
+			joinWordImageUrl: JOIN_WORD_IMAGE_URL,
+			teamWordImageUrl: TEAM_WORD_IMAGE_URL,
+			joinButtonImageUrl: JOIN_BUTTON_IMAGE_URL,
 			loading: false,
 			currentOrderNo: '',
 			currentUid: ''
@@ -407,7 +453,6 @@ export default {
 <style scoped>
 .page-container {
 	min-height: 100vh;
-	background-color: #F3F4F6;
 	display: flex;
 	justify-content: center;
 	padding: 40rpx;
@@ -422,38 +467,98 @@ export default {
 }
 
 .header-section {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	margin-top: 60rpx;
+	width: 100%;
+	margin-top: 32rpx;
 	margin-bottom: 40rpx;
 }
 
-.inviter-avatar {
-	width: 120rpx;
-	height: 120rpx;
-	border-radius: 60rpx;
-	border: 6rpx solid #ffffff;
-	box-shadow: 0 4rpx 12rpx rgba(0,0,0,0.1);
-	margin-bottom: 24rpx;
+.invite-hero-card {
+	width: 100%;
+	background: transparent;
+	border: none;
+	border-radius: 0;
+	padding: 12rpx 8rpx;
+	box-shadow: none;
 }
 
-.invite-text {
+.invite-hero-meta {
 	display: flex;
 	flex-direction: column;
+	gap: 14rpx;
+	margin-bottom: 28rpx;
+}
+
+.invite-hero-label {
+	font-size: 22rpx;
+	color: #fff7ed;
+	letter-spacing: 2rpx;
+	text-shadow: 0 4rpx 12rpx rgba(120, 53, 15, 0.45);
+}
+
+.invite-hero-inviter {
+	display: flex;
 	align-items: center;
-	gap: 8rpx;
+	gap: 18rpx;
+}
+
+.inviter-avatar {
+	width: 84rpx;
+	height: 84rpx;
+	border-radius: 42rpx;
+	border: 4rpx solid #ffffff;
+	box-shadow: 0 14rpx 30rpx rgba(0, 0, 0, 0.18);
 }
 
 .inviter-name {
-	font-size: 32rpx;
+	font-size: 34rpx;
 	font-weight: 700;
-	color: #1F2937;
+	color: #ffffff;
+	text-shadow: 0 6rpx 18rpx rgba(120, 53, 15, 0.45);
 }
 
-.invite-action {
-	font-size: 26rpx;
-	color: #6B7280;
+.invite-hero-title {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-wrap: wrap;
+	column-gap: 18rpx;
+	row-gap: 18rpx;
+	margin-bottom: 18rpx;
+}
+
+.invite-word-image,
+.team-word-image {
+	width: 108rpx;
+	flex-shrink: 0;
+}
+
+.team-name-pill {
+	max-width: 360rpx;
+	background: linear-gradient(135deg, rgba(255, 244, 230, 0.92) 0%, rgba(254, 215, 170, 0.9) 100%);
+	border: 2rpx solid rgba(255, 255, 255, 0.35);
+	border-radius: 999rpx;
+	padding: 14rpx 28rpx;
+	box-shadow:
+		inset 0 2rpx 0 rgba(255, 255, 255, 0.6),
+		0 10rpx 24rpx rgba(120, 53, 15, 0.16);
+}
+
+.team-name-pill-text {
+	display: block;
+	font-size: 30rpx;
+	font-weight: 700;
+	color: #9a3412;
+	line-height: 1.2;
+	text-align: center;
+}
+
+.invite-hero-tip {
+	display: block;
+	text-align: center;
+	font-size: 24rpx;
+	line-height: 1.5;
+	color: #fff7ed;
+	text-shadow: 0 4rpx 12rpx rgba(120, 53, 15, 0.45);
 }
 
 /* Team Card */
@@ -563,26 +668,68 @@ export default {
 	padding-bottom: 60rpx;
 }
 
+.pay-btn-shell {
+	width: 100%;
+	animation: payBtnPulse 2.8s ease-in-out infinite;
+	transform-origin: center;
+}
+
+.pay-btn-shell.is-disabled {
+	animation: none;
+}
+
 .pay-btn {
 	width: 100%;
-	background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
-	color: #ffffff;
-	font-size: 32rpx;
-	font-weight: 700;
-	padding: 24rpx 0;
+	background: transparent;
+	padding: 0;
 	border-radius: 999rpx;
 	border: none;
-	box-shadow: 0 12rpx 24rpx rgba(245, 158, 11, 0.3);
-	margin-bottom: 24rpx;
+	box-shadow: 0 18rpx 38rpx rgba(245, 158, 11, 0.32);
+	overflow: hidden;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 }
+
 .pay-btn:active {
-	opacity: 0.9;
-	transform: translateY(2rpx);
+	opacity: 0.96;
 }
+
 .pay-btn[disabled] {
-	background: #E5E7EB;
-	color: #9CA3AF;
 	box-shadow: none;
+	opacity: 0.7;
+}
+
+.pay-btn::after {
+	border: none;
+}
+
+.pay-btn-art {
+	display: block;
+	width: 100%;
+}
+
+.pay-btn-loading {
+	width: 100%;
+	padding: 24rpx 0;
+	background: linear-gradient(135deg, #fbbf24 0%, #fb923c 100%);
+}
+
+.pay-btn-loading-text {
+	display: block;
+	text-align: center;
+	font-size: 32rpx;
+	font-weight: 700;
+	color: #ffffff;
+}
+
+.pay-btn-caption {
+	display: block;
+	text-align: center;
+	font-size: 22rpx;
+	color: #9a3412;
+	margin-top: 18rpx;
+	margin-bottom: 22rpx;
 }
 
 .cancel-link {
@@ -590,5 +737,21 @@ export default {
 	font-size: 26rpx;
 	color: #9CA3AF;
 	padding: 12rpx;
+}
+
+@keyframes payBtnPulse {
+	0%,
+	100% {
+		transform: scale(1);
+		filter: brightness(1);
+	}
+	45% {
+		transform: scale(1.04);
+		filter: brightness(1.06);
+	}
+	70% {
+		transform: scale(0.99);
+		filter: brightness(0.98);
+	}
 }
 </style>

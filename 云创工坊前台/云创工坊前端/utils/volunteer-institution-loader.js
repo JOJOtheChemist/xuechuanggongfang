@@ -103,6 +103,7 @@ export const volunteerInstitutionLoaderMethods = {
     const query = {
       province: DEFAULT_ADMISSION_PROVINCE,
       examType: this.selectedExamValue,
+      subjectTrack: this.selectedSubjectTrackValue,
       majorCategory: this.selectedMajorCategoryValue,
       page: 1,
       pageSize: INSTITUTION_CACHE_PAGE_SIZE

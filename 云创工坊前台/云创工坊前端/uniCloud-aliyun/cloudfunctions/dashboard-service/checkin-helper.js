@@ -48,7 +48,7 @@ async function getRecentCheckIns(db, limit = 20) {
         let fileIDs = []
         const getAvatar = (uid) => {
             const user = userMap[uid]
-            if (!user || !user.avatar) return '/static/icons/default-avatar.svg'
+            if (!user || !user.avatar) return 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png'
             if (user.avatar.startsWith('cloud://')) fileIDs.push(user.avatar)
             return user.avatar
         }

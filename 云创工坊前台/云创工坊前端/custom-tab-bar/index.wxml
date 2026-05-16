@@ -2,60 +2,60 @@
   <view class="nav-inner">
     <view wx:if="{{showCenterPublish}}" class="nav-side nav-side-left">
       <view class="nav-item {{selected === 0 ? 'nav-item-active' : ''}}" data-path="/pages/dashboard/index" data-index="{{0}}" bindtap="switchTab">
-        <image class="nav-icon-img" src="{{selected === 0 ? list[0].selectedIconPath : list[0].iconPath}}" mode="aspectFit" />
+        <image class="nav-icon-img {{selected === 0 ? 'nav-icon-active' : ''}}" src="{{list[0].iconPath}}" mode="aspectFit" />
         <text class="nav-text {{selected === 0 ? 'nav-text-active' : ''}}">广场</text>
       </view>
 
       <view class="nav-item {{selected === 1 ? 'nav-item-active' : ''}}" data-path="/pages/business/index" data-index="{{1}}" bindtap="switchTab">
-        <image class="nav-icon-img" src="{{selected === 1 ? list[1].selectedIconPath : list[1].iconPath}}" mode="aspectFit" />
+        <image class="nav-icon-img {{selected === 1 ? 'nav-icon-active' : ''}}" src="{{list[1].iconPath}}" mode="aspectFit" />
         <text class="nav-text {{selected === 1 ? 'nav-text-active' : ''}}">学习</text>
       </view>
     </view>
 
     <view wx:if="{{showCenterPublish}}" class="nav-center-btn" bindtap="openQuickPublish">
-      <image class="nav-center-icon-img" src="/static/icons/nav-plus.svg" mode="aspectFit" />
+      <image class="nav-center-icon-img" src="{{navPlusIconUrl}}" mode="aspectFit" />
     </view>
 
     <view wx:if="{{showCenterPublish}}" class="nav-side nav-side-right">
       <view class="nav-item {{selected === 2 ? 'nav-item-active' : ''}}" data-path="/pages/volunteer/index" data-index="{{2}}" bindtap="switchTab">
-        <image class="nav-icon-img" src="{{selected === 2 ? list[2].selectedIconPath : list[2].iconPath}}" mode="aspectFit" />
+        <image class="nav-icon-img {{selected === 2 ? 'nav-icon-active' : ''}}" src="{{list[2].iconPath}}" mode="aspectFit" />
         <text class="nav-text {{selected === 2 ? 'nav-text-active' : ''}}">志愿</text>
       </view>
 
       <view class="nav-item {{selected === 3 ? 'nav-item-active' : ''}}" data-path="/pages/task-center/index" data-index="{{3}}" bindtap="switchTab">
-        <image class="nav-icon-img" src="{{selected === 3 ? list[3].selectedIconPath : list[3].iconPath}}" mode="aspectFit" />
+        <image class="nav-icon-img {{selected === 3 ? 'nav-icon-active' : ''}}" src="{{list[3].iconPath}}" mode="aspectFit" />
         <text class="nav-text {{selected === 3 ? 'nav-text-active' : ''}}">创业</text>
       </view>
 
       <view class="nav-item {{selected === 4 ? 'nav-item-active' : ''}}" data-path="/pages/profile/index" data-index="{{4}}" bindtap="switchTab">
-        <image class="nav-icon-img" src="{{selected === 4 ? list[4].selectedIconPath : list[4].iconPath}}" mode="aspectFit" />
+        <image class="nav-icon-img {{selected === 4 ? 'nav-icon-active' : ''}}" src="{{list[4].iconPath}}" mode="aspectFit" />
         <text class="nav-text {{selected === 4 ? 'nav-text-active' : ''}}">我的</text>
       </view>
     </view>
 
     <view wx:else class="nav-side nav-side-full">
       <view class="nav-item {{selected === 0 ? 'nav-item-active' : ''}}" data-path="/pages/dashboard/index" data-index="{{0}}" bindtap="switchTab">
-        <image class="nav-icon-img" src="{{selected === 0 ? list[0].selectedIconPath : list[0].iconPath}}" mode="aspectFit" />
+        <image class="nav-icon-img {{selected === 0 ? 'nav-icon-active' : ''}}" src="{{list[0].iconPath}}" mode="aspectFit" />
         <text class="nav-text {{selected === 0 ? 'nav-text-active' : ''}}">广场</text>
       </view>
 
       <view class="nav-item {{selected === 1 ? 'nav-item-active' : ''}}" data-path="/pages/business/index" data-index="{{1}}" bindtap="switchTab">
-        <image class="nav-icon-img" src="{{selected === 1 ? list[1].selectedIconPath : list[1].iconPath}}" mode="aspectFit" />
+        <image class="nav-icon-img {{selected === 1 ? 'nav-icon-active' : ''}}" src="{{list[1].iconPath}}" mode="aspectFit" />
         <text class="nav-text {{selected === 1 ? 'nav-text-active' : ''}}">学习</text>
       </view>
 
       <view class="nav-item {{selected === 2 ? 'nav-item-active' : ''}}" data-path="/pages/volunteer/index" data-index="{{2}}" bindtap="switchTab">
-        <image class="nav-icon-img" src="{{selected === 2 ? list[2].selectedIconPath : list[2].iconPath}}" mode="aspectFit" />
+        <image class="nav-icon-img {{selected === 2 ? 'nav-icon-active' : ''}}" src="{{list[2].iconPath}}" mode="aspectFit" />
         <text class="nav-text {{selected === 2 ? 'nav-text-active' : ''}}">志愿</text>
       </view>
 
       <view class="nav-item {{selected === 3 ? 'nav-item-active' : ''}}" data-path="/pages/task-center/index" data-index="{{3}}" bindtap="switchTab">
-        <image class="nav-icon-img" src="{{selected === 3 ? list[3].selectedIconPath : list[3].iconPath}}" mode="aspectFit" />
+        <image class="nav-icon-img {{selected === 3 ? 'nav-icon-active' : ''}}" src="{{list[3].iconPath}}" mode="aspectFit" />
         <text class="nav-text {{selected === 3 ? 'nav-text-active' : ''}}">创业</text>
       </view>
 
       <view class="nav-item {{selected === 4 ? 'nav-item-active' : ''}}" data-path="/pages/profile/index" data-index="{{4}}" bindtap="switchTab">
-        <image class="nav-icon-img" src="{{selected === 4 ? list[4].selectedIconPath : list[4].iconPath}}" mode="aspectFit" />
+        <image class="nav-icon-img {{selected === 4 ? 'nav-icon-active' : ''}}" src="{{list[4].iconPath}}" mode="aspectFit" />
         <text class="nav-text {{selected === 4 ? 'nav-text-active' : ''}}">我的</text>
       </view>
     </view>

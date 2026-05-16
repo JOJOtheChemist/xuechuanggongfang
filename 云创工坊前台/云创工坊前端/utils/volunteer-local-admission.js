@@ -4,30 +4,11 @@ export const VOLUNTEER_UNLOCK_REQUIRED_INVITE_COUNT = 6
 export const VOLUNTEER_UNLOCK_PAYMENT_AMOUNT = 19.9
 export const VOLUNTEER_CUSTOMER_SERVICE_PHONE = '15087599770'
 export const VOLUNTEER_TOP_FILTER_OPTIONS = [
-  { label: '春考（普高生）', examType: 'spring', majorCategory: '' },
-  { label: '机械类', examType: 'vocational', majorCategory: '机械类' },
-  { label: '电工技术类', examType: 'vocational', majorCategory: '电工技术类' },
-  { label: '交通运输类', examType: 'vocational', majorCategory: '交通运输类' },
-  { label: '经济管理类', examType: 'vocational', majorCategory: '经济管理类' },
-  { label: '旅游类', examType: 'vocational', majorCategory: '旅游类' },
-  { label: '教育类', examType: 'vocational', majorCategory: '教育类' },
-  { label: '计算机信息类', examType: 'vocational', majorCategory: '计算机信息类' },
-  { label: '护理类', examType: 'vocational', majorCategory: '护理类' },
-  { label: '医学类', examType: 'vocational', majorCategory: '医学类' },
-  { label: '药学类', examType: 'vocational', majorCategory: '药学类' },
-  { label: '生物化工类', examType: 'vocational', majorCategory: '生物化工类' },
-  { label: '建筑工程类', examType: 'vocational', majorCategory: '建筑工程类' },
-  { label: '资源环境类', examType: 'vocational', majorCategory: '资源环境类' },
-  { label: '体育类', examType: 'vocational', majorCategory: '体育类' },
-  { label: '艺术类', examType: 'vocational', majorCategory: '艺术类' },
-  { label: '烹饪类', examType: 'vocational', majorCategory: '烹饪类' },
-  { label: '农林养殖类', examType: 'vocational', majorCategory: '农林养殖类' },
-  { label: '水利水电类', examType: 'vocational', majorCategory: '水利水电类' },
-  { label: '农林种植类', examType: 'vocational', majorCategory: '农林种植类' },
-  { label: '铁道运输类', examType: 'vocational', majorCategory: '铁道运输类' }
+  { label: '历史组', examType: 'gaokao', subjectTrack: '历史组', majorCategory: '' },
+  { label: '物理组', examType: 'gaokao', subjectTrack: '物理组', majorCategory: '' }
 ]
 
-const LOCAL_INSTITUTION_CACHE_VERSION = '20260417-logo-refresh-v1'
+const LOCAL_INSTITUTION_CACHE_VERSION = '20260516-gaokao-subject-track-v1'
 const LOCAL_INSTITUTION_CACHE_TTL_MS = 12 * 60 * 60 * 1000
 const LOCAL_INSTITUTION_CACHE_PREFIX = 'admission_institutions_cache:'
 const LOCAL_UNLOCK_STATUS_CACHE_PREFIX = 'admission_unlock_status_cache:'
@@ -297,6 +278,7 @@ export function buildLocalInstitutionCacheKey(query) {
     version: LOCAL_INSTITUTION_CACHE_VERSION,
     province: query.province || '',
     examType: query.examType || '',
+    subjectTrack: query.subjectTrack || '',
     majorCategory: query.majorCategory || '',
     riskBucket: query.riskBucket || ''
   }))}`

@@ -2,27 +2,27 @@
 		<view class="nav">
 		<view class="nav-inner">
 			<view class="nav-item" :class="{ 'nav-item-active': active === 'forum' }" @tap="goForum">
-				<image class="nav-icon-img" :src="active === 'forum' ? '/static/tabbar/nav-forum-active.png' : '/static/tabbar/nav-forum-normal.png'" mode="aspectFit" />
+				<image class="nav-icon-img" :class="{ 'nav-icon-active': active === 'forum' }" :src="tabbarIcons.forum" mode="aspectFit" />
 				<text class="nav-text" :class="{ 'nav-text-active': active === 'forum' }">广场</text>
 			</view>
 
 			<view class="nav-item" :class="{ 'nav-item-active': active === 'business' }" @tap="goBusiness">
-				<image class="nav-icon-img" :src="active === 'business' ? '/static/tabbar/nav-study-active.png' : '/static/tabbar/nav-study-normal.png'" mode="aspectFit" />
+				<image class="nav-icon-img" :class="{ 'nav-icon-active': active === 'business' }" :src="tabbarIcons.business" mode="aspectFit" />
 				<text class="nav-text" :class="{ 'nav-text-active': active === 'business' }">学习</text>
 			</view>
 
 			<view class="nav-item" :class="{ 'nav-item-active': active === 'volunteer' }" @tap="goVolunteer">
-				<image class="nav-icon-img" :src="active === 'volunteer' ? '/static/tabbar/nav-volunteer-active.png' : '/static/tabbar/nav-volunteer-normal.png'" mode="aspectFit" />
+				<image class="nav-icon-img" :class="{ 'nav-icon-active': active === 'volunteer' }" :src="tabbarIcons.volunteer" mode="aspectFit" />
 				<text class="nav-text" :class="{ 'nav-text-active': active === 'volunteer' }">志愿</text>
 			</view>
 
 			<view class="nav-item" :class="{ 'nav-item-active': active === 'tasks' }" @tap="goTasks">
-				<image class="nav-icon-img" :src="active === 'tasks' ? '/static/tabbar/nav-startup-active.png' : '/static/tabbar/nav-startup-normal.png'" mode="aspectFit" />
+				<image class="nav-icon-img" :class="{ 'nav-icon-active': active === 'tasks' }" :src="tabbarIcons.tasks" mode="aspectFit" />
 				<text class="nav-text" :class="{ 'nav-text-active': active === 'tasks' }">创业</text>
 			</view>
 
 			<view class="nav-item" :class="{ 'nav-item-active': active === 'profile' }" @tap="goProfile">
-				<image class="nav-icon-img" :src="active === 'profile' ? '/static/tabbar/nav-profile-active.png' : '/static/tabbar/nav-profile-normal.png'" mode="aspectFit" />
+				<image class="nav-icon-img" :class="{ 'nav-icon-active': active === 'profile' }" :src="tabbarIcons.profile" mode="aspectFit" />
 				<text class="nav-text" :class="{ 'nav-text-active': active === 'profile' }">我的</text>
 			</view>
 		</view>
@@ -30,6 +30,8 @@
 </template>
 
 <script>
+import { TABBAR_ICON_URLS } from '@/utils/cloud-static-assets'
+
 const VOLUNTEER_PATH = '/subpackages/volunteer/guide-redirect'
 const FORUM_PATH = '/subpackages/forum/index'
 
@@ -39,6 +41,11 @@ export default {
 		active: {
 			type: String,
 			default: 'volunteer'
+		}
+	},
+	data() {
+		return {
+			tabbarIcons: TABBAR_ICON_URLS
 		}
 	},
 	methods: {
@@ -125,12 +132,11 @@ export default {
 		width: 34rpx;
 		height: 34rpx;
 		margin-bottom: 10rpx;
-		opacity: 0.72;
-		transition: opacity 0.2s;
+		transition: filter 0.2s;
 	}
 
-	.nav-item-active .nav-icon-img {
-		opacity: 1;
+	.nav-icon-active {
+		filter: brightness(0) saturate(100%) invert(36%) sepia(91%) saturate(2386%) hue-rotate(210deg) brightness(94%) contrast(102%);
 	}
 
 	.nav-text {

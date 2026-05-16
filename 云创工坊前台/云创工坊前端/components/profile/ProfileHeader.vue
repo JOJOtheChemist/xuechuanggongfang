@@ -140,7 +140,7 @@ export default {
 		return {
 			userInfo: null,
 			hasSession: false,
-			defaultAvatar: '/static/icons/default-avatar.svg',
+			defaultAvatar: 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png',
 			profileHeaderBgUrl: PROFILE_HEADER_BG_URL,
 			profileEditButtonUrl: PROFILE_EDIT_BUTTON_URL,
 			profileCopyButtonUrl: PROFILE_COPY_BUTTON_URL,

@@ -3,7 +3,7 @@
 		<view class="stats-card stats-card-users">
 			<view class="stats-card-top">
 				<view class="stats-icon users-icon">
-					<image class="stats-icon-img" src="/static/icons/stats-users.svg" mode="aspectFit" />
+					<image class="stats-icon-img" :src="statsUsersIconUrl" mode="aspectFit" />
 				</view>
 				<text class="stats-tag stats-tag-green">+11 新增</text>
 			</view>
@@ -17,7 +17,7 @@
 		<view class="stats-card stats-card-orders">
 			<view class="stats-card-top">
 				<view class="stats-icon orders-icon">
-					<image class="stats-icon-img" src="/static/icons/stats-orders.svg" mode="aspectFit" />
+					<image class="stats-icon-img" :src="statsOrdersIconUrl" mode="aspectFit" />
 				</view>
 				<text class="stats-tag stats-tag-orange">+3 订单</text>
 			</view>
@@ -31,8 +31,19 @@
 </template>
 
 <script>
+	import {
+		STATS_ORDERS_ICON_URL,
+		STATS_USERS_ICON_URL
+	} from '@/utils/cloud-static-assets'
+
 	export default {
-		name: 'StatsGrid'
+		name: 'StatsGrid',
+		data() {
+			return {
+				statsUsersIconUrl: STATS_USERS_ICON_URL,
+				statsOrdersIconUrl: STATS_ORDERS_ICON_URL
+			}
+		}
 	}
 </script>
 

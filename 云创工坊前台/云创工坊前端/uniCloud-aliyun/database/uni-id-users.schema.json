@@ -99,6 +99,10 @@
           "bsonType": "string",
           "description": "学校"
         },
+        "student_id": {
+          "bsonType": "string",
+          "description": "学号"
+        },
         "enrollment_year": {
           "bsonType": "int",
           "description": "入学年份"

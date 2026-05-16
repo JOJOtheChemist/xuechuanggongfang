@@ -5,3 +5,4 @@ dist/
 .idea/
 .vscode/
 *.log
+文章板块-文件/**/*.pdf

@@ -1,5 +1,5 @@
 <template>
-	<view class="progress-card">
+	<view class="progress-card" @tap="goToGoalSetting">
 		<view class="card-header">
 			<view class="header-left">
 				<text class="card-title">本月总任务进度</text>
@@ -47,6 +47,11 @@ import { getHttpService } from '@/utils/http-services'
 			this.loadTaskStats()
 		},
 		methods: {
+			goToGoalSetting() {
+				uni.navigateTo({
+					url: '/pages/extra/goal-setting'
+				})
+			},
 			async loadTaskStats() {
 				const token = uni.getStorageSync('token')
 				if (!token) return

@@ -1,7 +1,6 @@
 <template>
     <view class="school-detail-page">
-      <view class="hero-section">
-      <image class="hero-image" :src="heroImage" mode="aspectFill" />
+      <view class="hero-section" :style="heroBackgroundStyle">
       <view class="hero-mask"></view>
 
       <view class="hero-header">
@@ -53,6 +52,7 @@
         <detail-major-section
           :majors="majors"
           :major-count-text="majorCountText"
+          :subject-track-filter="detailSubjectTrack"
         />
       </block>
 
@@ -67,6 +67,8 @@
 
 <script>
 import { requestAdmission } from '../../utils/admission-api'
+import { getStaticAssetUrl } from '../../utils/cloud-static-assets'
+import { getCachedImageSync, resolveCachedImages } from '../../utils/remote-image-cache'
 import { VOLUNTEER_CUSTOMER_SERVICE_PHONE } from '../../utils/volunteer-local-admission'
 import {
   buildVolunteerSupportNotice,
@@ -80,7 +82,7 @@ import DetailMajorSection from './components/DetailMajorSection.vue'
 import DetailOverviewGrid from './components/DetailOverviewGrid.vue'
 
 const DETAIL_HERO_IMAGES = [
-  'https://xuechuang.xyz/oss/share-assets/xuechuang/volunteer/banner/yunnan-spring-ai-volunteer-banner-v1.jpg'
+  getStaticAssetUrl('/static/volunteer-guide/direct-score-top-hero.jpg')
 ]
 const HIDDEN_TAGS = new Set(['spring', 'vocational'])
 
@@ -108,6 +110,17 @@ function pickFirstText(...values) {
   return ''
 }
 
+function decodeQueryText(value) {
+  const text = String(value || '').trim()
+  if (!text) return ''
+
+  try {
+    return decodeURIComponent(text)
+  } catch (error) {
+    return text
+  }
+}
+
 export default {
   components: {
     DetailBaseInfoSection,
@@ -122,13 +135,17 @@ export default {
       institutionId: '',
       initialName: '',
       detailExamType: '',
+      detailSubjectTrack: '',
       detailMajorCategory: '',
       detailRiskBucket: '',
       previewMode: false,
       backIcon: '<',
       loading: true,
       errorText: '',
-      detail: null
+      detail: null,
+      cachedHeroFallbackUrl: getCachedImageSync(DETAIL_HERO_IMAGES[0]),
+      cachedGalleryImageMap: {},
+      detailImageCacheTaskToken: 0
     }
   },
   computed: {
@@ -141,14 +158,29 @@ export default {
     },
     heroImage() {
       if (this.galleryImages.length > 0) {
-        return this.galleryImages[0].publicUrl
+        return this.galleryImages[0].displayUrl || this.galleryImages[0].publicUrl
       }
 
       const numericId = Number(this.institution.id || this.institutionId || 0)
       if (!Number.isFinite(numericId) || numericId <= 0) {
-        return DETAIL_HERO_IMAGES[0]
+        return this.cachedHeroFallbackUrl || DETAIL_HERO_IMAGES[0]
       }
-      return DETAIL_HERO_IMAGES[numericId % DETAIL_HERO_IMAGES.length]
+
+      const fallbackUrl = DETAIL_HERO_IMAGES[numericId % DETAIL_HERO_IMAGES.length]
+      return getCachedImageSync(fallbackUrl) || fallbackUrl
+    },
+    heroBackgroundStyle() {
+      const url = this.heroImage
+      if (!url) {
+        return {}
+      }
+
+      return {
+        backgroundImage: `url('${url}')`,
+        backgroundRepeat: 'repeat-x',
+        backgroundPosition: 'center top',
+        backgroundSize: 'auto 100%'
+      }
     },
     headerMeta() {
       const parts = [
@@ -177,6 +209,13 @@ export default {
       return imageAssets
         .filter(item => item && typeof item.publicUrl === 'string' && item.publicUrl.trim())
         .slice(0, 3)
+        .map((item) => {
+          const publicUrl = String(item.publicUrl || '').trim()
+          return Object.assign({}, item, {
+            publicUrl,
+            displayUrl: this.cachedGalleryImageMap[publicUrl] || getCachedImageSync(publicUrl) || publicUrl
+          })
+        })
     },
     referenceScoreText() {
       return this.institution.referenceScore === null || this.institution.referenceScore === undefined
@@ -281,18 +320,15 @@ export default {
     const safeOptions = options || {}
 
     this.institutionId = safeOptions.id ? String(safeOptions.id) : ''
-    this.detailExamType = safeOptions.examType ? String(safeOptions.examType) : ''
-    this.detailMajorCategory = safeOptions.majorCategory ? String(safeOptions.majorCategory) : ''
-    this.detailRiskBucket = safeOptions.riskBucket ? String(safeOptions.riskBucket) : ''
+    this.detailExamType = decodeQueryText(safeOptions.examType)
+    this.detailSubjectTrack = decodeQueryText(safeOptions.subjectTrack)
+    this.detailMajorCategory = decodeQueryText(safeOptions.majorCategory)
+    this.detailRiskBucket = decodeQueryText(safeOptions.riskBucket)
     this.previewMode =
       String(safeOptions.preview || '').trim() === '1' ||
       String(safeOptions.preview || '').trim().toLowerCase() === 'true'
 
-    try {
-      this.initialName = safeOptions.name ? decodeURIComponent(safeOptions.name) : ''
-    } catch (error) {
-      this.initialName = safeOptions.name || ''
-    }
+    this.initialName = decodeQueryText(safeOptions.name)
 
     if (!this.institutionId) {
       this.loading = false
@@ -300,9 +336,74 @@ export default {
       return
     }
 
+    this.syncDetailImageCache()
     this.loadDetail()
   },
   methods: {
+    async syncDetailImageCache() {
+      const galleryUrls = this.galleryImages
+        .map((item) => String(item && item.publicUrl || '').trim())
+        .filter(Boolean)
+      const heroFallbackUrl = DETAIL_HERO_IMAGES[0]
+      const urls = Array.from(new Set([heroFallbackUrl, ...galleryUrls].filter(Boolean)))
+
+      if (!urls.length) {
+        return
+      }
+
+      const nextGalleryMap = Object.assign({}, this.cachedGalleryImageMap)
+      let seededChanged = false
+
+      urls.forEach((url) => {
+        const cachedUrl = getCachedImageSync(url)
+        if (url === heroFallbackUrl && cachedUrl && this.cachedHeroFallbackUrl !== cachedUrl) {
+          this.cachedHeroFallbackUrl = cachedUrl
+        }
+        if (galleryUrls.includes(url) && cachedUrl && nextGalleryMap[url] !== cachedUrl) {
+          nextGalleryMap[url] = cachedUrl
+          seededChanged = true
+        }
+      })
+
+      if (seededChanged) {
+        this.cachedGalleryImageMap = nextGalleryMap
+      }
+
+      const taskToken = this.detailImageCacheTaskToken + 1
+      this.detailImageCacheTaskToken = taskToken
+
+      try {
+        const cachedUrls = await resolveCachedImages(urls)
+        if (taskToken !== this.detailImageCacheTaskToken) {
+          return
+        }
+
+        const updatedGalleryMap = Object.assign({}, this.cachedGalleryImageMap)
+        let galleryChanged = false
+
+        urls.forEach((url, index) => {
+          const cachedUrl = String(cachedUrls[index] || '').trim()
+          if (!cachedUrl) {
+            return
+          }
+
+          if (url === heroFallbackUrl && this.cachedHeroFallbackUrl !== cachedUrl) {
+            this.cachedHeroFallbackUrl = cachedUrl
+          }
+
+          if (galleryUrls.includes(url) && updatedGalleryMap[url] !== cachedUrl) {
+            updatedGalleryMap[url] = cachedUrl
+            galleryChanged = true
+          }
+        })
+
+        if (galleryChanged) {
+          this.cachedGalleryImageMap = updatedGalleryMap
+        }
+      } catch (error) {
+        console.warn('[volunteer][detail] cache images failed:', error)
+      }
+    },
     async loadDetail() {
       this.loading = true
       this.errorText = ''
@@ -313,12 +414,14 @@ export default {
           : `/admission/institutions/${this.institutionId}`
         const detail = await requestAdmission(detailPath, {
           examType: this.detailExamType,
+          subjectTrack: this.detailSubjectTrack,
           majorCategory: this.detailMajorCategory,
           riskBucket: this.detailRiskBucket
         }, {
           auth: !this.previewMode
         })
         this.detail = detail
+        this.syncDetailImageCache()
       } catch (error) {
         console.error('[volunteer][detail] load detail failed:', error)
         const message = error.message || '学校详情加载失败'
@@ -374,16 +477,7 @@ export default {
   position: relative;
   min-height: 620rpx;
   overflow: hidden;
-}
-
-.hero-image {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  background-color: #2b5a93;
 }
 
 .hero-mask {

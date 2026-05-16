@@ -35,6 +35,7 @@
       <text class="status-note">{{ scoreNotice }}</text>
       <text v-if="paymentOrderNo" class="status-order">订单号 {{ paymentOrderNo }}</text>
     </view>
+
   </view>
 </template>
 

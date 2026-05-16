@@ -35,12 +35,13 @@ export default {
 				rank: null,
 				nickname: ''
 			},
-			loading: false
+			loading: false,
+			isLoggedIn: false
 		}
 	},
 	computed: {
 		hasToken() {
-			return !!uni.getStorageSync('token')
+			return this.isLoggedIn
 		},
 		leaderboardRows() {
 			return (Array.isArray(this.leaderboard) ? this.leaderboard : []).map((item, index) => {
@@ -82,16 +83,29 @@ export default {
 		}
 	},
 	mounted() {
+		this.syncLoginState()
 		this.loadLeaderboardData()
 	},
 	methods: {
+		syncLoginState() {
+			this.isLoggedIn = !!uni.getStorageSync('token')
+			return this.isLoggedIn
+		},
+		resetRankState() {
+			this.leaderboard = []
+			this.myRank = {
+				balance: 0,
+				rank: null,
+				nickname: ''
+			}
+		},
 		goToLeaderboard() {
 			uni.navigateTo({
 				url: '/pages/extra/leaderboard'
 			})
 		},
 		async loadLeaderboard() {
-			const token = uni.getStorageSync('token')
+			const token = this.syncLoginState() ? uni.getStorageSync('token') : ''
 			if (!token) {
 				this.leaderboard = []
 				return
@@ -110,13 +124,9 @@ export default {
 			}
 		},
 		async loadMyRank() {
-			const token = uni.getStorageSync('token')
+			const token = this.syncLoginState() ? uni.getStorageSync('token') : ''
 			if (!token) {
-				this.myRank = {
-					balance: 0,
-					rank: null,
-					nickname: ''
-				}
+				this.resetRankState()
 				return
 			}
 
@@ -148,13 +158,9 @@ export default {
 			}
 		},
 		async loadLeaderboardData() {
-			if (!this.hasToken) {
-				this.leaderboard = []
-				this.myRank = {
-					balance: 0,
-					rank: null,
-					nickname: ''
-				}
+			const isLoggedIn = this.syncLoginState()
+			if (!isLoggedIn) {
+				this.resetRankState()
 				return
 			}
 
@@ -163,12 +169,7 @@ export default {
 				await Promise.all([this.loadLeaderboard(), this.loadMyRank()])
 			} catch (error) {
 				console.error('[task-center-ranking] 加载积分排行失败', error)
-				this.leaderboard = []
-				this.myRank = {
-					balance: 0,
-					rank: null,
-					nickname: ''
-				}
+				this.resetRankState()
 			} finally {
 				this.loading = false
 			}
@@ -209,7 +210,7 @@ export default {
 	justify-content: flex-end;
 	align-self: stretch;
 	width: 100%;
-	margin-top: 0;
+	margin-top: 15rpx;
 	padding: 8rpx 8rpx 8rpx 12rpx;
 	border-radius: 14rpx;
 	background: transparent;

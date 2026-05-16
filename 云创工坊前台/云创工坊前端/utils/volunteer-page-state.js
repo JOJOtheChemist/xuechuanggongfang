@@ -125,6 +125,7 @@ export function createVolunteerPageData() {
     guestPreviewInstitutions: [],
     guestPreviewLoading: false,
     guestPreviewRequestPromise: null,
+    shareInviteSheetVisible: false,
     page: 0,
     total: 0,
     activeDropdownKey: '',

@@ -4,21 +4,21 @@
 		<view class="hot-grid">
 			<view class="hot-item">
 				<view class="hot-icon hot-icon-red">
-					<image class="hot-icon-img" src="/static/icons/hot-creative.svg" mode="aspectFit" />
+					<image class="hot-icon-img" :src="hotCreativeIconUrl" mode="aspectFit" />
 				</view>
 				<text class="hot-name">创意广场</text>
 			</view>
 
 			<view class="hot-item">
 				<view class="hot-icon hot-icon-blue">
-					<image class="hot-icon-img" src="/static/icons/hot-learning.svg" mode="aspectFit" />
+					<image class="hot-icon-img" :src="hotLearningIconUrl" mode="aspectFit" />
 				</view>
 				<text class="hot-name">学习资料</text>
 			</view>
 
 			<view class="hot-item">
 				<view class="hot-icon hot-icon-purple">
-					<image class="hot-icon-img" src="/static/icons/hot-activity.svg" mode="aspectFit" />
+					<image class="hot-icon-img" :src="hotActivityIconUrl" mode="aspectFit" />
 				</view>
 				<text class="hot-name">活动预约</text>
 			</view>
@@ -27,8 +27,21 @@
 </template>
 
 <script>
+	import {
+		HOT_ACTIVITY_ICON_URL,
+		HOT_CREATIVE_ICON_URL,
+		HOT_LEARNING_ICON_URL
+	} from '@/utils/cloud-static-assets'
+
 	export default {
-		name: 'HotSections'
+		name: 'HotSections',
+		data() {
+			return {
+				hotCreativeIconUrl: HOT_CREATIVE_ICON_URL,
+				hotLearningIconUrl: HOT_LEARNING_ICON_URL,
+				hotActivityIconUrl: HOT_ACTIVITY_ICON_URL
+			}
+		}
 	}
 </script>
 

@@ -14,7 +14,10 @@
 				</view>
 				<text v-else class="task-center-hero-panel-title">banner</text>
 			</view>
-			<view class="task-center-hero-panel task-center-hero-panel-progress">
+			<view
+				class="task-center-hero-panel task-center-hero-panel-progress"
+				@tap="goToGoalSetting"
+			>
 				<view class="task-center-hero-progress-card">
 					<view class="task-center-hero-progress-head">
 						<text class="task-center-hero-panel-title task-center-hero-progress-title-placeholder">本月任务进度</text>
@@ -60,29 +63,43 @@
 					</view>
 				</view>
 			</view>
-			<view class="task-center-hero-panel task-center-hero-panel-plan">
+			<view
+				class="task-center-hero-panel task-center-hero-panel-plan"
+				@tap="goToGoalSetting"
+			>
 				<view class="task-center-hero-plan-card">
 					<view class="task-center-hero-plan-header">
 						<text class="task-center-hero-plan-month">{{ currentMonth }}月</text>
 					</view>
 					<view class="task-center-hero-plan-list">
 						<view
-							v-for="(item, index) in mockPlans"
+							v-for="(item, index) in displayedPlans"
 							:key="index"
 							class="task-center-hero-plan-item"
-							:class="{ 'is-completed': item.completed }"
+							:class="{
+								'is-completed': item.completed,
+								'is-placeholder': item.isPlaceholder
+							}"
+							@tap.stop="goToGoalSetting"
 						>
 							<view class="task-center-hero-plan-content">
 								<text class="task-center-hero-plan-item-target">
-									{{ item.orderType }} · {{ item.target }} 条
+									{{ item.displayText }}
 								</text>
-							</view>
-							<view class="task-center-hero-plan-status" :class="{ checked: item.completed }">
-								<text class="task-center-hero-plan-status-text">{{ item.completed ? '✓' : '' }}</text>
 							</view>
 						</view>
 					</view>
 				</view>
+			</view>
+			<view class="task-center-hero-panel task-center-hero-panel-banner task-center-hero-panel-banner-secondary">
+				<view v-if="primaryBannerUrl" class="task-center-hero-banner-fallback">
+					<image
+						class="task-center-hero-banner-image"
+						:src="primaryBannerUrl"
+						mode="widthFix"
+					/>
+				</view>
+				<text v-else class="task-center-hero-panel-title">banner</text>
 			</view>
 		</view>
 	</view>
@@ -111,23 +128,7 @@ export default {
 		return {
 			totalCount: 0,
 			completedCount: 0,
-			mockPlans: [
-				{
-					orderType: '跑腿单',
-					target: 25,
-					completed: false
-				},
-				{
-					orderType: '预约单',
-					target: 12,
-					completed: false
-				},
-				{
-					orderType: '咨询单',
-					target: 8,
-					completed: true
-				}
-			]
+			planItems: []
 		}
 	},
 	computed: {
@@ -145,6 +146,17 @@ export default {
 			}
 			const percentage = Math.round((this.completedCount / this.totalCount) * 100)
 			return Math.max(0, Math.min(100, percentage))
+		},
+		displayedPlans() {
+			const plans = Array.isArray(this.planItems) ? this.planItems.slice(0, 3) : []
+			while (plans.length < 3) {
+				plans.push({
+					displayText: '-',
+					completed: false,
+					isPlaceholder: true
+				})
+			}
+			return plans
 		},
 		currentMonth() {
 			return new Date().getMonth() + 1
@@ -175,6 +187,7 @@ export default {
 			if (!token) {
 				this.totalCount = 0
 				this.completedCount = 0
+				this.planItems = []
 				return
 			}
 
@@ -190,6 +203,7 @@ export default {
 				if (res && res.code === 0 && res.data && res.data.stats) {
 					this.totalCount = Math.max(0, Number(res.data.stats.total_target) || 0)
 					this.completedCount = Math.max(0, Number(res.data.stats.total_completed) || 0)
+					this.planItems = this.buildPlanItems(res.data.goals)
 					return
 				}
 			} catch (error) {
@@ -198,6 +212,27 @@ export default {
 
 			this.totalCount = 0
 			this.completedCount = 0
+			this.planItems = []
+		},
+		buildPlanItems(goals) {
+			if (!Array.isArray(goals)) {
+				return []
+			}
+
+			return goals
+				.filter(item => Number(item && item.target_value) > 0)
+				.slice(0, 3)
+				.map(item => {
+					const title = item && item.title ? item.title : '-'
+					const target = Number(item && item.target_value) || 0
+					const completedValue = Number(item && item.completed_value) || 0
+
+					return {
+						displayText: `${title} · ${target} 条`,
+						completed: completedValue >= target && target > 0,
+						isPlaceholder: false
+					}
+				})
 		},
 		goToKnowledgeHub() {
 			uni.navigateTo({
@@ -207,6 +242,11 @@ export default {
 		goToGrowthLog() {
 			uni.navigateTo({
 				url: '/pages/growth-log/index'
+			})
+		},
+		goToGoalSetting() {
+			uni.navigateTo({
+				url: '/pages/extra/goal-setting'
 			})
 		}
 	}
@@ -346,6 +386,11 @@ export default {
 	pointer-events: auto;
 }
 
+.task-center-hero-panel-banner-secondary {
+	min-height: 300rpx;
+	margin-top: 8rpx;
+}
+
 .task-center-hero-button-grid {
 	display: flex;
 	gap: 0;
@@ -369,7 +414,7 @@ export default {
 	font-size: 30rpx;
 	font-weight: 700;
 	line-height: 1.4;
-	color: #0f172a;
+	color: transparent;
 	text-align: center;
 }
 
@@ -408,8 +453,8 @@ export default {
 	line-height: 1;
 	color: #2563eb;
 	position: relative;
-	top: -6rpx;
-	left: -14rpx;
+	top: 0rpx;
+	left: 10rpx;
 }
 
 .task-center-hero-progress-summary {
@@ -425,6 +470,19 @@ export default {
 .task-center-hero-progress-summary-value {
 	font-size: 22rpx;
 	font-weight: 700;
+}
+
+.task-center-hero-progress-summary-value {
+	display: inline-block;
+	transform: translateY(20rpx);
+}
+
+.task-center-hero-progress-summary-value.is-total {
+	transform: translate(-65rpx, 20rpx);
+}
+
+.task-center-hero-progress-summary-value.is-done {
+	transform: translate(-10rpx, 20rpx);
 }
 
 .task-center-hero-progress-summary-label {
@@ -460,6 +518,7 @@ export default {
 	align-items: center;
 	gap: 6rpx;
 	width: 100%;
+	transform: translateY(15rpx);
 }
 
 .task-center-hero-progress-fill {
@@ -476,6 +535,7 @@ export default {
 	width: 100%;
 	align-items: flex-end;
 	padding-top: 2rpx;
+	transform: translateY(-17rpx);
 }
 
 .task-center-hero-plan-header {
@@ -521,13 +581,13 @@ export default {
 	width: 56%;
 	margin-top: -14rpx;
 	margin-right: 238rpx;
+	transform: translateX(200rpx);
 }
 
 .task-center-hero-plan-item {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
-	gap: 8rpx;
+	justify-content: flex-start;
 	padding: 8rpx 16rpx 8rpx 18rpx;
 	border-radius: 14rpx;
 	background: transparent;
@@ -539,7 +599,7 @@ export default {
 	min-width: 0;
 	display: flex;
 	align-items: center;
-	justify-content: flex-end;
+	justify-content: flex-start;
 }
 
 .task-center-hero-plan-item-target {
@@ -547,35 +607,15 @@ export default {
 	font-weight: 700;
 	line-height: 1.1;
 	color: rgba(15, 23, 42, 0.82);
-	text-align: right;
-}
-
-.task-center-hero-plan-status {
-	width: 24rpx;
-	height: 24rpx;
-	border-radius: 999rpx;
-	border: 2rpx solid rgba(148, 163, 184, 0.48);
-	background: transparent;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	flex-shrink: 0;
-}
-
-.task-center-hero-plan-status.checked {
-	border-color: #10b981;
-	background: #10b981;
-}
-
-.task-center-hero-plan-status-text {
-	font-size: 16rpx;
-	font-weight: 700;
-	line-height: 1;
-	color: #ffffff;
+	text-align: left;
 }
 
 .task-center-hero-plan-item.is-completed {
 	opacity: 0.84;
+}
+
+.task-center-hero-plan-item.is-placeholder .task-center-hero-plan-item-target {
+	color: rgba(15, 23, 42, 0.45);
 }
 
 .task-center-hero-banner-fallback {

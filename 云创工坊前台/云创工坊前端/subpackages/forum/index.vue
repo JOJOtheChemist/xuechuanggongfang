@@ -20,6 +20,14 @@
         <text class="state-text">加载中...</text>
       </view>
 
+      <view v-else-if="loadErrorMessage" class="state-card">
+        <text class="state-title">加载失败</text>
+        <text class="state-text">{{ loadErrorMessage }}</text>
+        <view class="state-action" @tap="refreshList">
+          <text class="state-action-text">重新加载</text>
+        </view>
+      </view>
+
       <view v-else-if="posts.length === 0" class="state-card">
         <text class="state-title">暂无动态</text>
         <text class="state-text">发布第一条校园动态，和同学一起交流吧</text>
@@ -59,7 +67,17 @@
     </scroll-view>
 
     <view class="fab-btn" @tap="goPublish">
-      <image class="fab-image" :src="publishButtonImageUrl" mode="aspectFit" />
+      <image
+        v-if="resolvedPublishButtonImageUrl"
+        class="fab-image"
+        :src="resolvedPublishButtonImageUrl"
+        mode="aspectFit"
+        @error="handlePublishButtonImageError"
+      />
+      <view v-else class="fab-fallback">
+        <text class="fab-fallback-icon">+</text>
+        <text class="fab-fallback-text">发布动态</text>
+      </view>
     </view>
 
     <forum-school-popup
@@ -85,6 +103,14 @@
       </template>
     </admin-password-dialog>
 
+    <forum-publish-profile-dialog
+      :visible="showPublishProfileDialog"
+      :loading="savingPublishProfile"
+      :initial-value="publishProfileForm"
+      @close="closePublishProfileDialog"
+      @confirm="handlePublishProfileConfirm"
+    />
+
     <bottom-nav active="forum" />
   </view>
 </template>
@@ -92,8 +118,14 @@
 <script>
 import { getHttpService } from '@/utils/http-services'
 import { getCachedImageSync, resolveCachedImage } from '@/utils/remote-image-cache'
+import {
+  getForumPublishProfileStateFromCache,
+  saveForumPublishProfile,
+  syncForumPublishProfileState
+} from '@/utils/forum-publish-profile'
 import ForumHeader from './components/ForumHeader.vue'
 import ForumPostCard from './components/ForumPostCard.vue'
+import ForumPublishProfileDialog from './components/ForumPublishProfileDialog.vue'
 import ForumSchoolPopup from './components/ForumSchoolPopup.vue'
 import AdminPasswordDialog from '@/components/common/AdminPasswordDialog.vue'
 import { verifyAdminPassword } from '@/common/admin-auth'
@@ -121,6 +153,7 @@ export default {
   components: {
     ForumHeader,
     ForumPostCard,
+    ForumPublishProfileDialog,
     ForumSchoolPopup,
     AdminPasswordDialog
   },
@@ -128,17 +161,27 @@ export default {
     return {
       activeTab: 'local',
       heroImageUrl: getCachedImageSync(FORUM_HERO_IMAGE_URL),
-      publishButtonImageUrl: PUBLISH_BUTTON_IMAGE_URL,
+      publishButtonImageUrl: getCachedImageSync(PUBLISH_BUTTON_IMAGE_URL),
+      publishButtonImageLoadFailed: false,
       currentSchool: DEFAULT_HOME_SCHOOL,
       schoolOptions: [],
       showSchoolPopup: false,
       posts: [],
+      loadErrorMessage: '',
       page: 1,
       pageSize: 10,
       hasMore: true,
       loading: false,
       loadingMore: false,
       refreshingFromEvent: false,
+      showPublishProfileDialog: false,
+      savingPublishProfile: false,
+      pendingPublishAfterProfileSave: false,
+      publishProfileForm: {
+        school: '',
+        phone: '',
+        studentId: ''
+      },
       showDeletePostDialog: false,
       deletingPost: false,
       pendingDeletePost: null
@@ -160,6 +203,10 @@ export default {
     rightColumnPosts() {
       return this.visiblePosts.filter((item, index) => index % 2 === 1)
     },
+    resolvedPublishButtonImageUrl() {
+      if (this.publishButtonImageLoadFailed) return ''
+      return this.publishButtonImageUrl
+    },
     pendingDeletePostTitle() {
       return this.getPostDisplayTitle(this.pendingDeletePost)
     }
@@ -167,6 +214,7 @@ export default {
   onLoad() {
     this.registerEvents()
     this.syncHeroImage()
+    this.syncPublishButtonImage()
     this.refreshList()
   },
   onShow() {
@@ -198,6 +246,17 @@ export default {
         }
       } catch (error) {
         console.warn('[forum] 头图缓存失败', error)
+      }
+    },
+    async syncPublishButtonImage() {
+      try {
+        const cachedUrl = await resolveCachedImage(PUBLISH_BUTTON_IMAGE_URL)
+        if (cachedUrl) {
+          this.publishButtonImageLoadFailed = false
+          this.publishButtonImageUrl = cachedUrl
+        }
+      } catch (error) {
+        console.warn('[forum] 发布按钮图片缓存失败', error)
       }
     },
     normalizeSchoolDisplay(name) {
@@ -249,20 +308,41 @@ export default {
       })
     },
     async refreshList() {
+      const previousPage = this.page
+      const previousHasMore = this.hasMore
       this.page = 1
       this.hasMore = true
       this.loading = true
-      await this.fetchPosts(true)
-      this.loading = false
+      try {
+        const succeeded = await this.fetchPosts(true)
+        if (!succeeded) {
+          this.page = previousPage
+          this.hasMore = previousHasMore
+        }
+        return succeeded
+      } finally {
+        this.loading = false
+      }
     },
     async handleReachBottom() {
       if (!this.hasMore || this.loadingMore || this.loading) return
-      this.page += 1
+      const nextPage = this.page + 1
+      this.page = nextPage
       this.loadingMore = true
-      await this.fetchPosts(false)
-      this.loadingMore = false
+      try {
+        const succeeded = await this.fetchPosts(false)
+        if (!succeeded) {
+          this.page = Math.max(1, nextPage - 1)
+        }
+      } finally {
+        this.loadingMore = false
+      }
     },
     async fetchPosts(reset) {
+      const previousPosts = Array.isArray(this.posts) ? this.posts.slice() : []
+      const previousHasMore = !!this.hasMore
+      const hadExistingPosts = previousPosts.length > 0
+
       try {
         const forumService = getHttpService('forum-service')
         const requestedSchool = this.activeTab === 'local'
@@ -339,29 +419,46 @@ export default {
 
         this.posts = reset ? nextList : this.posts.concat(nextList)
         this.hasMore = !!data.has_more
+        this.loadErrorMessage = ''
+        return true
       } catch (error) {
         console.error('[forum] fetchPosts failed:', error)
-        if (reset) {
+        if (reset && !hadExistingPosts) {
           this.posts = []
           this.hasMore = false
+          this.loadErrorMessage = error.message || '加载失败'
+        } else {
+          this.posts = previousPosts
+          this.hasMore = previousHasMore
         }
         uni.showToast({
           title: error.message || '加载失败',
           icon: 'none'
         })
+        return false
       }
     },
     async handleTabChange(tab) {
       if (this.activeTab === tab) return
+      const previousTab = this.activeTab
       this.activeTab = tab
-      await this.refreshList()
+      const succeeded = await this.refreshList()
+      if (!succeeded) {
+        this.activeTab = previousTab
+      }
     },
     async handleSchoolChange(school) {
       const targetSchool = this.normalizeSchoolDisplay(school)
       if (!targetSchool || this.currentSchool === targetSchool) return
+      const previousSchool = this.currentSchool
+      const previousTab = this.activeTab
       this.currentSchool = targetSchool
       this.activeTab = 'local'
-      await this.refreshList()
+      const succeeded = await this.refreshList()
+      if (!succeeded) {
+        this.currentSchool = previousSchool
+        this.activeTab = previousTab
+      }
     },
     async handleSchoolSelect(school) {
       this.showSchoolPopup = false
@@ -372,6 +469,9 @@ export default {
     },
     closeSchoolPopup() {
       this.showSchoolPopup = false
+    },
+    handlePublishButtonImageError() {
+      this.publishButtonImageLoadFailed = true
     },
     async handleAddSchool(payload = {}) {
       const schoolName = String(payload.name || '').trim()
@@ -556,6 +656,8 @@ export default {
       })
     },
     goPublish() {
+      if (this.savingPublishProfile) return
+
       const token = this.getToken()
       if (!token) {
         uni.showModal({
@@ -573,6 +675,67 @@ export default {
         return
       }
 
+      this.ensurePublishProfileReady()
+    },
+    async ensurePublishProfileReady() {
+      const cachedState = getForumPublishProfileStateFromCache()
+      if (cachedState.complete) {
+        this.openPublishEntry()
+        return
+      }
+
+      const latestState = await syncForumPublishProfileState()
+      if (latestState.complete) {
+        this.openPublishEntry()
+        return
+      }
+
+      this.pendingPublishAfterProfileSave = true
+      this.openPublishProfileDialog(latestState.profile)
+    },
+    openPublishProfileDialog(profile = {}) {
+      this.publishProfileForm = {
+        school: String(profile.school || this.currentSchool || '').trim(),
+        phone: String(profile.phone || '').trim(),
+        studentId: String(profile.studentId || '').trim()
+      }
+      this.showPublishProfileDialog = true
+    },
+    closePublishProfileDialog() {
+      if (this.savingPublishProfile) return
+      this.showPublishProfileDialog = false
+      this.pendingPublishAfterProfileSave = false
+    },
+    async handlePublishProfileConfirm(payload) {
+      if (this.savingPublishProfile) return
+
+      this.savingPublishProfile = true
+      try {
+        const result = await saveForumPublishProfile(payload)
+        this.publishProfileForm = Object.assign({}, result.profile)
+        this.currentSchool = this.normalizeSchoolDisplay(result.profile.school || this.currentSchool || DEFAULT_HOME_SCHOOL)
+        this.schoolOptions = buildForumSchoolOptions(this.schoolOptions, this.currentSchool)
+        this.showPublishProfileDialog = false
+        uni.showToast({
+          title: '信息已保存',
+          icon: 'success'
+        })
+
+        if (this.pendingPublishAfterProfileSave) {
+          this.pendingPublishAfterProfileSave = false
+          this.navigateToPublish()
+        }
+      } catch (error) {
+        console.error('[forum] save publish profile failed:', error)
+        uni.showToast({
+          title: error.message || '保存失败',
+          icon: 'none'
+        })
+      } finally {
+        this.savingPublishProfile = false
+      }
+    },
+    openPublishEntry() {
       uni.showActionSheet({
         itemList: ['快速发布动态'],
         success: (res) => {
@@ -592,15 +755,17 @@ export default {
 
 <style scoped>
 .forum-page {
-  min-height: 100vh;
+  height: 100vh;
   background: #f8fafc;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .post-scroll {
   flex: 1;
   height: 0;
+  overflow: hidden;
 }
 
 .forum-hero-image {
@@ -643,6 +808,24 @@ export default {
   font-size: 25rpx;
   color: #64748b;
   display: block;
+}
+
+.state-action {
+  margin-top: 24rpx;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 180rpx;
+  height: 68rpx;
+  padding: 0 28rpx;
+  border-radius: 999rpx;
+  background: linear-gradient(135deg, #16a34a, #0f766e);
+}
+
+.state-action-text {
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #ffffff;
 }
 
 .feed-shell {
@@ -688,6 +871,31 @@ export default {
 .fab-image {
   width: 100%;
   height: 100%;
+}
+
+.fab-fallback {
+  width: 100%;
+  height: 100%;
+  border-radius: 999rpx;
+  background: linear-gradient(135deg, #16a34a, #0f766e);
+  box-shadow: 0 16rpx 40rpx rgba(13, 148, 136, 0.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  column-gap: 10rpx;
+}
+
+.fab-fallback-icon {
+  font-size: 42rpx;
+  line-height: 1;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.fab-fallback-text {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #ffffff;
 }
 
 .bottom-space {

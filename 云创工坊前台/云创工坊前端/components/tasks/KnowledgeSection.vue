@@ -10,7 +10,7 @@
 			<!-- 销售话术 -->
 			<view class="grid-item" @tap="goList('cat_kb_001', '销售话术')">
 				<view class="grid-img bg-blue">
-					<image class="grid-icon" src="/static/icons/stats-orders.svg" mode="aspectFit" />
+					<image class="grid-icon" :src="statsOrdersIconUrl" mode="aspectFit" />
 				</view>
 				<view class="grid-text">
 					<text class="grid-title">销售话术</text>
@@ -20,7 +20,7 @@
 			<!-- 市场分析报告 -->
 			<view class="grid-item" @tap="goList('cat_kb_002', '市场分析报告')">
 				<view class="grid-img bg-purple">
-					<image class="grid-icon" src="/static/tabbar/nav-startup-normal.png" mode="aspectFit" />
+					<image class="grid-icon" :src="startupIconUrl" mode="aspectFit" />
 				</view>
 				<view class="grid-text">
 					<text class="grid-title">市场分析报告</text>
@@ -30,7 +30,7 @@
 			<!-- 成功案例 -->
 			<view class="grid-item" @tap="goList('cat_kb_003', '成功案例')">
 				<view class="grid-img bg-orange">
-					<image class="grid-icon" src="/static/icons/hot-activity.svg" mode="aspectFit" />
+					<image class="grid-icon" :src="hotActivityIconUrl" mode="aspectFit" />
 				</view>
 				<view class="grid-text">
 					<text class="grid-title">成功案例</text>
@@ -40,7 +40,7 @@
 			<!-- 培训资料 -->
 			<view class="grid-item" @tap="goList('cat_kb_004', '培训资料')">
 				<view class="grid-img bg-green">
-					<image class="grid-icon" src="/static/icons/hot-learning.svg" mode="aspectFit" />
+					<image class="grid-icon" :src="hotLearningIconUrl" mode="aspectFit" />
 				</view>
 				<view class="grid-text">
 					<text class="grid-title">培训资料</text>
@@ -52,8 +52,23 @@
 </template>
 
 <script>
+import {
+	HOT_ACTIVITY_ICON_URL,
+	HOT_LEARNING_ICON_URL,
+	STATS_ORDERS_ICON_URL,
+	TABBAR_ICON_URLS
+} from '@/utils/cloud-static-assets'
+
 export default {
 	name: 'KnowledgeSection',
+	data() {
+		return {
+			statsOrdersIconUrl: STATS_ORDERS_ICON_URL,
+			startupIconUrl: TABBAR_ICON_URLS.tasks,
+			hotActivityIconUrl: HOT_ACTIVITY_ICON_URL,
+			hotLearningIconUrl: HOT_LEARNING_ICON_URL
+		}
+	},
 	methods: {
 		goList(categoryId, title) {
 			uni.navigateTo({

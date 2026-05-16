@@ -84,7 +84,7 @@ async function updateProfile(uid, profile) {
         })
 
         // profile 字段
-        const profileFields = ['real_name', 'phone', 'nation', 'work_duration', 'school', 'enrollment_year', 'is_student']
+        const profileFields = ['real_name', 'phone', 'nation', 'work_duration', 'school', 'enrollment_year', 'is_student', 'student_id']
         const profileUpdate = {}
         let hasProfileUpdate = false
 

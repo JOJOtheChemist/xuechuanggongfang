@@ -1,12 +1,21 @@
 <template>
-	<view class="composer-shell">
+	<view class="composer-shell" :class="shellClassName">
+		<image
+			v-if="resolvedBackgroundImageUrl"
+			class="composer-background-image"
+			:src="resolvedBackgroundImageUrl"
+			mode="widthFix"
+			@error="handleBackgroundImageError"
+		/>
+		<view class="composer-content" :class="contentClassName">
 		<textarea
 			class="composer-input"
+			:class="inputClassName"
 			:value="value"
 			:disabled="inputDisabled"
 			:maxlength="500"
 			:placeholder="placeholder"
-			placeholder-style="font-size: 30rpx; color: rgba(22, 63, 53, 0.45);"
+			:placeholder-style="resolvedPlaceholderStyle"
 			confirm-type="send"
 			auto-height
 			cursor-spacing="28"
@@ -16,8 +25,13 @@
 			@compositionstart="handleCompositionStart"
 			@compositionend="handleCompositionEnd"
 		></textarea>
-		<view class="composer-send" :class="{ 'composer-send-disabled': inputDisabled || !trimmedValue }" @tap="emitSubmit">
-			<text class="composer-send-text">{{ loading ? '...' : sendIcon }}</text>
+		<view
+			class="composer-send"
+			:class="[{ 'composer-send-disabled': inputDisabled || !trimmedValue }, sendClassName]"
+			@tap="emitSubmit"
+		>
+			<text class="composer-send-text">{{ sendButtonText }}</text>
+		</view>
 		</view>
 	</view>
 </template>
@@ -45,12 +59,25 @@ export default {
 		disabled: {
 			type: Boolean,
 			default: false
+		},
+		displayMode: {
+			type: String,
+			default: 'default'
+		},
+		backgroundImageUrl: {
+			type: String,
+			default: ''
+		},
+		sendButtonImageUrl: {
+			type: String,
+			default: ''
 		}
 	},
 	data() {
 		return {
 			isComposing: false,
-			lastCompositionEndAt: 0
+			lastCompositionEndAt: 0,
+			backgroundImageLoadFailed: false
 		}
 	},
 	computed: {
@@ -59,6 +86,55 @@ export default {
 		},
 		inputDisabled() {
 			return !!(this.disabled || this.loading)
+		},
+		isGaokaoMode() {
+			return this.displayMode === 'gaokao'
+		},
+		shellClassName() {
+			if (!this.isGaokaoMode) return ''
+			return {
+				'composer-shell-gaokao': true,
+				'composer-shell-gaokao-fallback': !this.resolvedBackgroundImageUrl
+			}
+		},
+		contentClassName() {
+			return this.isGaokaoMode && !this.resolvedBackgroundImageUrl
+				? 'composer-content-gaokao-fallback'
+				: ''
+		},
+		inputClassName() {
+			if (!this.isGaokaoMode) return ''
+			return {
+				'composer-input-gaokao': true,
+				'composer-input-gaokao-fallback': !this.resolvedBackgroundImageUrl
+			}
+		},
+		sendClassName() {
+			if (!this.isGaokaoMode) {
+				return ''
+			}
+			return {
+				'composer-send-gaokao': true,
+				'composer-send-gaokao-fallback': !this.resolvedBackgroundImageUrl
+			}
+		},
+		resolvedBackgroundImageUrl() {
+			if (this.backgroundImageLoadFailed) return ''
+			return this.backgroundImageUrl
+		},
+		resolvedPlaceholderStyle() {
+			if (this.isGaokaoMode) {
+				return 'font-size: 30rpx; color: rgba(120, 136, 168, 0.84);'
+			}
+			return 'font-size: 30rpx; color: rgba(22, 63, 53, 0.45);'
+		},
+		sendButtonText() {
+			return this.loading ? '发送中' : '发送'
+		}
+	},
+	watch: {
+		backgroundImageUrl() {
+			this.backgroundImageLoadFailed = false
 		}
 	},
 	methods: {
@@ -106,6 +182,9 @@ export default {
 			}
 			this.emitSubmit()
 		},
+		handleBackgroundImageError() {
+			this.backgroundImageLoadFailed = true
+		},
 		emitSubmit() {
 			if (this.inputDisabled || !this.trimmedValue) {
 				return
@@ -118,23 +197,75 @@ export default {
 
 <style scoped>
 .composer-shell {
+	position: relative;
+	display: flex;
+	align-items: stretch;
+	min-height: 104rpx;
+	box-sizing: border-box;
+	border-radius: 36rpx;
+	background: rgba(255, 255, 255, 0.9);
+	border: 1rpx solid rgba(166, 183, 227, 0.35);
+	box-shadow: 0 20rpx 40rpx rgba(76, 101, 161, 0.14);
+	backdrop-filter: blur(18px);
+	overflow: hidden;
+}
+
+.composer-shell-gaokao {
+	display: block;
+	min-height: 176rpx;
+	padding: 0;
+	border-radius: 0;
+	background: transparent;
+	border: none;
+	box-shadow: none;
+	backdrop-filter: none;
+}
+
+.composer-shell-gaokao-fallback {
+	min-height: 104rpx;
+	margin: 0 24rpx calc(24rpx + env(safe-area-inset-bottom, 0px));
+	border-radius: 36rpx;
+	background: rgba(255, 255, 255, 0.96);
+	border: 1rpx solid rgba(166, 183, 227, 0.45);
+	box-shadow: 0 20rpx 40rpx rgba(76, 101, 161, 0.14);
+	backdrop-filter: blur(18px);
+}
+
+.composer-background-image {
+	display: block;
+	width: 100%;
+}
+
+.composer-content {
 	display: flex;
 	align-items: flex-end;
 	gap: 18rpx;
+	width: 100%;
 	min-height: 104rpx;
 	padding: 14rpx 14rpx 14rpx 28rpx;
 	box-sizing: border-box;
-	border-radius: 36rpx;
-	background: #fffdf6;
-	border: 1rpx solid rgba(31, 122, 103, 0.14);
-	box-shadow: 0 18rpx 36rpx rgba(22, 63, 53, 0.12);
+}
+
+.composer-shell-gaokao .composer-content {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 0;
+	padding: 28rpx 28rpx 60rpx 54rpx;
+	min-height: 126rpx;
+}
+
+.composer-content-gaokao-fallback {
+	position: relative !important;
+	padding: 14rpx 14rpx 14rpx 28rpx !important;
+	min-height: 104rpx !important;
 }
 
 .composer-input {
 	flex: 1;
 	font-size: 30rpx;
 	line-height: 1.5;
-	color: #163f35;
+	color: #24365f;
 	background: transparent;
 	border: none;
 	outline: none;
@@ -142,19 +273,50 @@ export default {
 	min-width: 0;
 }
 
+.composer-input-gaokao {
+	padding-top: 10rpx;
+	font-size: 30rpx;
+	line-height: 1.5;
+	color: #3e537f;
+}
+
+.composer-input-gaokao-fallback {
+	padding-top: 0;
+	color: #24365f;
+}
+
 .composer-input[disabled] {
-	color: rgba(22, 63, 53, 0.42);
+	color: rgba(36, 54, 95, 0.42);
 }
 
 .composer-send {
-	width: 72rpx;
+	min-width: 112rpx;
 	height: 72rpx;
-	border-radius: 999rpx;
+	padding: 0 28rpx;
+	box-sizing: border-box;
+	border-radius: 24rpx;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: #ffd700;
-	box-shadow: 0 18rpx 30rpx rgba(255, 215, 0, 0.24);
+	background: linear-gradient(135deg, #5a8bff, #7aa2ff);
+	box-shadow: 0 18rpx 30rpx rgba(90, 139, 255, 0.24);
+	flex-shrink: 0;
+}
+
+.composer-send-gaokao {
+	min-width: 128rpx;
+	height: 62rpx;
+	padding: 0 28rpx;
+	border-radius: 20rpx;
+	background: linear-gradient(135deg, #3f74ff, #68a0ff);
+	box-shadow: 0 16rpx 28rpx rgba(63, 116, 255, 0.26);
+}
+
+.composer-send-gaokao-fallback {
+	height: 72rpx;
+	border-radius: 24rpx;
+	background: linear-gradient(135deg, #5a8bff, #7aa2ff);
+	box-shadow: 0 18rpx 30rpx rgba(90, 139, 255, 0.24);
 }
 
 .composer-send-disabled {
@@ -163,9 +325,10 @@ export default {
 }
 
 .composer-send-text {
-	font-size: 34rpx;
+	font-size: 28rpx;
 	font-weight: 800;
-	color: #050505;
+	color: #ffffff;
 	line-height: 1;
+	letter-spacing: 2rpx;
 }
 </style>

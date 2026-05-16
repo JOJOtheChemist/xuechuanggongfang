@@ -1,11 +1,19 @@
 <template>
-	<view class="guide-hero" @tap="handleTap">
-		<image class="guide-hero-image" :src="resolvedSrc" mode="widthFix" />
+	<view class="guide-hero">
+		<image class="guide-hero-image" :src="resolvedSrc" mode="widthFix" @tap="handleTap" />
+		<view
+			v-if="resolvedButtonSrc"
+			class="guide-hero-floating-button"
+			@tap.stop="handleTap"
+		>
+			<image class="guide-hero-button-image" :src="resolvedButtonSrc" mode="widthFix" />
+		</view>
 	</view>
 </template>
 
 <script>
 import { getCachedImageSync, resolveCachedImage } from '@/utils/remote-image-cache'
+import { getStaticAssetUrl } from '@/utils/cloud-static-assets'
 
 export default {
 	name: 'GuideHeroImage',
@@ -13,11 +21,16 @@ export default {
 		src: {
 			type: String,
 			default: ''
+		},
+		buttonSrc: {
+			type: String,
+			default: ''
 		}
 	},
 	data() {
 		return {
-			resolvedSrc: this.src || ''
+			resolvedSrc: this.src || '',
+			resolvedButtonSrc: ''
 		}
 	},
 	watch: {
@@ -26,6 +39,12 @@ export default {
 			handler(value) {
 				this.resolvedSrc = getCachedImageSync(value || '') || value || ''
 				this.syncImage(value)
+			}
+		},
+		buttonSrc: {
+			immediate: true,
+			handler(value) {
+				this.resolvedButtonSrc = getStaticAssetUrl(value || '')
 			}
 		}
 	},
@@ -52,10 +71,37 @@ export default {
 <style scoped>
 .guide-hero {
 	width: 100%;
+	position: relative;
 }
 
 .guide-hero-image {
 	width: 100%;
 	display: block;
+}
+
+.guide-hero-floating-button {
+	position: absolute;
+	left: calc(50% - 180rpx);
+	bottom: 82rpx;
+	transform: translateX(-50%);
+	width: 300rpx;
+	transform-origin: center;
+	animation: guideHeroPulse 3.2s ease-in-out infinite;
+}
+
+.guide-hero-button-image {
+	width: 100%;
+	display: block;
+}
+
+@keyframes guideHeroPulse {
+	0%,
+	100% {
+		transform: translateX(-50%) scale(1);
+	}
+
+	50% {
+		transform: translateX(-50%) scale(1.08);
+	}
 }
 </style>

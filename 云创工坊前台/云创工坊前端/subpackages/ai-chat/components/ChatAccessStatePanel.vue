@@ -1,5 +1,5 @@
 <template>
-	<view v-if="shouldShow" class="prompt-wrap">
+	<view v-if="shouldShow" class="prompt-wrap" :class="wrapClassName">
 		<ChatLoginPromptCard
 			v-if="promptType === 'login'"
 			:assistant-name="assistantName"
@@ -34,11 +34,20 @@ export default {
 		remaining: {
 			type: [Number, String],
 			default: 0
+		},
+		displayMode: {
+			type: String,
+			default: 'default'
 		}
 	},
 	computed: {
 		shouldShow() {
 			return this.promptType === 'login' || this.promptType === 'power'
+		},
+		wrapClassName() {
+			return this.displayMode === 'xiaochunlu' || this.displayMode === 'gaokao'
+				? 'prompt-wrap-xiaochunlu'
+				: ''
 		}
 	}
 }
@@ -46,7 +55,12 @@ export default {
 
 <style scoped>
 .prompt-wrap {
+	padding: 0 24rpx;
 	border-radius: 28rpx;
 	overflow: hidden;
+}
+
+.prompt-wrap-xiaochunlu {
+	margin-top: -6rpx;
 }
 </style>

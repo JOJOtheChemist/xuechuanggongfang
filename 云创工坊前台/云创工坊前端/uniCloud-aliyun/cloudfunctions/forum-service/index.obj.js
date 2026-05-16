@@ -19,6 +19,7 @@ const WECHAT_TOKEN_ENDPOINT = '/cgi-bin/token'
 const WECHAT_TEXT_CHECK_ENDPOINT = '/wxa/msg_sec_check'
 const CONTENT_SECURITY_VIOLATION_MESSAGE = '内容含违规信息'
 const CONTENT_SECURITY_SERVICE_UNAVAILABLE_MESSAGE = '内容审核服务暂不可用，请稍后重试'
+const PUBLISH_PROFILE_REQUIRED_MESSAGE = '首次发布前请先完善学校、手机号、学号'
 const DEFAULT_WECHAT_APP_ID = 'wxd7918f6ffc6e4234'
 const DEFAULT_WECHAT_APP_SECRET = '607588d26e9df050892c321579063f8e'
 const TOKEN_CACHE_BUFFER_SECONDS = 120
@@ -42,6 +43,14 @@ let cachedWechatAccessTokenExpireAt = 0
 
 function toSafeText(value) {
   return String(value || '').trim()
+}
+
+function normalizePhone(value) {
+  return toSafeText(value).replace(/\s+/g, '')
+}
+
+function normalizeStudentId(value) {
+  return toSafeText(value).replace(/\s+/g, '')
 }
 
 class ContentSecurityError extends Error {}
@@ -299,6 +308,10 @@ function normalizeTitle(title, content) {
   return fallbackTitleFromContent(content) || '未命名动态'
 }
 
+function isValidChineseMobile(value) {
+  return /^1\d{10}$/.test(normalizePhone(value))
+}
+
 function buildDefaultAvatar(seed) {
   const safeSeed = encodeURIComponent(seed || 'campus-user')
   return `https://api.dicebear.com/7.x/thumbs/svg?seed=${safeSeed}`
@@ -362,13 +375,15 @@ async function getUserSnapshot(uid) {
     return {
       user_name: 'Campus User',
       user_avatar: buildDefaultAvatar('campus-user'),
-      school: ''
+      school: '',
+      mobile: '',
+      student_id: ''
     }
   }
 
   const userRes = await db.collection(COLLECTION_USERS)
     .doc(uid)
-    .field({ nickname: true, avatar: true, profile: true })
+    .field({ nickname: true, avatar: true, mobile: true, profile: true })
     .get()
 
   const user = (userRes && userRes.data && userRes.data[0]) || {}
@@ -377,8 +392,36 @@ async function getUserSnapshot(uid) {
   return {
     user_name: toSafeText(user.nickname) || `User-${String(uid).slice(-6)}`,
     user_avatar: toSafeText(user.avatar) || buildDefaultAvatar(uid),
-    school: normalizeSchoolName(profile.school)
+    school: normalizeSchoolName(profile.school),
+    mobile: normalizePhone(user.mobile || profile.phone),
+    student_id: normalizeStudentId(profile.student_id || profile.studentId)
   }
+}
+
+function buildPublishProfileRequiredError(userProfile = {}) {
+  const missingFields = []
+  const school = normalizeSchoolName(userProfile.school)
+  const mobile = normalizePhone(userProfile.mobile)
+  const studentId = normalizeStudentId(userProfile.student_id)
+
+  if (!school) {
+    missingFields.push('school')
+  }
+  if (!mobile || !isValidChineseMobile(mobile)) {
+    missingFields.push('mobile')
+  }
+  if (!studentId) {
+    missingFields.push('student_id')
+  }
+
+  if (missingFields.length === 0) return null
+
+  const error = new Error(PUBLISH_PROFILE_REQUIRED_MESSAGE)
+  error.code = 'PUBLISH_PROFILE_REQUIRED'
+  error.data = {
+    missing_fields: missingFields
+  }
+  return error
 }
 
 async function getSchoolOptions(limit = 200) {
@@ -742,6 +785,10 @@ module.exports = {
       await ensureTextSafe(auditText)
 
       const userProfile = await getUserSnapshot(user.uid)
+      const publishProfileError = buildPublishProfileRequiredError(userProfile)
+      if (publishProfileError) {
+        throw publishProfileError
+      }
       const targetSchool = normalizeSchoolName(school) || userProfile.school || DEFAULT_HOME_SCHOOL
       const now = Date.now()
 
@@ -771,6 +818,13 @@ module.exports = {
       }
     } catch (error) {
       console.error('[forum-service][createPost] failed:', error)
+      if (error && error.code === 'PUBLISH_PROFILE_REQUIRED') {
+        return {
+          code: -2,
+          message: error.message || PUBLISH_PROFILE_REQUIRED_MESSAGE,
+          data: error.data || null
+        }
+      }
       return {
         code: -1,
         message: toClientErrorMessage(error, 'failed'),

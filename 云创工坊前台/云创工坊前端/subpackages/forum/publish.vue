@@ -51,18 +51,33 @@
       :message="safetyNoticeMessage"
       @close="closeSafetyNotice"
     />
+
+    <forum-publish-profile-dialog
+      :visible="showPublishProfileDialog"
+      :loading="savingPublishProfile"
+      :initial-value="publishProfileForm"
+      @close="closePublishProfileDialog"
+      @confirm="handlePublishProfileConfirm"
+    />
   </view>
 </template>
 
 <script>
 import { getHttpService } from '@/utils/http-services'
 import ForumContentSafetyNotice from './components/ForumContentSafetyNotice.vue'
+import ForumPublishProfileDialog from './components/ForumPublishProfileDialog.vue'
 import {
   CONTENT_SECURITY_SERVICE_UNAVAILABLE_MESSAGE,
   extractRequestErrorMessage,
   isContentSecurityViolation,
   normalizeContentSafetyMessage
 } from '@/utils/contentSafety.js'
+import {
+  getForumPublishProfileStateFromCache,
+  isForumPublishProfileRequiredMessage,
+  saveForumPublishProfile,
+  syncForumPublishProfileState
+} from '@/utils/forum-publish-profile'
 
 const DEFAULT_FORUM_SCHOOL = '云南大学'
 
@@ -82,7 +97,8 @@ function buildSchoolOptions(rawOptions = [], currentSchool = '') {
 
 export default {
   components: {
-    ForumContentSafetyNotice
+    ForumContentSafetyNotice,
+    ForumPublishProfileDialog
   },
   data() {
     return {
@@ -94,7 +110,14 @@ export default {
       submitting: false,
       uploading: false,
       safetyNoticeVisible: false,
-      safetyNoticeMessage: ''
+      safetyNoticeMessage: '',
+      showPublishProfileDialog: false,
+      savingPublishProfile: false,
+      publishProfileForm: {
+        school: '',
+        phone: '',
+        studentId: ''
+      }
     }
   },
   computed: {
@@ -120,6 +143,7 @@ export default {
   onLoad() {
     this.ensureLoginOnEntry()
     this.loadSchoolOptions()
+    this.ensurePublishProfileAccess()
   },
   methods: {
     getToken() {
@@ -139,6 +163,8 @@ export default {
       const token = this.getToken()
       if (!token) return
 
+      const cachedProfile = getForumPublishProfileStateFromCache().profile || {}
+
       try {
         const forumService = getHttpService('forum-service')
         const res = await forumService.getSchoolList({ _token: token })
@@ -149,17 +175,82 @@ export default {
         const data = res.data || {}
         const options = buildSchoolOptions(
           Array.isArray(data.school_options) ? data.school_options : [],
-          data.current_school || ''
+          cachedProfile.school || data.current_school || ''
         )
-        const currentSchool = data.current_school || ''
+        const currentSchool = cachedProfile.school || data.current_school || ''
 
         this.schoolOptions = options
         this.selectedSchool = currentSchool || options[0] || DEFAULT_FORUM_SCHOOL
       } catch (error) {
         console.error('[forum][publish] loadSchoolOptions failed:', error)
-        this.schoolOptions = buildSchoolOptions()
+        this.schoolOptions = buildSchoolOptions([], cachedProfile.school || '')
         this.selectedSchool = this.schoolOptions[0] || DEFAULT_FORUM_SCHOOL
         uni.showToast({ title: error.message || '加载学校失败', icon: 'none' })
+      }
+    },
+    async ensurePublishProfileAccess(options = {}) {
+      const cachedState = getForumPublishProfileStateFromCache()
+      if (cachedState.complete) {
+        this.applyProfileSchool(cachedState.profile.school)
+        return true
+      }
+
+      const latestState = await syncForumPublishProfileState()
+      if (latestState.complete) {
+        this.applyProfileSchool(latestState.profile.school)
+        return true
+      }
+
+      if (!options.silent) {
+        this.openPublishProfileDialog(latestState.profile)
+      }
+      return false
+    },
+    applyProfileSchool(school) {
+      const safeSchool = String(school || '').trim()
+      if (!safeSchool) return
+
+      this.schoolOptions = buildSchoolOptions(this.schoolOptions, safeSchool)
+      if (!String(this.selectedSchool || '').trim()) {
+        this.selectedSchool = safeSchool
+      } else if (!this.schoolOptions.includes(this.selectedSchool)) {
+        this.selectedSchool = safeSchool
+      }
+    },
+    openPublishProfileDialog(profile = {}) {
+      this.publishProfileForm = {
+        school: String(profile.school || this.selectedSchool || '').trim(),
+        phone: String(profile.phone || '').trim(),
+        studentId: String(profile.studentId || '').trim()
+      }
+      this.showPublishProfileDialog = true
+    },
+    closePublishProfileDialog() {
+      if (this.savingPublishProfile) return
+      this.showPublishProfileDialog = false
+    },
+    async handlePublishProfileConfirm(payload) {
+      if (this.savingPublishProfile) return
+
+      this.savingPublishProfile = true
+      try {
+        const result = await saveForumPublishProfile(payload)
+        this.publishProfileForm = Object.assign({}, result.profile)
+        this.applyProfileSchool(result.profile.school)
+        this.selectedSchool = result.profile.school || this.selectedSchool
+        this.showPublishProfileDialog = false
+        uni.showToast({
+          title: '信息已保存',
+          icon: 'success'
+        })
+      } catch (error) {
+        console.error('[forum][publish] save publish profile failed:', error)
+        uni.showToast({
+          title: error.message || '保存失败',
+          icon: 'none'
+        })
+      } finally {
+        this.savingPublishProfile = false
       }
     },
     handleSchoolChange(event) {
@@ -364,11 +455,16 @@ export default {
       })
     },
     async submitPost() {
-      if (this.submitting || this.uploading) return
+      if (this.submitting || this.uploading || this.savingPublishProfile) return
 
       const token = this.getToken()
       if (!token) {
         this.ensureLoginOnEntry()
+        return
+      }
+
+      const hasPublishProfile = await this.ensurePublishProfileAccess()
+      if (!hasPublishProfile) {
         return
       }
 
@@ -395,7 +491,12 @@ export default {
         })
 
         if (!res || res.code !== 0 || !res.data || !res.data.id) {
-          throw new Error(normalizeContentSafetyMessage((res && res.message) || '发布失败', '发布失败'))
+          const message = normalizeContentSafetyMessage((res && res.message) || '发布失败', '发布失败')
+          if (isForumPublishProfileRequiredMessage(message)) {
+            await this.ensurePublishProfileAccess({ silent: false })
+            return
+          }
+          throw new Error(message)
         }
 
         uni.$emit('forum-post-created', { id: res.data.id })
@@ -411,6 +512,10 @@ export default {
         const message = extractRequestErrorMessage(error, '发布失败', {
           assumeContentViolationOn400: true
         })
+        if (isForumPublishProfileRequiredMessage(message)) {
+          await this.ensurePublishProfileAccess({ silent: false })
+          return
+        }
         this.showFailureMessage(message, '发布失败')
       } finally {
         this.submitting = false

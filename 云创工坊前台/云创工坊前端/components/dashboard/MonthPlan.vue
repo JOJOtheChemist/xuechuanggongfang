@@ -1,5 +1,5 @@
 <template>
-	<view class="plan-todo-card">
+	<view class="plan-todo-card" @tap="goToGoalSetting">
 		<!-- 1. 头部标题 -->
 		<view class="card-header">
 			<view class="header-title">
@@ -17,7 +17,7 @@
 				:key="index"
 				class="todo-item"
 				:class="{ checked: item.completed }"
-				@click="toggleTodo(index)"
+				@tap.stop="goToGoalSetting"
 			>
 				<!-- 左侧：业务图标圆底 -->
 				<view class="item-icon-box" :class="item.themeClass">
@@ -247,6 +247,11 @@ import { getHttpService } from '@/utils/http-services'
 				} catch (e) {
 					console.error('[MonthPlan] 获取目标失败:', e)
 				}
+			},
+			goToGoalSetting() {
+				uni.navigateTo({
+					url: '/pages/extra/goal-setting'
+				})
 			},
 			toggleTodo(index) {
 				// Optional: View details or interact? For now, read-only status toggle is weird if driven by real data.

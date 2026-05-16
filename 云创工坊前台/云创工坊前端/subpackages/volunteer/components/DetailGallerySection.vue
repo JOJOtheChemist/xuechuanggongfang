@@ -13,7 +13,7 @@
           v-for="(image, index) in validImages"
           :key="image.renderKey"
           class="gallery-image"
-          :src="image.publicUrl"
+          :src="image.displayUrl || image.publicUrl"
           mode="aspectFill"
           @tap="previewImage(index)"
         />
@@ -46,7 +46,7 @@ export default {
   },
   methods: {
     previewImage(index) {
-      const urls = this.validImages.map((item) => item.publicUrl)
+      const urls = this.validImages.map((item) => item.displayUrl || item.publicUrl)
       if (!urls.length) return
 
       uni.previewImage({

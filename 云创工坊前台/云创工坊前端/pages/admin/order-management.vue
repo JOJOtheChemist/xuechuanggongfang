@@ -44,7 +44,7 @@ import { getHttpService } from '@/utils/http-services'
 			return {
 				list: [],
 				loading: true,
-				defaultAvatar: '/static/icons/default-avatar.svg'
+				defaultAvatar: 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png'
 			}
 		},
 		onLoad() {

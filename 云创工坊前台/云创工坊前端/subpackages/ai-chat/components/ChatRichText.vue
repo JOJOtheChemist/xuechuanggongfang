@@ -40,8 +40,15 @@
 <script>
 function stripHiddenCourseCardMeta(value = '') {
 	return String(value || '')
+		.replace(/<business_card_meta>[\s\S]*?<\/business_card_meta>/gi, '')
+		.replace(/<article_card_meta>[\s\S]*?<\/article_card_meta>/gi, '')
+		.replace(/<invite_card_meta>[\s\S]*?<\/invite_card_meta>/gi, '')
+		.replace(/<project_card_meta>[\s\S]*?<\/project_card_meta>/gi, '')
+		.replace(/<activity_card_meta>[\s\S]*?<\/activity_card_meta>/gi, '')
 		.replace(/<course_card_meta>[\s\S]*?<\/course_card_meta>/gi, '')
 		.replace(/<membership_card_meta>[\s\S]*?<\/membership_card_meta>/gi, '')
+		.replace(/<choice_card_meta>[\s\S]*?<\/choice_card_meta>/gi, '')
+		.replace(/<reply_json>[\s\S]*?<\/reply_json>/gi, '')
 		.trim()
 }
 

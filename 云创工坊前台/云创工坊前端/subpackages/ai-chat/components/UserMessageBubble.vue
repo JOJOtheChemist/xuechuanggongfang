@@ -1,14 +1,20 @@
 <template>
 	<view class="user-message">
 		<view class="message-content">
-			<text class="message-name">{{ name }}</text>
+			<view class="message-name">{{ name }}</view>
 			<view class="message-card">
-				<ChatRichText :text="text" tone="user" />
+				<view class="message-text">{{ text }}</view>
 			</view>
 		</view>
 
 		<view class="avatar-shell">
-			<view class="avatar-fallback">
+			<image
+				v-if="resolvedAvatarUrl"
+				class="avatar-image"
+				:src="resolvedAvatarUrl"
+				mode="aspectFill"
+			/>
+			<view v-else class="avatar-fallback">
 				<text class="avatar-fallback-text">{{ resolvedInitial }}</text>
 			</view>
 		</view>
@@ -16,17 +22,18 @@
 </template>
 
 <script>
-import ChatRichText from './ChatRichText.vue'
+import { normalizeAvatarUrl } from '@/utils/avatar.js'
 
 export default {
 	name: 'UserMessageBubble',
-	components: {
-		ChatRichText
-	},
 	props: {
 		name: {
 			type: String,
 			default: '我'
+		},
+		avatarUrl: {
+			type: String,
+			default: ''
 		},
 		text: {
 			type: String,
@@ -34,6 +41,9 @@ export default {
 		}
 	},
 	computed: {
+		resolvedAvatarUrl() {
+			return this.avatarUrl ? normalizeAvatarUrl(this.avatarUrl, '') : ''
+		},
 		resolvedInitial() {
 			return String(this.name || '我').trim().slice(0, 1).toUpperCase() || '我'
 		}
@@ -50,26 +60,44 @@ export default {
 }
 
 .message-content {
-	max-width: calc(100% - 170rpx);
+	width: calc(100% - 100rpx);
+	max-width: calc(100% - 100rpx);
+	min-width: 0;
 	display: flex;
 	flex-direction: column;
-	align-items: flex-end;
 	gap: 10rpx;
 }
 
 .message-name {
+	align-self: flex-end;
+	max-width: 100%;
 	font-size: 22rpx;
-	color: rgba(255, 255, 255, 0.92);
+	line-height: 1.4;
+	color: rgba(57, 77, 124, 0.72);
 	padding-right: 6rpx;
+	text-align: right;
+	word-break: break-all;
 }
 
 .message-card {
+	align-self: flex-end;
+	max-width: 100%;
+	box-sizing: border-box;
 	padding: 24rpx 26rpx;
 	border-radius: 30rpx;
 	border-top-right-radius: 10rpx;
-	background: linear-gradient(135deg, #1d4ed8, #2563eb);
-	border: 1rpx solid rgba(29, 78, 216, 0.86);
-	box-shadow: 0 14rpx 34rpx rgba(29, 78, 216, 0.24);
+	background: linear-gradient(135deg, #4f84ff, #729bff);
+	border: 1rpx solid rgba(79, 132, 255, 0.4);
+	box-shadow: 0 14rpx 34rpx rgba(79, 132, 255, 0.2);
+}
+
+.message-text {
+	font-size: 30rpx;
+	line-height: 1.5;
+	color: #f6fbff;
+	white-space: pre-wrap;
+	word-break: break-all;
+	text-align: left;
 }
 
 .avatar-shell {
@@ -78,9 +106,15 @@ export default {
 	border-radius: 999rpx;
 	overflow: hidden;
 	flex-shrink: 0;
-	border: 2rpx solid rgba(29, 78, 216, 0.76);
-	box-shadow: 0 0 24rpx rgba(29, 78, 216, 0.24);
+	border: 2rpx solid rgba(79, 132, 255, 0.42);
+	box-shadow: 0 0 24rpx rgba(79, 132, 255, 0.18);
 	background: #101828;
+}
+
+.avatar-image {
+	display: block;
+	width: 100%;
+	height: 100%;
 }
 
 .avatar-fallback {
@@ -89,7 +123,7 @@ export default {
 	justify-content: center;
 	width: 100%;
 	height: 100%;
-	background: linear-gradient(135deg, #1d4ed8, #3b82f6);
+	background: linear-gradient(135deg, #4f84ff, #77a0ff);
 }
 
 .avatar-fallback-text {

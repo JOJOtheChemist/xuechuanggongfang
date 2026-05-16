@@ -5,6 +5,7 @@ import {
   startAdmissionUnlockPayment
 } from './admission-access'
 import { isAdmissionAccessDeniedError, requestAdmission } from './admission-api'
+import { getStaticAssetUrl } from './cloud-static-assets'
 import { getHttpService } from './http-services'
 import { getCachedImageSync, resolveCachedImage } from './remote-image-cache'
 import { volunteerInstitutionLoaderMethods } from './volunteer-institution-loader'
@@ -33,7 +34,6 @@ import {
 } from './volunteer-local-admission'
 import {
   buildVolunteerPaymentConfirmText,
-  buildVolunteerShareUnlockPrompt,
   buildVolunteerSupportNotice,
   buildVolunteerSupportRules
 } from './volunteer-support-rules'
@@ -45,6 +45,27 @@ function normalizeNature(value) {
 }
 
 const VOLUNTEER_HERO_BANNER_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/volunteer/banner/yunnan-spring-ai-volunteer-banner-v1.jpg'
+const DIRECT_SCORE_SHARE_IMAGE_URL = getStaticAssetUrl('/static/volunteer-guide/direct-score-top-hero.jpg')
+const DIRECT_SCORE_SHARE_ENTRY_PATH = '/pages/volunteer/index?entry=direct_score'
+
+function decodeNicknameText(value) {
+  let text = String(value || '').trim()
+  if (!text) return ''
+
+  for (let index = 0; index < 2; index += 1) {
+    if (text.indexOf('%') === -1) break
+
+    try {
+      const decoded = decodeURIComponent(text)
+      if (!decoded || decoded === text) break
+      text = decoded.trim()
+    } catch (error) {
+      break
+    }
+  }
+
+  return text
+}
 
 function buildVolunteerHeroBanners(imageUrl = VOLUNTEER_HERO_BANNER_URL) {
   const resolvedImageUrl = String(imageUrl || '').trim() || VOLUNTEER_HERO_BANNER_URL
@@ -596,10 +617,10 @@ export function createVolunteerPageOptions() {
         return this.topFilterOptions[this.appliedTopFilterIndex] || this.topFilterOptions[0] || {}
       },
       draftExamValue() {
-        return this.selectedTopFilterOption.examType || 'spring'
+        return this.selectedTopFilterOption.examType || (this.topFilterOptions[0] && this.topFilterOptions[0].examType) || ''
       },
 	    selectedExamValue() {
-	      return this.appliedTopFilterOption.examType || 'spring'
+	      return this.appliedTopFilterOption.examType || (this.topFilterOptions[0] && this.topFilterOptions[0].examType) || ''
 	    },
       draftMajorCategoryValue() {
         return this.selectedTopFilterOption.majorCategory || ''
@@ -607,6 +628,12 @@ export function createVolunteerPageOptions() {
 	    selectedMajorCategoryValue() {
 	      return this.appliedTopFilterOption.majorCategory || ''
 	    },
+      draftSubjectTrackValue() {
+        return this.selectedTopFilterOption.subjectTrack || ''
+      },
+      selectedSubjectTrackValue() {
+        return this.appliedTopFilterOption.subjectTrack || ''
+      },
 	    selectedCityLabel() {
 	      return this.cityOptions[this.selectedCityIndex]?.label || '全部地区'
 	    },
@@ -889,7 +916,7 @@ export function createVolunteerPageOptions() {
 	        return this.hasFullInstitutionAccess
 	      },
 	      canViewInstitutions() {
-	        return true
+	        return !this.userLoggedIn || this.hasFullInstitutionAccess
 	      },
       canOpenInstitutionDetail() {
         return this.hasFullInstitutionAccess
@@ -1066,23 +1093,22 @@ export function createVolunteerPageOptions() {
       this.loadMore()
     },
     onShareAppMessage() {
+      this.shareInviteSheetVisible = false
+      const inviterName = this.resolveShareNickname()
+      const directScoreShareTitle = `${inviterName}邀请你进入高考查分，查看院校匹配结果`
+
       if (!this.userLoggedIn || !this.currentUserId) {
         return {
-          title: '学创工坊',
-          path: '/pages/volunteer/index'
+          title: '邀请你进入高考查分，查看院校匹配结果',
+          path: DIRECT_SCORE_SHARE_ENTRY_PATH,
+          imageUrl: DIRECT_SCORE_SHARE_IMAGE_URL
         }
       }
 
-      const shareNickname = this.resolveShareNickname()
-
       const sharePayload = {
-        title: `${shareNickname}邀请你解锁学创工坊更多功能`,
-        path: `/pages/extra/invite-handler?inviter_id=${encodeURIComponent(this.currentUserId)}&type=team&source=volunteer_unlock`
-      }
-
-      const shareBanner = this.bannerImages[0]
-      if (shareBanner && (shareBanner.shareImageUrl || shareBanner.imageUrl)) {
-        sharePayload.imageUrl = shareBanner.shareImageUrl || shareBanner.imageUrl
+        title: directScoreShareTitle,
+        path: `${DIRECT_SCORE_SHARE_ENTRY_PATH}&inviter_id=${encodeURIComponent(this.currentUserId)}&type=business&businessId=admission_unlock&source=volunteer_unlock`,
+        imageUrl: DIRECT_SCORE_SHARE_IMAGE_URL
       }
 
       return sharePayload
@@ -1439,7 +1465,8 @@ export function createVolunteerPageOptions() {
 
         this.guestPreviewLoading = true
         const query = {
-          examType: this.selectedExamValue
+          examType: this.selectedExamValue,
+          subjectTrack: this.selectedSubjectTrackValue
         }
         const requestPromise = requestAdmission('/admission/preview-institutions', query)
         this.guestPreviewRequestPromise = requestPromise
@@ -1517,7 +1544,7 @@ export function createVolunteerPageOptions() {
         }
       },
       resolveShareNickname() {
-        const nickname = String(this.currentUserNickname || '').trim()
+        const nickname = decodeNicknameText(this.currentUserNickname)
         return nickname || '你的好友'
       },
       async syncCurrentUserProfile() {
@@ -1803,17 +1830,27 @@ export function createVolunteerPageOptions() {
       },
       handleLogin() {
         uni.navigateTo({
-          url: `/pages/auth/login/index?redirect=${encodeURIComponent('/pages/volunteer/index')}`
+          url: `/pages/auth/login/index?redirect=${encodeURIComponent('/subpackages/volunteer/index')}`
         })
       },
+      openVolunteerInviteEntry() {
+        if (!this.userLoggedIn) {
+          this.handleLogin()
+          return
+        }
+
+        this.shareInviteSheetVisible = true
+      },
+      closeShareInviteSheet() {
+        this.shareInviteSheetVisible = false
+      },
       showShareUnlockPrompt() {
-        uni.showModal({
-          title: '分享解锁说明',
-          content: buildVolunteerShareUnlockPrompt({
-            requiredInviteCount: this.lockedRequiredInviteCount
-          }),
-          showCancel: false
-        })
+        if (!this.userLoggedIn) {
+          this.handleLogin()
+          return
+        }
+
+        this.openVolunteerInviteEntry()
       },
       async handleAdmissionUnlockPayment() {
         if (!this.userLoggedIn) {
@@ -1895,6 +1932,22 @@ export function createVolunteerPageOptions() {
         uni.showModal({
           title: '查分次数已用完',
           content: `当前查分次数已用完，可联系客服协助增加次数。\n客服号码：${phoneNumber}`,
+          confirmText: '复制号码',
+          cancelText: '稍后再说',
+          success: (res) => {
+            if (res && res.confirm) {
+              this.contactCustomerService()
+            }
+          }
+        })
+      },
+      showVipOpenedServiceModal() {
+        const phoneNumber = String(this.customerServicePhone || '').trim()
+        if (!phoneNumber) return
+
+        uni.showModal({
+          title: '联系客服',
+          content: `已开通查分权限，如需继续协助请联系客服。\n客服电话：${phoneNumber}`,
           confirmText: '复制号码',
           cancelText: '稍后再说',
           success: (res) => {
@@ -2078,6 +2131,10 @@ export function createVolunteerPageOptions() {
 
         if (this.selectedExamValue) {
           query.push(`examType=${encodeURIComponent(this.selectedExamValue)}`)
+        }
+
+        if (this.selectedSubjectTrackValue) {
+          query.push(`subjectTrack=${encodeURIComponent(this.selectedSubjectTrackValue)}`)
         }
 
         if (this.selectedMajorCategoryValue) {

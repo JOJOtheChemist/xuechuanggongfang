@@ -5,8 +5,10 @@
 				"^bottom-nav$": "@/components/dashboard/BottomNav.vue",
 				"^volunteer-category-dropdown$": "@/components/volunteer/CategoryDropdown.vue",
 				"^volunteer-school-results$": "@/components/volunteer/SchoolResults.vue",
+				"^volunteer-direct-score-results$": "@/components/volunteer/DirectScoreSchoolResults.vue",
 				"^volunteer-invite-unlock-card$": "@/components/volunteer/UnlockGateCard.vue",
 				"^volunteer-access-status-card$": "@/components/volunteer/AccessStatusCard.vue",
+				"^volunteer-access-status-upsell-banners$": "@/components/volunteer/AccessStatusUpsellBanners.vue",
 				"^volunteer-support-phone-card$": "@/components/volunteer/SupportPhoneCard.vue",
 				"^volunteer-unlock-gate-card$": "@/components/volunteer/UnlockGateCard.vue",
 			"^bento-stats-card$": "@/components/dashboard/BentoStatsCard.vue",
@@ -121,7 +123,8 @@
 					"path": "index",
 					"style": {
 						"navigationBarTitleText": "AI chat",
-						"navigationStyle": "custom"
+						"navigationStyle": "custom",
+						"backgroundColor": "#ffffff"
 					}
 				}
 			]

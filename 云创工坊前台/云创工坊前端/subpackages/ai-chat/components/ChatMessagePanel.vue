@@ -1,6 +1,7 @@
 <template>
 	<scroll-view
 		class="message-panel"
+		:class="displayModeClass"
 		scroll-y="true"
 		scroll-with-animation
 		:scroll-into-view="scrollIntoViewTarget"
@@ -16,21 +17,41 @@
 				<AssistantMessageBubble
 					v-if="message.role === 'assistant'"
 					:name="assistantName"
+					:avatar-url="assistantAvatarUrl"
 					:text="message.content"
+					:tool-calls="message.toolCalls || message.tools || []"
 					:business-cards="message.businessCards || []"
+					:goal-cards="message.goalCards || []"
 					:article-cards="message.articleCards || []"
+					:school-cards="message.schoolCards || []"
 					:invite-cards="message.inviteCards || []"
+					:membership-cards="message.membershipCards || []"
+					:choice-cards="message.choiceCards || []"
+					:card-disabled="isSending"
+					:display-mode="displayMode"
+					@membership-action="$emit('membership-action', $event)"
+					@school-card-tap="$emit('school-card-tap', $event)"
+					@choice-select="$emit('choice-select', $event)"
 				/>
 				<UserMessageBubble
 					v-else
-					name="我"
+					:name="currentUserName"
+					:avatar-url="currentUserAvatarUrl"
 					:text="message.content"
 				/>
 			</view>
 
 			<view v-if="isSending" class="message-row message-row-ai">
-				<view class="message-avatar">AI</view>
-				<view class="typing-bubble">
+				<view class="message-avatar-shell" :class="messageAvatarShellClass">
+					<image
+						v-if="resolvedAssistantAvatarUrl"
+						class="message-avatar-image"
+						:src="resolvedAssistantAvatarUrl"
+						mode="aspectFill"
+					/>
+					<view v-else class="message-avatar" :class="messageAvatarClass">AI</view>
+				</view>
+				<view class="typing-bubble" :class="typingBubbleClass">
 					<view class="typing-dot"></view>
 					<view class="typing-dot"></view>
 					<view class="typing-dot"></view>
@@ -45,6 +66,7 @@
 <script>
 import AssistantMessageBubble from './AssistantMessageBubble.vue'
 import UserMessageBubble from './UserMessageBubble.vue'
+import { normalizeAvatarUrl } from '@/utils/avatar.js'
 
 export default {
 	name: 'ChatMessagePanel',
@@ -54,6 +76,18 @@ export default {
 	},
 	props: {
 		assistantName: {
+			type: String,
+			default: ''
+		},
+		assistantAvatarUrl: {
+			type: String,
+			default: ''
+		},
+		currentUserName: {
+			type: String,
+			default: '我'
+		},
+		currentUserAvatarUrl: {
 			type: String,
 			default: ''
 		},
@@ -68,6 +102,31 @@ export default {
 		scrollIntoViewTarget: {
 			type: String,
 			default: ''
+		},
+		displayMode: {
+			type: String,
+			default: 'default'
+		}
+	},
+	emits: ['membership-action', 'school-card-tap', 'choice-select'],
+	computed: {
+		displayModeClass() {
+			return this.isVisualImageMode ? 'message-panel-xiaochunlu' : ''
+		},
+		resolvedAssistantAvatarUrl() {
+			return this.assistantAvatarUrl ? normalizeAvatarUrl(this.assistantAvatarUrl, '') : ''
+		},
+		isVisualImageMode() {
+			return this.displayMode === 'xiaochunlu' || this.displayMode === 'gaokao'
+		},
+		messageAvatarClass() {
+			return this.isVisualImageMode ? 'message-avatar-xiaochunlu' : ''
+		},
+		messageAvatarShellClass() {
+			return this.isVisualImageMode ? 'message-avatar-shell-xiaochunlu' : ''
+		},
+		typingBubbleClass() {
+			return this.isVisualImageMode ? 'typing-bubble-xiaochunlu' : ''
 		}
 	}
 }
@@ -77,15 +136,16 @@ export default {
 .message-panel {
 	flex: 1;
 	min-height: 0;
-	border-radius: 30rpx;
-	background: rgba(255, 255, 255, 0.76);
-	border: 1rpx solid rgba(34, 78, 68, 0.08);
-	box-shadow: 0 24rpx 60rpx rgba(30, 88, 74, 0.12);
-	backdrop-filter: blur(12px);
+	padding: 0 24rpx;
+	box-sizing: border-box;
+}
+
+.message-panel-xiaochunlu {
+	margin-top: -4rpx;
 }
 
 .message-list {
-	padding: 24rpx;
+	padding: 0 0 12rpx;
 	display: flex;
 	flex-direction: column;
 	gap: 18rpx;
@@ -119,6 +179,30 @@ export default {
 	margin-bottom: 10rpx;
 }
 
+.message-avatar-xiaochunlu {
+	background: linear-gradient(135deg, #d9f1ff, #8ecfff);
+}
+
+.message-avatar-shell {
+	width: 54rpx;
+	height: 54rpx;
+	border-radius: 18rpx;
+	overflow: hidden;
+	margin-bottom: 10rpx;
+	background: #ffffff;
+	box-shadow: 0 10rpx 20rpx rgba(31, 122, 103, 0.14);
+}
+
+.message-avatar-shell-xiaochunlu {
+	box-shadow: 0 12rpx 24rpx rgba(141, 204, 255, 0.26);
+}
+
+.message-avatar-image {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
 .typing-bubble {
 	display: flex;
 	align-items: center;
@@ -127,6 +211,10 @@ export default {
 	border-radius: 30rpx;
 	border-top-left-radius: 10rpx;
 	background: linear-gradient(135deg, #ffd700, #ffc247);
+}
+
+.typing-bubble-xiaochunlu {
+	background: linear-gradient(135deg, #dff1ff, #b4d7ff);
 }
 
 .typing-dot {

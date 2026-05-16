@@ -6,7 +6,7 @@
 		</view>
 		<view class="header-right">
 			<view class="bell-wrapper">
-				<image class="bell-image" src="/static/icons/bell.svg" mode="aspectFit" />
+				<image class="bell-image" :src="bellIconUrl" mode="aspectFit" />
 				<view class="bell-dot" />
 			</view>
 			<image class="avatar" src="https://api.dicebear.com/7.x/notionists/png?seed=Felix" mode="aspectFill" />
@@ -15,8 +15,15 @@
 </template>
 
 <script>
+	import { BELL_ICON_URL } from '@/utils/cloud-static-assets'
+
 	export default {
-		name: 'DashboardHeader'
+		name: 'DashboardHeader',
+		data() {
+			return {
+				bellIconUrl: BELL_ICON_URL
+			}
+		}
 	}
 </script>
 

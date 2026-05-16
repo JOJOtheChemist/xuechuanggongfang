@@ -20,7 +20,7 @@
 					</text>
 					<text v-else class="article-price free">免费</text>
 				</view>
-				<image class="article-thumb" :src="article.image" mode="aspectFill" />
+				<image class="article-thumb" :src="article.image || article.cover_image || article.cover_url" mode="aspectFill" />
 			</view>
 		</view>
 

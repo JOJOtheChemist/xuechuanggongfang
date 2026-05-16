@@ -37,7 +37,7 @@
 							<text v-else class="badge pay">{{ a.price_points }} 积分</text>
 						</view>
 					</view>
-					<image v-if="a.cover_image" :src="a.cover_image" class="thumb" mode="aspectFill" />
+					<image v-if="a.cover_image || a.coverImageUrl || a.cover_url" :src="a.cover_image || a.coverImageUrl || a.cover_url" class="thumb" mode="aspectFill" />
 				</view>
 				
 				<view v-if="loading" class="loading">加载中...</view>

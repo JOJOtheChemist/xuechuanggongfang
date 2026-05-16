@@ -17,7 +17,7 @@
 		<view class="hero-stats-item hero-stats-item-checkin hero-stats-item-no-title">
 			<view class="hero-stats-checkin-top">
 				<text class="hero-stats-value hero-stats-checkin-value">{{ streakDays }}</text>
-				<text class="hero-stats-meta hero-stats-checkin-status">{{ isChecked ? '已连续签到' : '今日可领积分' }}</text>
+				<text class="hero-stats-meta hero-stats-checkin-status">{{ isChecked ? '已连续' : '今日可领积分' }}</text>
 			</view>
 			<view
 				class="hero-checkin-btn"
@@ -462,6 +462,6 @@ export default {
 
 .hero-checkin-btn.is-checked .hero-checkin-btn-text {
 	color: #ffffff;
-	transform: translateX(-4rpx);
+	transform: translate(-8rpx, -4rpx);
 }
 </style>

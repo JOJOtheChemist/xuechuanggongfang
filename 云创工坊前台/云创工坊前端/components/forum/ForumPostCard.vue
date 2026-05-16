@@ -29,6 +29,11 @@
 </template>
 
 <script>
+import {
+	FORUM_LIKE_ACTIVE_ICON_URL,
+	FORUM_LIKE_ICON_URL
+} from '@/utils/cloud-static-assets'
+
 export default {
   name: 'ForumPostCard',
   props: {
@@ -41,8 +46,8 @@ export default {
     return {
       suppressTapOnce: false,
       suppressTapTimer: null,
-      likeIcon: '/static/forum/like.png',
-      likeActiveIcon: '/static/forum/like-active.png'
+      likeIcon: FORUM_LIKE_ICON_URL,
+      likeActiveIcon: FORUM_LIKE_ACTIVE_ICON_URL
     }
   },
   beforeDestroy() {

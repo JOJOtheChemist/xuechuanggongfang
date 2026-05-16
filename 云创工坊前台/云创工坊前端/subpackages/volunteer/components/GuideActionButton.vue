@@ -1,16 +1,30 @@
 <template>
 	<view class="guide-action-card">
-		<button class="guide-action-btn" @tap="handleTap">{{ label }}</button>
+		<view v-if="resolvedImageSrc" class="guide-action-image-wrap" @tap="handleTap">
+			<image class="guide-action-image" :src="resolvedImageSrc" mode="widthFix" />
+		</view>
+		<button v-else class="guide-action-btn" @tap="handleTap">{{ label }}</button>
 	</view>
 </template>
 
 <script>
+import { getStaticAssetUrl } from '@/utils/cloud-static-assets'
+
 export default {
 	name: 'GuideActionButton',
 	props: {
 		label: {
 			type: String,
 			default: '直接查询分数'
+		},
+		imageSrc: {
+			type: String,
+			default: ''
+		}
+	},
+	computed: {
+		resolvedImageSrc() {
+			return getStaticAssetUrl(this.imageSrc || '')
 		}
 	},
 	methods: {
@@ -23,7 +37,16 @@ export default {
 
 <style scoped>
 .guide-action-card {
-	padding: 24rpx 24rpx 12rpx;
+	padding: 0;
+}
+
+.guide-action-image-wrap {
+	width: 100%;
+}
+
+.guide-action-image {
+	width: 100%;
+	display: block;
 }
 
 .guide-action-btn {

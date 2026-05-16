@@ -66,16 +66,17 @@ export default {
 .meta-item {
 	padding: 18rpx;
 	border-radius: 22rpx;
-	background: rgba(255, 255, 255, 0.82);
-	border: 1rpx solid rgba(34, 78, 68, 0.08);
-	box-shadow: 0 14rpx 28rpx rgba(30, 88, 74, 0.07);
+	background: rgba(255, 255, 255, 0.68);
+	border: 1rpx solid rgba(138, 164, 215, 0.18);
+	backdrop-filter: blur(16px);
+	box-shadow: 0 12rpx 28rpx rgba(72, 95, 148, 0.08);
 }
 
 .meta-label {
 	display: block;
 	font-size: 20rpx;
 	line-height: 1.4;
-	color: rgba(22, 63, 53, 0.56);
+	color: rgba(47, 68, 110, 0.56);
 	margin-bottom: 8rpx;
 }
 
@@ -92,14 +93,14 @@ export default {
 	font-size: 22rpx;
 	line-height: 1.4;
 	font-weight: 700;
-	color: #163f35;
+	color: #24365f;
 	word-break: break-all;
 }
 
 .meta-copy {
 	flex-shrink: 0;
 	font-size: 20rpx;
-	color: #1f7a67;
+	color: #4c7bff;
 }
 
 @media (max-width: 750rpx) {

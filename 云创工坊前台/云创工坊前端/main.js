@@ -1,6 +1,13 @@
 import App from './App'
 import { getCurrentUserInfo } from './utils/http-services'
 import { normalizeAvatarUrl } from './utils/avatar'
+import {
+  buildDefaultSharePayload,
+  buildDefaultTimelinePayload,
+  cacheIncomingInvite,
+  isPageLikeOptions,
+  showGlobalShareMenu
+} from './utils/share'
 
 // #ifndef VUE3
 import Vue from 'vue'
@@ -9,9 +16,31 @@ import './uni.promisify.adaptor'
 Vue.config.productionTip = false
 App.mpType = 'app'
 
+Vue.config.optionMergeStrategies.onShareAppMessage = function mergeShareAppMessage(parent, child) {
+  return child || parent
+}
+
+Vue.config.optionMergeStrategies.onShareTimeline = function mergeShareTimeline(parent, child) {
+  return child || parent
+}
+
 // [Global Mixin] 自动注入全局用户ID，方便页面调试和逻辑判断
 // [Global Mixin] 自动注入全局用户ID及邀请人信息，方便页面调试和逻辑判断
 Vue.mixin({
+  onLoad(options = {}) {
+    if (!isPageLikeOptions(this.$options || {})) {
+      return
+    }
+
+    const route = (this && this.route) ||
+      (this && this.$page && this.$page.route) ||
+      (this && this.$scope && this.$scope.route) ||
+      ''
+
+    this.__shareRoute = route
+    this.__shareOptions = options
+    cacheIncomingInvite(options, route)
+  },
   data() {
     return {
       global_uid: '', // 全局变量：当前登录用户的 UID (Real UID)
@@ -26,6 +55,10 @@ Vue.mixin({
     }
   },
   onShow() {
+    if (isPageLikeOptions(this.$options || {})) {
+      showGlobalShareMenu()
+    }
+
     // 每次页面显示时，自动获取最新的 UID
     const userInfo = getCurrentUserInfo()
     // 优先使用标准接口，如果没有（因项目自定义了storage key），则回退到本地缓存 'userId'
@@ -50,6 +83,26 @@ Vue.mixin({
     if (this.global_uid) {
       // console.log('[Global] Current Page UID:', this.global_uid)
     }
+  },
+  onShareAppMessage() {
+    if (!isPageLikeOptions(this.$options || {})) {
+      return {
+        title: '学创工坊',
+        path: '/pages/dashboard/index'
+      }
+    }
+
+    return buildDefaultSharePayload(this)
+  },
+  onShareTimeline() {
+    if (!isPageLikeOptions(this.$options || {})) {
+      return {
+        title: '学创工坊',
+        query: ''
+      }
+    }
+
+    return buildDefaultTimelinePayload(this)
   }
 })
 

@@ -4,10 +4,11 @@
 			<view class="guide-shell">
 				<guide-hero-image
 					:src="guideImageUrl"
+					:button-src="guideButtonImageUrl"
 					@tap="goToAiChat"
 				/>
 
-				<guide-action-button label="直接查询分数" @primary="goToScorePage" />
+				<guide-action-button :image-src="scoreButtonImageUrl" @primary="goToScorePage" />
 
 				<guide-article-section
 					:articles="articles"
@@ -24,14 +25,26 @@
 import { getHttpService } from '@/utils/http-services'
 import { extractArticleId } from '@/utils/article-navigation'
 import { resolveCachedImages } from '@/utils/remote-image-cache'
+import { getStaticAssetUrl } from '@/utils/cloud-static-assets'
 import GuideHeroImage from './components/GuideHeroImage.vue'
 import GuideActionButton from './components/GuideActionButton.vue'
 import GuideArticleSection from './components/GuideArticleSection.vue'
 
-const GUIDE_IMAGE_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/gaokao/guide/ai-gaokao-info-redirect-v1.jpg'
+const GUIDE_IMAGE_URL = getStaticAssetUrl('/static/volunteer-guide/guide-hero-service.jpg')
+const GUIDE_HERO_BUTTON_URL = '/static/volunteer-guide/free-consult-button.png'
+const GUIDE_SCORE_BUTTON_URL = '/static/volunteer-guide/score-entry-button.png'
 const GUIDE_CATEGORY_ID = 'cat_015'
 const GUIDE_ARTICLES_CACHE_KEY = 'gaokao_guide_articles_cache_v1'
 const GUIDE_ARTICLES_CACHE_TTL = 6 * 60 * 60 * 1000
+
+function isTooEarlyStorageError(error) {
+	const message = String(
+		(error && (error.errMsg || error.message || error.errorMessage))
+		|| ''
+	).toLowerCase()
+
+	return message.indexOf('too early') !== -1 || message.indexOf('too eayly') !== -1
+}
 
 function readCachedGuideArticles() {
 	try {
@@ -42,6 +55,10 @@ function readCachedGuideArticles() {
 			? cache.articles.filter((item) => item && typeof item === 'object' && item.title)
 			: []
 	} catch (error) {
+		if (!isTooEarlyStorageError(error)) {
+			console.warn('[guide-redirect] 读取文章缓存失败', error)
+		}
+
 		return []
 	}
 }
@@ -54,7 +71,9 @@ function writeCachedGuideArticles(articles) {
 			expiresAt: Date.now() + GUIDE_ARTICLES_CACHE_TTL
 		})
 	} catch (error) {
-		console.warn('[guide-redirect] 写入文章缓存失败', error)
+		if (!isTooEarlyStorageError(error)) {
+			console.warn('[guide-redirect] 写入文章缓存失败', error)
+		}
 	}
 }
 
@@ -94,10 +113,11 @@ export default {
 		GuideArticleSection
 	},
 	data() {
-		const cachedArticles = readCachedGuideArticles()
 		return {
 			guideImageUrl: GUIDE_IMAGE_URL,
-			articles: cachedArticles.length > 0 ? cachedArticles : buildFallbackArticles(GUIDE_IMAGE_URL),
+			guideButtonImageUrl: GUIDE_HERO_BUTTON_URL,
+			scoreButtonImageUrl: GUIDE_SCORE_BUTTON_URL,
+			articles: buildFallbackArticles(GUIDE_IMAGE_URL),
 			articlesLoaded: false,
 			articleImageSyncToken: 0
 		}
@@ -105,10 +125,23 @@ export default {
 	onLoad() {
 		this.loadArticles()
 	},
+	onReady() {
+		this.restoreCachedArticles()
+	},
 	onUnload() {
 		this.articleImageSyncToken += 1
 	},
 	methods: {
+		restoreCachedArticles() {
+			if (this.articlesLoaded) return
+
+			const cachedArticles = readCachedGuideArticles()
+			if (!cachedArticles.length) return
+
+			this.articles = cachedArticles
+			this.articlesLoaded = true
+			this.syncArticleImages(cachedArticles)
+		},
 		mapArticles(rawList) {
 			const source = Array.isArray(rawList) ? rawList : []
 			return source.map((item) => ({

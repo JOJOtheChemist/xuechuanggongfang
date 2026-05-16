@@ -29,22 +29,53 @@ export default {
 	},
 	data() {
 		return {
-			hasInitialized: false
+			hasInitialized: false,
+			autoOpenInvite: false,
+			autoInviteHandled: false
 		}
 	},
-	onShow() {
+	onLoad(options = {}) {
+		this.autoOpenInvite = String(options.autoInvite || '').trim() === '1'
+	},
+	async onShow() {
 		const shouldRefresh = this.hasInitialized
 		this.hasInitialized = true
-		if (!shouldRefresh) return
 
-		this.$nextTick(() => {
+		if (shouldRefresh || (this.autoOpenInvite && !this.autoInviteHandled)) {
+			await this.refreshPanels()
+		}
+
+		await this.triggerAutoInvite()
+	},
+	methods: {
+		async refreshPanels() {
+			await new Promise((resolve) => this.$nextTick(resolve))
+
+			const tasks = []
 			if (this.$refs.teamCard && typeof this.$refs.teamCard.refresh === 'function') {
-				this.$refs.teamCard.refresh()
+				tasks.push(this.$refs.teamCard.refresh())
 			}
 			if (this.$refs.newPartners && typeof this.$refs.newPartners.loadTeamMembers === 'function') {
-				this.$refs.newPartners.loadTeamMembers()
+				tasks.push(this.$refs.newPartners.loadTeamMembers())
 			}
-		})
+
+			if (!tasks.length) {
+				return
+			}
+
+			await Promise.allSettled(tasks)
+		},
+		async triggerAutoInvite() {
+			if (!this.autoOpenInvite || this.autoInviteHandled) {
+				return
+			}
+
+			this.autoInviteHandled = true
+			const teamCard = this.$refs.teamCard
+			if (teamCard && typeof teamCard.showInviteQrcode === 'function') {
+				await teamCard.showInviteQrcode()
+			}
+		}
 	}
 }
 </script>

@@ -77,8 +77,10 @@ export default {
 	margin-top: 18rpx;
 	padding: 20rpx;
 	border-radius: 24rpx;
-	background: rgba(20, 52, 44, 0.94);
-	box-shadow: 0 18rpx 36rpx rgba(16, 42, 36, 0.18);
+	background: rgba(37, 50, 88, 0.7);
+	border: 1rpx solid rgba(255, 255, 255, 0.18);
+	backdrop-filter: blur(18px);
+	box-shadow: 0 18rpx 36rpx rgba(34, 47, 83, 0.14);
 }
 
 .debug-head {
@@ -98,12 +100,12 @@ export default {
 .debug-title {
 	font-size: 24rpx;
 	font-weight: 800;
-	color: #dff8ef;
+	color: #eef4ff;
 }
 
 .debug-action {
 	font-size: 20rpx;
-	color: #7ae1bf;
+	color: #bfd2ff;
 }
 
 .debug-grid {
@@ -115,8 +117,8 @@ export default {
 .debug-item {
 	padding: 14rpx 16rpx;
 	border-radius: 18rpx;
-	background: rgba(255, 255, 255, 0.06);
-	border: 1rpx solid rgba(146, 232, 200, 0.12);
+	background: rgba(255, 255, 255, 0.1);
+	border: 1rpx solid rgba(255, 255, 255, 0.12);
 }
 
 .debug-item-wide {
@@ -127,7 +129,7 @@ export default {
 	display: block;
 	margin-bottom: 6rpx;
 	font-size: 18rpx;
-	color: rgba(223, 248, 239, 0.68);
+	color: rgba(233, 240, 255, 0.68);
 }
 
 .debug-value {
@@ -135,7 +137,7 @@ export default {
 	font-size: 20rpx;
 	line-height: 1.45;
 	font-weight: 700;
-	color: #f3fffb;
+	color: #ffffff;
 	word-break: break-all;
 }
 </style>

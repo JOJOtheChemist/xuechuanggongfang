@@ -33,6 +33,9 @@
 				<view v-if="loading && !previewDynamicsList.length" class="task-center-dynamics-empty">
 					<text class="task-center-dynamics-empty-text">加载中...</text>
 				</view>
+				<view v-else-if="!loading && !previewDynamicsList.length" class="task-center-dynamics-empty">
+					<text class="task-center-dynamics-empty-text">{{ hasToken ? '暂无伙伴动态' : '登录后查看伙伴动态' }}</text>
+				</view>
 			</view>
 	</view>
 </template>
@@ -52,49 +55,15 @@ export default {
 		return {
 			teamDynamics: [],
 			loading: false,
-			defaultAvatar: '/static/icons/default-avatar.svg',
-			mockFallbackDynamics: [
-				{
-					id: 'mock-1',
-					inviter_name: '校园合伙人',
-					level_label: '一级',
-					action_type: 'order',
-					business_name: '项目体验课',
-					create_date: Date.now() - 15 * 60 * 1000
-				},
-				{
-					id: 'mock-2',
-					inviter_name: '成长伙伴',
-					level_label: '二级',
-					action_type: 'invite',
-					invitee_name: '新伙伴',
-					business_name: '训练营',
-					create_date: Date.now() - 50 * 60 * 1000
-				},
-				{
-					id: 'mock-3',
-					inviter_name: '开拓队员',
-					level_label: '三级',
-					action_type: 'order',
-					business_name: '实战营',
-					create_date: Date.now() - 2 * 60 * 60 * 1000
-				}
-			]
+			defaultAvatar: 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png'
 		}
 	},
 	computed: {
 		hasToken() {
 			return !!uni.getStorageSync('token')
 		},
-		hasRealData() {
-			return Array.isArray(this.teamDynamics) && this.teamDynamics.length > 0
-		},
 		previewDynamicsList() {
-			const sourceList = this.hasRealData
-				? this.teamDynamics
-				: this.mockFallbackDynamics
-
-			return (Array.isArray(sourceList) ? sourceList : []).slice(0, this.limit).map((item, index) => {
+			return (Array.isArray(this.teamDynamics) ? this.teamDynamics : []).slice(0, this.limit).map((item, index) => {
 				const source = item && typeof item === 'object' ? item : {}
 				const inviterName = source.inviter_name || source.nickname || source.username || `伙伴${index + 1}`
 				const inviteeName = source.invitee_name || '新伙伴'
@@ -213,7 +182,7 @@ export default {
 	margin-top: 8rpx;
 	margin-left: -4rpx;
 	margin-right: -4rpx;
-	transform: translateY(10rpx);
+	transform: translateY(25rpx);
 }
 
 .task-center-dynamics-item {
@@ -232,13 +201,7 @@ export default {
 }
 
 .task-center-dynamics-accent {
-	position: absolute;
-	left: 0;
-	top: 6rpx;
-	bottom: 6rpx;
-	width: 4rpx;
-	border-radius: 999rpx;
-	background: linear-gradient(180deg, #34d399 0%, #38bdf8 100%);
+	display: none;
 }
 
 .task-center-dynamics-avatar {
@@ -248,6 +211,7 @@ export default {
 	background: transparent;
 	flex-shrink: 0;
 	border: none;
+	transform: translateY(-20rpx);
 }
 
 .task-center-dynamics-copy {

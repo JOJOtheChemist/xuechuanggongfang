@@ -208,7 +208,7 @@ export default {
     return {
       businessId: '',
       business: {},
-      defaultAvatar: '/static/icons/default-avatar.svg',
+      defaultAvatar: 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png',
       userAvatar: '',
       userNickname: '',
       userId: '',

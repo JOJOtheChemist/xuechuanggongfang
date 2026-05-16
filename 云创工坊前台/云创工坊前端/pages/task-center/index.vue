@@ -38,7 +38,7 @@ export default {
 	},
 	data() {
 		return {
-			userAvatar: '/static/icons/default-avatar.svg',
+			userAvatar: 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png',
 			userNickname: '',
 			userUid: '',
 			heroBackgroundUrl: getCachedImageSync(STARTUP_HERO_BACKGROUND_URL),
@@ -193,7 +193,7 @@ export default {
 .top-hero {
 	position: relative;
 	padding-top: 0;
-	padding-bottom: 760rpx;
+	padding-bottom: 1120rpx;
 	overflow: visible;
 	background: #ffffff;
 }

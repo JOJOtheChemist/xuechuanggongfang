@@ -5,6 +5,8 @@ const API_BASE_URL_STORAGE_KEY = 'xuechuang_api_base_url'
 
 const DEFAULT_API_BASE_URL = 'https://xuechuang.xyz/api/v1'
 const LEGACY_DEVTOOLS_API_BASE_URL = 'http://127.0.0.1:3001/api/v1'
+const DEFAULT_STUDY_ARTICLE_COVER_URL =
+	'https://xuechuang.xyz/oss/share-assets/admission/admin/images/0/2026/05/12/a7391291-a94d-41e5-82ee-83b75f64ef0b.jpg'
 const AUTH_PROMPT_INTERVAL = 2500
 const AUTH_STORAGE_KEYS = [
 	'token',
@@ -18,6 +20,12 @@ const AUTH_STORAGE_KEYS = [
 
 let lastAuthPromptAt = 0
 let authRefreshPromise = null
+
+function sleep(ms) {
+	return new Promise((resolve) => {
+		setTimeout(resolve, ms)
+	})
+}
 
 function getUniStorage(key, fallback) {
 	try {
@@ -390,6 +398,47 @@ function isAuthException(error) {
 	return /token|登录状态|请先登录|未登录|认证|Authorization|Unauthorized|AUTH|TOKEN/i.test(combined)
 }
 
+function isLikelyTransientRequestFailure(error) {
+	if (!error) return false
+
+	const combined = String(error.message || error.errMsg || error.error || error).trim()
+	if (!combined) return false
+
+	return /request:fail|network|timeout|timed out|abort|ERR_/i.test(combined)
+}
+
+function shouldRetryHttpRequestFailure(definition, error, runtime = {}) {
+	if (!definition || runtime.retriedAfterTransientFailure) {
+		return false
+	}
+
+	const method = String(definition.method || '').toUpperCase()
+	if (method !== 'GET') {
+		return false
+	}
+
+	if (isAuthException(error)) {
+		return false
+	}
+
+	return isLikelyTransientRequestFailure(error)
+}
+
+function normalizeHttpRequestFailureMessage(error) {
+	const rawMessage = String(error && (error.message || error.errMsg || error.error || error) || '').trim()
+	if (!rawMessage) return '网络请求失败'
+
+	if (/timeout|timed out/i.test(rawMessage)) {
+		return '请求超时，请稍后重试'
+	}
+
+	if (/request:fail|network|abort|ERR_/i.test(rawMessage)) {
+		return '网络连接不稳定，请稍后重试'
+	}
+
+	return rawMessage
+}
+
 function shouldAttachToken(definition) {
 	return definition && (definition.auth === true || definition.auth === 'optional')
 }
@@ -462,10 +511,17 @@ async function requestHttp(definition, args, runtime = {}) {
 			return handleAuthFailure(e.message || e.errMsg || '登录状态已失效，请重新登录')
 		}
 
+		if (shouldRetryHttpRequestFailure(definition, e, runtime)) {
+			await sleep(300)
+			return requestHttp(definition, args, Object.assign({}, runtime, {
+				retriedAfterTransientFailure: true
+			}))
+		}
+
 		console.error('[api-switch] HTTP request failed:', e)
 		return {
 			code: -1,
-			message: e.message || e.errMsg || '网络请求失败',
+			message: normalizeHttpRequestFailureMessage(e),
 			data: null,
 			error: 'HTTP_REQUEST_FAILED'
 		}
@@ -488,8 +544,14 @@ function normalizeArticle(article) {
 	const category = isPlainObject(article.category) ? article.category : {}
 
 	next.category_id = next.category_id || next.categoryId || category.id || category.legacyId
-	next.cover_image = next.cover_image || next.coverImageUrl || next.cover_image_url || ''
+	next.cover_image =
+		next.cover_image ||
+		next.coverImageUrl ||
+		next.cover_image_url ||
+		DEFAULT_STUDY_ARTICLE_COVER_URL
 	next.cover_url = next.cover_url || next.coverImageUrl || next.cover_image
+	next.coverImageUrl = next.coverImageUrl || next.cover_image
+	next.image = next.image || next.cover_image
 	next.author_name = next.author_name || next.authorName || ''
 	next.price_points = next.price_points !== undefined ? next.price_points : next.pricePoints
 	next.publish_time = next.publish_time || next.publishedAt || next.createdAt || ''

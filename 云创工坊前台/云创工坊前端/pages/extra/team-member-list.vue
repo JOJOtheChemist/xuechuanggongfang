@@ -72,7 +72,7 @@ export default {
 			loadingMore: false,
 			list: [],
 			teamId: '',
-			defaultAvatar: '/static/icons/default-avatar.svg',
+			defaultAvatar: 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png',
 			page: 1,
 			pageSize: 20,
 			total: 0,

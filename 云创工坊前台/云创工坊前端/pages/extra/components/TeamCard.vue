@@ -229,7 +229,7 @@ export default {
 			inviteStats: {
 				invitedCount: 0
 			},
-			defaultAvatar: '/static/icons/default-avatar.svg'
+			defaultAvatar: 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png'
 		}
 	},
 	methods: {
@@ -409,8 +409,10 @@ export default {
 			})
 		},
 		refresh() {
-			this.loadTeamInfo()
-			this.loadInviteStats()
+			return Promise.allSettled([
+				this.loadTeamInfo(),
+				this.loadInviteStats()
+			])
 		}
 	},
 	mounted() {

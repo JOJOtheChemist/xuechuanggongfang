@@ -55,12 +55,11 @@
   width: 17px;
   height: 17px;
   margin-bottom: 5px;
-  opacity: 0.72;
-  transition: opacity 0.2s;
+  transition: filter 0.2s;
 }
 
-.nav-item-active .nav-icon-img {
-  opacity: 1;
+.nav-icon-active {
+  filter: brightness(0) saturate(100%) invert(36%) sepia(91%) saturate(2386%) hue-rotate(210deg) brightness(94%) contrast(102%);
 }
 
 .nav-text {

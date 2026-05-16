@@ -1,12 +1,18 @@
 <template>
 	<view class="assistant-message">
 		<view class="avatar-wrap">
-			<view class="avatar-shell">
-				<view class="avatar-fallback">
+			<view class="avatar-shell" :class="avatarShellClass">
+				<image
+					v-if="resolvedAvatarUrl"
+					class="avatar-image"
+					:src="resolvedAvatarUrl"
+					mode="aspectFill"
+				/>
+				<view v-else class="avatar-fallback" :class="avatarFallbackClass">
 					<text class="avatar-fallback-text">{{ resolvedInitial }}</text>
 				</view>
 			</view>
-			<view class="ai-badge">
+			<view class="ai-badge" :class="aiBadgeClass">
 				<text class="ai-badge-text">AI</text>
 			</view>
 		</view>
@@ -16,9 +22,22 @@
 			<view class="message-card">
 				<slot>
 					<ChatRichText v-if="text" :text="text" tone="assistant" />
+					<ToolCallListCard :tools="toolCalls" />
 					<ChatBusinessCardList :cards="businessCards" />
+					<ChatGoalCardList :cards="goalCards" />
 					<ChatArticleCardList :cards="articleCards" />
+					<ChatSchoolCardList :cards="schoolCards" @tap="$emit('school-card-tap', $event)" />
 					<ChatInviteCardList :cards="inviteCards" />
+					<ChatMembershipCardList :cards="membershipCards" @tap="$emit('membership-action', $event)" />
+					<ChatChoiceCard
+						v-for="card in choiceCards"
+						:key="card.id"
+						:question="card.question"
+						:helper-text="card.helperText"
+						:options="card.options"
+						:disabled="cardDisabled"
+						@select="$emit('choice-select', $event)"
+					/>
 				</slot>
 			</view>
 		</view>
@@ -27,28 +46,51 @@
 
 <script>
 import ChatRichText from './ChatRichText.vue'
+import ToolCallListCard from './ToolCallListCard.vue'
 import ChatBusinessCardList from './ChatBusinessCardList.vue'
+import ChatGoalCardList from './ChatGoalCardList.vue'
 import ChatArticleCardList from './ChatArticleCardList.vue'
+import ChatSchoolCardList from './ChatSchoolCardList.vue'
 import ChatInviteCardList from './ChatInviteCardList.vue'
+import ChatMembershipCardList from './ChatMembershipCardList.vue'
+import ChatChoiceCard from './ChatChoiceCard.vue'
+import { normalizeAvatarUrl } from '@/utils/avatar.js'
 
 export default {
 	name: 'AssistantMessageBubble',
 	components: {
 		ChatRichText,
+		ToolCallListCard,
 		ChatBusinessCardList,
+		ChatGoalCardList,
 		ChatArticleCardList,
-		ChatInviteCardList
+		ChatSchoolCardList,
+		ChatInviteCardList,
+		ChatMembershipCardList,
+		ChatChoiceCard
 	},
 	props: {
 		name: {
 			type: String,
 			default: 'AI 导师'
 		},
+		avatarUrl: {
+			type: String,
+			default: ''
+		},
 		text: {
 			type: String,
 			default: ''
 		},
+		toolCalls: {
+			type: Array,
+			default: () => []
+		},
 		businessCards: {
+			type: Array,
+			default: () => []
+		},
+		goalCards: {
 			type: Array,
 			default: () => []
 		},
@@ -56,14 +98,49 @@ export default {
 			type: Array,
 			default: () => []
 		},
+		schoolCards: {
+			type: Array,
+			default: () => []
+		},
 		inviteCards: {
 			type: Array,
 			default: () => []
+		},
+		membershipCards: {
+			type: Array,
+			default: () => []
+		},
+		choiceCards: {
+			type: Array,
+			default: () => []
+		},
+		cardDisabled: {
+			type: Boolean,
+			default: false
+		},
+		displayMode: {
+			type: String,
+			default: 'default'
 		}
 	},
 	computed: {
+		resolvedAvatarUrl() {
+			return this.avatarUrl ? normalizeAvatarUrl(this.avatarUrl, '') : ''
+		},
 		resolvedInitial() {
 			return String(this.name || 'AI').trim().slice(0, 1).toUpperCase() || 'AI'
+		},
+		isVisualImageMode() {
+			return this.displayMode === 'xiaochunlu' || this.displayMode === 'gaokao'
+		},
+		avatarShellClass() {
+			return this.isVisualImageMode ? 'avatar-shell-xiaochunlu' : ''
+		},
+		avatarFallbackClass() {
+			return this.isVisualImageMode ? 'avatar-fallback-xiaochunlu' : ''
+		},
+		aiBadgeClass() {
+			return this.isVisualImageMode ? 'ai-badge-xiaochunlu' : ''
 		}
 	}
 }
@@ -94,6 +171,17 @@ export default {
 	background: #151515;
 }
 
+.avatar-shell-xiaochunlu {
+	border-color: rgba(150, 210, 255, 0.96);
+	box-shadow: 0 0 30rpx rgba(150, 210, 255, 0.34);
+}
+
+.avatar-image {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
 .avatar-fallback {
 	display: flex;
 	align-items: center;
@@ -101,6 +189,10 @@ export default {
 	width: 100%;
 	height: 100%;
 	background: linear-gradient(135deg, #ffd700, #ffc247);
+}
+
+.avatar-fallback-xiaochunlu {
+	background: linear-gradient(135deg, #d9f1ff, #8ecfff);
 }
 
 .avatar-fallback-text {
@@ -125,11 +217,16 @@ export default {
 	z-index: 10;
 }
 
+.ai-badge-xiaochunlu {
+	background: linear-gradient(135deg, #d8f0ff, #8dccff);
+	border-color: rgba(76, 132, 185, 0.22);
+}
+
 .ai-badge-text {
 	font-size: 16rpx;
 	font-weight: 900;
 	line-height: 1;
-	color: #000000;
+	color: #ffffff;
 }
 
 .message-content {
@@ -143,7 +240,7 @@ export default {
 
 .message-name {
 	font-size: 22rpx;
-	color: rgba(255, 215, 0, 0.88);
+	color: rgba(57, 77, 124, 0.72);
 	padding-left: 6rpx;
 }
 
@@ -151,8 +248,9 @@ export default {
 	padding: 26rpx;
 	border-radius: 30rpx;
 	border-top-left-radius: 10rpx;
-	background: linear-gradient(135deg, #ffd700, #ffc247);
-	border: 1rpx solid rgba(255, 215, 0, 0.82);
-	box-shadow: 0 14rpx 34rpx rgba(255, 215, 0, 0.18);
+	background: rgba(255, 255, 255, 0.9);
+	border: 1rpx solid rgba(166, 183, 227, 0.3);
+	box-shadow: 0 18rpx 34rpx rgba(81, 103, 151, 0.08);
+	backdrop-filter: blur(12px);
 }
 </style>

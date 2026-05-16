@@ -1,28 +1,15 @@
 <template>
   <view class="volunteer-page">
-    <view v-if="bannerImages.length > 0" class="volunteer-banner-wrap">
-      <swiper
-        class="volunteer-banner-swiper"
-        :indicator-dots="bannerImages.length > 1"
-        indicator-color="rgba(255, 255, 255, 0.72)"
-        indicator-active-color="#ffffff"
-        circular
-        autoplay
-        interval="3500"
-        duration="500"
-      >
-        <swiper-item
-          v-for="banner in bannerImages"
-          :key="banner.id"
-          class="volunteer-banner-item"
-        >
-          <image
-            class="volunteer-banner-image"
-            :src="banner.imageUrl"
-            mode="aspectFill"
-          />
-        </swiper-item>
-      </swiper>
+    <view class="direct-score-top-hero">
+      <view class="direct-score-back-button" @tap="handleBackToVolunteer">
+        <text class="direct-score-back-icon">‹</text>
+        <text class="direct-score-back-text">返回</text>
+      </view>
+      <image
+        class="direct-score-top-hero-image"
+        :src="directScoreTopHeroUrl"
+        mode="widthFix"
+      />
     </view>
 
     <view class="filter-header">
@@ -68,8 +55,13 @@
           placeholder-class="input-placeholder"
           @confirm="handleSearchAction"
         />
-        <view class="search-button" @tap="handleSearchAction">
-          <text>筛选</text>
+        <view class="search-button" @tap="resetFilters">
+          <image
+            class="action-image-button action-image-button-reset"
+            :src="directScoreResetButtonUrl"
+            mode="aspectFit"
+            :webp="true"
+          />
         </view>
       </view>
 
@@ -116,8 +108,20 @@
           ]"
           @tap="handleRiskFilterSelect(option.value)"
         >
-          <text class="risk-pill-label">{{ option.label }}</text>
-          <text class="risk-pill-count">{{ scoreValue === null ? '--' : riskSummary[option.value] }}</text>
+          <image
+            v-if="option.backgroundUrl"
+            class="risk-pill-background"
+            :src="option.backgroundUrl"
+            mode="widthFix"
+            :webp="true"
+          />
+          <view
+            class="risk-pill-content"
+            :class="{ 'risk-pill-content-supplement': option.value === 'supplement' }"
+          >
+            <text class="risk-pill-label">{{ option.displayLabel || option.label }}</text>
+            <text class="risk-pill-count">{{ scoreValue === null ? '--' : riskSummary[option.value] }}</text>
+          </view>
         </view>
       </view>
 
@@ -138,38 +142,39 @@
           :class="{ 'filter-refresh-inline-disabled': unlockStatusLoading }"
           @tap="handleUnlockRefresh"
         >
-          <text
-            class="filter-refresh-icon"
-            :class="{ 'filter-refresh-icon-spinning': unlockStatusLoading }"
-          >↻</text>
+          <image
+            class="action-image-button action-image-button-refresh"
+            :class="{ 'action-image-button-spinning': unlockStatusLoading }"
+            :src="directScoreRefreshButtonUrl"
+            mode="aspectFit"
+            :webp="true"
+          />
         </view>
       </view>
     </view>
 
-    <view v-if="userLoggedIn" class="inline-card-panel">
-      <volunteer-access-status-card
+    <view v-if="userLoggedIn" class="volunteer-upsell-panel">
+      <volunteer-access-status-upsell-banners
         :status="admissionUnlockStatus"
-        :loading="unlockStatusLoading"
-        @refresh="handleUnlockRefresh"
+        :remaining-query-banner="remainingQueryBannerUrl"
+        :vip-banner="vipBannerUrl"
+        :customer-service-phone="customerServicePhone"
+        @invite="showShareUnlockPrompt"
+        @vip="handleAdmissionUnlockPayment"
+        @vip-opened="showVipOpenedServiceModal"
       />
     </view>
 
-    <volunteer-invite-unlock-card
-      class="inline-card-panel"
-      :user-logged-in="userLoggedIn"
-      :loading="unlockStatusLoading"
-      :payment-loading="unlockPaymentProcessing"
-      :user-nickname="currentUserNickname"
-      :invite-count="admissionUnlockStatus.inviteCount"
-      :required-invite-count="admissionUnlockStatus.requiredInviteCount"
-      :unlocked="admissionUnlockStatus.unlocked"
-      :customer-service-phone="customerServicePhone"
-      @login="handleLogin"
-      @pay="handleAdmissionUnlockPayment"
-      @contact="contactCustomerService"
-      @share-tap="showShareUnlockPrompt"
-      @refresh="handleUnlockRefresh"
-    />
+    <view
+      v-if="userLoggedIn && ((selectedTopFilterOption && selectedTopFilterOption.examType) || '') !== 'spring'"
+      class="result-top-banner"
+    >
+      <image
+        class="result-top-banner-image"
+        :src="generalSchoolRetentionBannerUrl"
+        mode="widthFix"
+      />
+    </view>
 
     <view v-if="!hasFullInstitutionAccess" class="guest-preview-notice">
       <view class="guest-preview-copy">
@@ -214,9 +219,10 @@
       </view>
 
       <view v-else>
-        <volunteer-school-results
+        <volunteer-direct-score-results
           :institutions="visibleInstitutions"
           :major-category-filter="selectedMajorCategoryValue"
+          :subject-track-filter="selectedSubjectTrackValue"
           :has-more="hasMore"
           :loading-more="loadingMore"
           :loading-more-text="institutionLoadProgressText"
@@ -268,14 +274,198 @@
       />
     </view>
 
+    <view
+      v-if="shareInviteSheetVisible"
+      class="share-invite-sheet-mask"
+      @tap="closeShareInviteSheet"
+    >
+      <view class="share-invite-sheet" @tap.stop>
+        <text class="share-invite-sheet-title">分享查分链接</text>
+        <text class="share-invite-sheet-desc">
+          这里会直接唤起微信分享，发到聊天里的会是当前查分页链接，不会再跳团队二维码。
+        </text>
+        <button
+          class="share-invite-sheet-primary"
+          open-type="share"
+        >
+          去邀请
+        </button>
+        <view class="share-invite-sheet-secondary" @tap="closeShareInviteSheet">
+          <text>暂不邀请</text>
+        </view>
+      </view>
+    </view>
+
     <bottom-nav active="volunteer" />
   </view>
 </template>
 
 <script>
+import { getStaticAssetUrl } from '../../utils/cloud-static-assets'
+import { getCachedImageSync, resolveCachedImages } from '../../utils/remote-image-cache'
 import { createVolunteerPageOptions } from '../../utils/volunteer-page-options'
 
-export default createVolunteerPageOptions()
+const DIRECT_SCORE_TOP_HERO_URL = getStaticAssetUrl('/static/volunteer-guide/direct-score-top-hero.jpg')
+const DIRECT_SCORE_RESET_BUTTON_URL = getStaticAssetUrl('/static/volunteer-guide/direct-score-reset-button.webp')
+const DIRECT_SCORE_REFRESH_BUTTON_URL = getStaticAssetUrl('/static/volunteer-guide/direct-score-refresh-button.webp')
+const REMAINING_QUERY_BANNER_URL = getStaticAssetUrl('/static/volunteer-guide/remaining-query-banner.webp')
+const VIP_BANNER_URL = getStaticAssetUrl('/static/volunteer-guide/vip-banner-large.webp')
+const GENERAL_SCHOOL_RETENTION_BANNER_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/volunteer/banner/yunnan-general-school-retention-rate-v1.jpg'
+const VOLUNTEER_HOME_PATH = '/subpackages/volunteer/guide-redirect'
+const RISK_PILL_BACKGROUND_URLS = Object.freeze({
+  hard: getStaticAssetUrl('/static/volunteer-guide/risk-hard-card.webp'),
+  stable: getStaticAssetUrl('/static/volunteer-guide/risk-stable-card.webp'),
+  safe: getStaticAssetUrl('/static/volunteer-guide/risk-safe-card.webp'),
+  supplement: getStaticAssetUrl('/static/volunteer-guide/risk-supplement-card.webp')
+})
+const RISK_PILL_DISPLAY_LABELS = Object.freeze({
+  hard: '冲刺',
+  stable: '较稳',
+  safe: '保底',
+  supplement: '补录'
+})
+const DIRECT_SCORE_STATIC_IMAGE_FIELDS = Object.freeze({
+  directScoreTopHeroUrl: DIRECT_SCORE_TOP_HERO_URL,
+  directScoreResetButtonUrl: DIRECT_SCORE_RESET_BUTTON_URL,
+  directScoreRefreshButtonUrl: DIRECT_SCORE_REFRESH_BUTTON_URL,
+  remainingQueryBannerUrl: REMAINING_QUERY_BANNER_URL,
+  vipBannerUrl: VIP_BANNER_URL,
+  generalSchoolRetentionBannerUrl: GENERAL_SCHOOL_RETENTION_BANNER_URL
+})
+
+function getCachedStaticImage(url) {
+  return getCachedImageSync(url) || url || ''
+}
+
+function buildRiskFilterOptions(options = [], resolver = (url) => url) {
+  return (Array.isArray(options) ? options : []).map((option) => {
+    const backgroundUrl = RISK_PILL_BACKGROUND_URLS[option.value] || ''
+
+    return Object.assign({}, option, {
+      backgroundUrl: backgroundUrl ? resolver(backgroundUrl) || backgroundUrl : '',
+      displayLabel: RISK_PILL_DISPLAY_LABELS[option.value] || option.label || ''
+    })
+  })
+}
+
+const volunteerPageOptions = createVolunteerPageOptions()
+const originalData = typeof volunteerPageOptions.data === 'function'
+  ? volunteerPageOptions.data
+  : () => ({})
+const originalOnLoad = volunteerPageOptions.onLoad
+const originalOnShow = volunteerPageOptions.onShow
+const originalOnPullDownRefresh = volunteerPageOptions.onPullDownRefresh
+
+volunteerPageOptions.data = function data() {
+  const baseData = Object.assign({}, originalData.call(this), {
+    directScoreTopHeroUrl: getCachedStaticImage(DIRECT_SCORE_TOP_HERO_URL),
+    directScoreResetButtonUrl: getCachedStaticImage(DIRECT_SCORE_RESET_BUTTON_URL),
+    directScoreRefreshButtonUrl: getCachedStaticImage(DIRECT_SCORE_REFRESH_BUTTON_URL),
+    remainingQueryBannerUrl: getCachedStaticImage(REMAINING_QUERY_BANNER_URL),
+    vipBannerUrl: getCachedStaticImage(VIP_BANNER_URL),
+    generalSchoolRetentionBannerUrl: getCachedStaticImage(GENERAL_SCHOOL_RETENTION_BANNER_URL)
+  })
+
+  return Object.assign(baseData, {
+    riskFilterOptions: buildRiskFilterOptions(baseData.riskFilterOptions, getCachedStaticImage)
+  })
+}
+
+const originalMethods = volunteerPageOptions.methods || {}
+
+volunteerPageOptions.methods = Object.assign({}, originalMethods, {
+  async cacheDirectScoreStaticImages() {
+    const fieldEntries = Object.entries(DIRECT_SCORE_STATIC_IMAGE_FIELDS)
+    const riskImageUrls = Object.values(RISK_PILL_BACKGROUND_URLS)
+    const urls = Array.from(new Set([
+      ...fieldEntries.map(([, url]) => url).filter(Boolean),
+      ...riskImageUrls.filter(Boolean)
+    ]))
+
+    if (!urls.length) {
+      return
+    }
+
+    try {
+      const cachedUrls = await resolveCachedImages(urls)
+      const cachedUrlMap = {}
+
+      urls.forEach((url, index) => {
+        cachedUrlMap[url] = cachedUrls[index] || url
+      })
+
+      fieldEntries.forEach(([field, url]) => {
+        const nextUrl = cachedUrlMap[url] || url
+        if (nextUrl && this[field] !== nextUrl) {
+          this[field] = nextUrl
+        }
+      })
+
+      if (Array.isArray(this.riskFilterOptions) && this.riskFilterOptions.length) {
+        this.riskFilterOptions = buildRiskFilterOptions(this.riskFilterOptions, (url) => {
+          return cachedUrlMap[url] || url || ''
+        })
+      }
+    } catch (error) {
+      console.warn('[direct-score] cache static images failed:', error)
+    }
+  },
+  handleBackToVolunteer() {
+    const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+    const previousPage = pages.length > 1 ? pages[pages.length - 2] : null
+    const previousRoute = String(previousPage && previousPage.route || '').trim()
+    const canNavigateBackToVolunteer =
+      previousRoute === 'pages/volunteer/index' ||
+      previousRoute === 'subpackages/volunteer/guide-redirect'
+
+    if (canNavigateBackToVolunteer) {
+      uni.navigateBack({
+        fail: () => {
+          uni.reLaunch({
+            url: VOLUNTEER_HOME_PATH
+          })
+        }
+      })
+      return
+    }
+
+    uni.reLaunch({
+      url: VOLUNTEER_HOME_PATH
+    })
+  }
+})
+
+volunteerPageOptions.onLoad = function onLoad(...args) {
+  if (typeof this.cacheDirectScoreStaticImages === 'function') {
+    this.cacheDirectScoreStaticImages()
+  }
+
+  if (typeof originalOnLoad === 'function') {
+    return originalOnLoad.apply(this, args)
+  }
+}
+
+volunteerPageOptions.onShow = function onShow(...args) {
+  if (typeof this.cacheDirectScoreStaticImages === 'function') {
+    this.cacheDirectScoreStaticImages()
+  }
+
+  if (typeof originalOnShow === 'function') {
+    return originalOnShow.apply(this, args)
+  }
+}
+
+volunteerPageOptions.onPullDownRefresh = function onPullDownRefresh(...args) {
+  if (typeof this.cacheDirectScoreStaticImages === 'function') {
+    this.cacheDirectScoreStaticImages()
+  }
+
+  if (typeof originalOnPullDownRefresh === 'function') {
+    return originalOnPullDownRefresh.apply(this, args)
+  }
+}
+
+export default volunteerPageOptions
 </script>
 
 <style scoped src="../../styles/volunteer-index.css"></style>

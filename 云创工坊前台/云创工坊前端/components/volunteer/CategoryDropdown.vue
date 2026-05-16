@@ -224,13 +224,13 @@ export default {
 }
 
 .dropdown-trigger-borderless {
-  background: var(--control-bg, #f8fafc);
-  border: none;
+  background: var(--control-bg, #ffffff);
+  border: 1rpx solid var(--control-border, #e5e7eb);
   box-shadow: none;
 }
 
 .volunteer-category-dropdown-open .dropdown-trigger-borderless {
-  border-color: transparent;
+  border-color: var(--control-border, #e5e7eb);
   box-shadow: none;
 }
 

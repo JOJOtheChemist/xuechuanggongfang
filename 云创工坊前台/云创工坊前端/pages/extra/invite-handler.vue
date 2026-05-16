@@ -65,6 +65,26 @@ import { getHttpService } from '@/utils/http-services'
 			}, 1000)
 		},
 		methods: {
+			resetInviteHandlingState() {
+				this.isHandling = false
+				const app = typeof getApp === 'function' ? getApp() : null
+				if (app && app.globalData) {
+					app.globalData.isHandlingInvite = false
+					app.globalData.lastHandledScene = ''
+				}
+			},
+
+			navigateToSafePage() {
+				this.resetInviteHandlingState()
+				uni.switchTab({
+					url: '/pages/dashboard/index',
+					fail: (err) => {
+						console.error('[InviteHandler] switchTab 首页失败:', err)
+						uni.reLaunch({ url: '/pages/dashboard/index' })
+					}
+				})
+			},
+
 			async parseScene(scene) {
 				console.log('[InviteHandler] 开始解析 scene:', scene)
 				
@@ -193,13 +213,22 @@ import { getHttpService } from '@/utils/http-services'
 					success: (res) => {
 						if (res.confirm) {
 							this.executeNavigation()
+							return
 						}
+
+						console.log('[InviteHandler] 用户取消查看邀请，返回安全页面')
+						this.navigateToSafePage()
+					},
+					fail: (err) => {
+						console.error('[InviteHandler] 邀请弹窗展示失败:', err)
+						this.navigateToSafePage()
 					}
 				})
 			},
 
 			async executeNavigation() {
 				const token = uni.getStorageSync('token')
+				this.resetInviteHandlingState()
 
 				// [双重保险] 确保缓存存储(带时间戳)
 				uni.setStorageSync('pending_inviter_id', this.inviterId)

@@ -35,6 +35,6 @@ export default {
 
 <style scoped>
 .guide-article-card {
-	padding: 8rpx 24rpx 0;
+	padding: 0 24rpx 0;
 }
 </style>

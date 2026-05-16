@@ -142,6 +142,10 @@ export function extractDisplayUserInfo() {
 		nickname: normalizeText(
 			userInfo.nickname || userInfo.username || userInfo.nickName || userInfo.name,
 			''
+		),
+		avatar: normalizeText(
+			userInfo.avatar || userInfo.avatarUrl || userInfo.avatar_url || userInfo.headimgurl,
+			''
 		)
 	}
 }

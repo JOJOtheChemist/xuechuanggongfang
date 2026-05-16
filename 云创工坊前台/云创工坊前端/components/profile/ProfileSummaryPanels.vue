@@ -37,18 +37,28 @@
 								/>
 							</view>
 							<view class="profile-coin-entry-button withdraw" @tap="$emit('coin-withdraw')">
-								<image
-									class="profile-coin-entry-image"
-									:src="coinWithdrawEntryImageUrl"
-									mode="widthFix"
-								/>
+								<view class="profile-coin-entry-card withdraw">
+									<view class="profile-coin-entry-icon wallet">
+										<view class="profile-coin-entry-wallet-top"></view>
+										<view class="profile-coin-entry-wallet-body">
+											<view class="profile-coin-entry-wallet-slot"></view>
+										</view>
+									</view>
+									<text class="profile-coin-entry-label">提现</text>
+								</view>
 							</view>
 							<view class="profile-coin-entry-button" @tap="$emit('coin-exchange')">
-								<image
-									class="profile-coin-entry-image"
-									:src="coinExchangeEntryImageUrl"
-									mode="widthFix"
-								/>
+								<view class="profile-coin-entry-card exchange">
+									<view class="profile-coin-entry-icon gift">
+										<view class="profile-coin-entry-gift-bow left"></view>
+										<view class="profile-coin-entry-gift-bow right"></view>
+										<view class="profile-coin-entry-gift-box">
+											<view class="profile-coin-entry-gift-ribbon vertical"></view>
+											<view class="profile-coin-entry-gift-ribbon horizontal"></view>
+										</view>
+									</view>
+									<text class="profile-coin-entry-label">兑换积分</text>
+								</view>
 							</view>
 						</view>
 					</view>
@@ -126,8 +136,6 @@
 
 <script>
 const COIN_HISTORY_ENTRY_IMAGE_URL = 'https://xuechuang.xyz/oss/share-assets/admission/admin/images/0/2026/05/13/6d5fa40b-c05d-4255-af7a-123f72ca6e11.png'
-const COIN_WITHDRAW_ENTRY_IMAGE_URL = '/static/profile-actions/coin-withdraw.png'
-const COIN_EXCHANGE_ENTRY_IMAGE_URL = '/static/profile-actions/coin-exchange.png'
 const POINTS_LEDGER_ENTRY_IMAGE_URL = 'https://xuechuang.xyz/oss/share-assets/admission/admin/images/0/2026/05/13/6d5fa40b-c05d-4255-af7a-123f72ca6e11.png'
 const PROFILE_SUMMARY_IMAGES = [
 	{
@@ -164,8 +172,6 @@ export default {
 		return {
 			profileSummaryImages: PROFILE_SUMMARY_IMAGES,
 			coinHistoryEntryImageUrl: COIN_HISTORY_ENTRY_IMAGE_URL,
-			coinWithdrawEntryImageUrl: COIN_WITHDRAW_ENTRY_IMAGE_URL,
-			coinExchangeEntryImageUrl: COIN_EXCHANGE_ENTRY_IMAGE_URL,
 			pointsLedgerEntryImageUrl: POINTS_LEDGER_ENTRY_IMAGE_URL
 		}
 	},
@@ -309,6 +315,149 @@ export default {
 	.profile-summary-image {
 		display: block;
 		width: 100%;
+	}
+
+	.profile-coin-entry-card {
+		height: 100%;
+		min-height: 124rpx;
+		padding: 18rpx 12rpx 14rpx;
+		border-radius: 24rpx;
+		background:
+			linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(246, 248, 255, 0.94) 100%),
+			#ffffff;
+		box-shadow:
+			0 12rpx 26rpx rgba(31, 41, 55, 0.08),
+			inset 0 1rpx 0 rgba(255, 255, 255, 0.92);
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		box-sizing: border-box;
+	}
+
+	.profile-coin-entry-card.withdraw {
+		background:
+			linear-gradient(180deg, rgba(255, 247, 237, 0.98) 0%, rgba(255, 255, 255, 0.94) 100%),
+			#ffffff;
+	}
+
+	.profile-coin-entry-card.exchange {
+		background:
+			linear-gradient(180deg, rgba(239, 246, 255, 0.98) 0%, rgba(255, 255, 255, 0.94) 100%),
+			#ffffff;
+	}
+
+	.profile-coin-entry-icon {
+		position: relative;
+		width: 48rpx;
+		height: 48rpx;
+		margin-bottom: 10rpx;
+	}
+
+	.profile-coin-entry-label {
+		font-size: 22rpx;
+		font-weight: 700;
+		line-height: 1.2;
+		color: #1f2937;
+		text-align: center;
+		white-space: nowrap;
+	}
+
+	.profile-coin-entry-wallet-top {
+		position: absolute;
+		top: 4rpx;
+		left: 8rpx;
+		width: 24rpx;
+		height: 12rpx;
+		border-radius: 8rpx 8rpx 4rpx 4rpx;
+		background: linear-gradient(180deg, #ffd19a 0%, #ffb458 100%);
+		box-shadow: 0 4rpx 10rpx rgba(255, 159, 64, 0.18);
+	}
+
+	.profile-coin-entry-wallet-body {
+		position: absolute;
+		left: 6rpx;
+		right: 4rpx;
+		bottom: 4rpx;
+		height: 28rpx;
+		border-radius: 10rpx;
+		background: linear-gradient(180deg, #ffbd6e 0%, #ff9948 100%);
+		box-shadow: 0 10rpx 16rpx rgba(255, 159, 64, 0.2);
+	}
+
+	.profile-coin-entry-wallet-slot {
+		position: absolute;
+		top: 9rpx;
+		right: 5rpx;
+		width: 12rpx;
+		height: 10rpx;
+		border-radius: 999rpx;
+		background: rgba(255, 255, 255, 0.95);
+	}
+
+	.profile-coin-entry-wallet-slot::after {
+		content: '';
+		position: absolute;
+		top: 3rpx;
+		left: 4rpx;
+		width: 4rpx;
+		height: 4rpx;
+		border-radius: 50%;
+		background: #ff9948;
+	}
+
+	.profile-coin-entry-gift-bow {
+		position: absolute;
+		top: 1rpx;
+		width: 16rpx;
+		height: 14rpx;
+		border: 4rpx solid #5b89ff;
+		background: rgba(255, 255, 255, 0.5);
+	}
+
+	.profile-coin-entry-gift-bow.left {
+		left: 6rpx;
+		border-right: 0;
+		border-radius: 12rpx 0 10rpx 10rpx;
+		transform: rotate(-18deg);
+	}
+
+	.profile-coin-entry-gift-bow.right {
+		right: 6rpx;
+		border-left: 0;
+		border-radius: 0 12rpx 10rpx 10rpx;
+		transform: rotate(18deg);
+	}
+
+	.profile-coin-entry-gift-box {
+		position: absolute;
+		left: 6rpx;
+		right: 6rpx;
+		bottom: 5rpx;
+		height: 26rpx;
+		border-radius: 10rpx;
+		background: linear-gradient(180deg, #7ca4ff 0%, #4d78f7 100%);
+		box-shadow: 0 10rpx 16rpx rgba(77, 120, 247, 0.22);
+	}
+
+	.profile-coin-entry-gift-ribbon {
+		position: absolute;
+		background: rgba(255, 255, 255, 0.95);
+	}
+
+	.profile-coin-entry-gift-ribbon.vertical {
+		top: 0;
+		bottom: 0;
+		left: 50%;
+		width: 6rpx;
+		transform: translateX(-50%);
+	}
+
+	.profile-coin-entry-gift-ribbon.horizontal {
+		left: 0;
+		right: 0;
+		top: 10rpx;
+		height: 6rpx;
 	}
 
 	.profile-coin-entry-image.history {

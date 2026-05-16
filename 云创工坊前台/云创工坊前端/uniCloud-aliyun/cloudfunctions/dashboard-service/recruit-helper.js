@@ -54,7 +54,7 @@ async function getRecentRecruits(db, uid, limit = 20) {
         let fileIDs = []
         const getAvatar = (uid) => {
             const info = userMap[uid]
-            if (!info || !info.avatar) return '/static/icons/default-avatar.svg'
+            if (!info || !info.avatar) return 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png'
             if (info.avatar.startsWith('cloud://')) fileIDs.push(info.avatar)
             return info.avatar
         }

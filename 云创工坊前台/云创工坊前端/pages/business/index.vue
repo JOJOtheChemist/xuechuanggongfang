@@ -52,15 +52,19 @@
 			</view>
 			<text v-else>加载中...</text>
 		</view>
+
+		<ai-entry-fab :navigate-url="startupMentorNavigateUrl" />
 	</view>
 </template>
 
 <script>
 	import { getHttpService } from '@/utils/http-services'
 	import { getCachedImageSync, resolveCachedImage } from '@/utils/remote-image-cache'
+	import AiEntryFab from '@/components/common/AiEntryFab.vue'
 	import BusinessHeroBanner from '@/components/business/BusinessHeroBanner.vue'
 	import BusinessDetailCard from '@/components/business/BusinessDetailCard.vue'
 	import QuickNav from '@/components/business/QuickNav.vue'
+	import { AI_CHAT_STARTUP_MENTOR_NAVIGATE_URL } from '@/utils/ai-chat-float-config'
 
 const STUDY_HERO_BACKGROUND_URL = 'https://xuechuang.xyz/oss/share-assets/admission/admin/images/0/2026/05/12/a7391291-a94d-41e5-82ee-83b75f64ef0b.jpg'
 const FALLBACK_LEARNING_NOTICES = [
@@ -224,6 +228,7 @@ const STATIC_BUSINESS_ITEMS = [
 
 	export default {
 	    components: {
+	    	AiEntryFab,
 	    	BusinessHeroBanner,
 	        BusinessDetailCard,
 	        QuickNav,
@@ -235,6 +240,7 @@ const STATIC_BUSINESS_ITEMS = [
             // showPopup: false, // [REMOVED] 不再需要弹窗
             isLoggedIn: false,
             heroBackgroundUrl: getCachedImageSync(STUDY_HERO_BACKGROUND_URL),
+			startupMentorNavigateUrl: AI_CHAT_STARTUP_MENTOR_NAVIGATE_URL,
 			learningNotices: FALLBACK_LEARNING_NOTICES,
             
             userInfo: {

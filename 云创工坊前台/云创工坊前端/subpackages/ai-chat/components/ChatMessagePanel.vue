@@ -55,11 +55,11 @@
 						<view v-else class="message-avatar" :class="messageAvatarClass">AI</view>
 					</view>
 					<view class="typing-bubble" :class="typingBubbleClass">
-						<text class="typing-text">{{ currentTypingMessage }}</text>
+						<text class="typing-text" :class="typingTextClass">{{ currentTypingMessage }}</text>
 						<view class="typing-dots">
-							<view class="typing-dot"></view>
-							<view class="typing-dot"></view>
-							<view class="typing-dot"></view>
+							<view class="typing-dot" :class="typingDotClass"></view>
+							<view class="typing-dot" :class="typingDotClass"></view>
+							<view class="typing-dot" :class="typingDotClass"></view>
 						</view>
 					</view>
 				</view>
@@ -150,6 +150,12 @@ export default {
 		},
 		typingBubbleClass() {
 			return this.isVisualImageMode ? 'typing-bubble-xiaochunlu' : ''
+		},
+		typingTextClass() {
+			return this.isVisualImageMode ? 'typing-text-soft' : ''
+		},
+		typingDotClass() {
+			return this.isVisualImageMode ? 'typing-dot-soft' : ''
 		},
 		typingMessages() {
 			if (this.displayMode === 'gaokao') {
@@ -339,6 +345,10 @@ export default {
 	word-break: break-all;
 }
 
+.typing-text-soft {
+	color: rgba(107, 114, 128, 0.92);
+}
+
 .typing-dots {
 	display: flex;
 	align-items: center;
@@ -351,6 +361,10 @@ export default {
 	border-radius: 999rpx;
 	background: rgba(44, 27, 0, 0.58);
 	animation: typingPulse 1s infinite ease-in-out;
+}
+
+.typing-dot-soft {
+	background: rgba(156, 163, 175, 0.95);
 }
 
 .typing-dot:nth-child(2) {

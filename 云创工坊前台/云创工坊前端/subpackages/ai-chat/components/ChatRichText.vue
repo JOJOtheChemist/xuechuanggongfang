@@ -273,6 +273,9 @@ export default {
 	display: flex;
 	flex-direction: column;
 	gap: 14rpx;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
 }
 
 .chat-rich-heading,
@@ -284,6 +287,8 @@ export default {
 	font-size: 30rpx;
 	line-height: 1.8;
 	white-space: pre-wrap;
+	word-break: break-word;
+	overflow-wrap: anywhere;
 }
 
 .chat-rich-heading {
@@ -302,16 +307,23 @@ export default {
 }
 
 .chat-rich-quote {
+	width: 100%;
+	max-width: 100%;
 	padding: 18rpx 22rpx;
 	border-radius: 22rpx;
 	background: rgba(255, 255, 255, 0.12);
 	border-left: 6rpx solid rgba(255, 255, 255, 0.34);
+	box-sizing: border-box;
 }
 
 .chat-rich-code {
+	width: 100%;
+	max-width: 100%;
 	padding: 18rpx 20rpx;
 	border-radius: 22rpx;
 	background: rgba(0, 0, 0, 0.14);
+	box-sizing: border-box;
+	overflow: hidden;
 }
 
 .chat-rich-code-text {
@@ -323,12 +335,16 @@ export default {
 	display: flex;
 	flex-direction: column;
 	gap: 10rpx;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
 }
 
 .chat-rich-list-item {
 	display: flex;
 	align-items: flex-start;
 	gap: 12rpx;
+	min-width: 0;
 }
 
 .chat-rich-list-marker {

@@ -1,10 +1,19 @@
 <template>
-	<view class="intro-prompt-list" :class="{ 'intro-prompt-list-xiaochunlu': displayMode === 'xiaochunlu' }">
+	<view
+		class="intro-prompt-list"
+		:class="{
+			'intro-prompt-list-xiaochunlu': displayMode === 'xiaochunlu',
+			'intro-prompt-list-gaokao': displayMode === 'gaokao'
+		}"
+	>
 		<view
 			v-for="(item, index) in normalizedPrompts"
 			:key="item.key"
 			class="intro-prompt-item"
-			:class="{ 'intro-prompt-item-xiaochunlu': displayMode === 'xiaochunlu' }"
+			:class="{
+				'intro-prompt-item-xiaochunlu': displayMode === 'xiaochunlu',
+				'intro-prompt-item-gaokao': displayMode === 'gaokao'
+			}"
 			:hover-class="disabled ? 'none' : 'intro-prompt-item-active'"
 			@tap="handleSelect(item, index)"
 		>
@@ -71,7 +80,11 @@ export default {
 }
 
 .intro-prompt-list-xiaochunlu {
-	transform: translate(40rpx, -20rpx);
+	transform: translate(60rpx, -20rpx);
+}
+
+.intro-prompt-list-gaokao {
+	width: 100%;
 }
 
 .intro-prompt-item {
@@ -80,6 +93,10 @@ export default {
 	align-items: center;
 	padding-right: 82rpx;
 	box-sizing: border-box;
+}
+
+.intro-prompt-item-gaokao {
+	padding-right: 20rpx;
 }
 
 .intro-prompt-item-xiaochunlu {
@@ -94,7 +111,7 @@ export default {
 .intro-prompt-text {
 	font-size: 24rpx;
 	line-height: 1.45;
-	font-weight: 600;
+	font-weight: 400;
 	color: #1c294a;
 }
 

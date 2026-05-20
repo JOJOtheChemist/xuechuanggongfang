@@ -78,21 +78,19 @@ import {
   saveForumPublishProfile,
   syncForumPublishProfileState
 } from '@/utils/forum-publish-profile'
-
-const DEFAULT_FORUM_SCHOOL = '云南大学'
+import {
+  DEFAULT_HOME_SCHOOL as DEFAULT_FORUM_SCHOOL,
+  getForumSchoolOptions,
+  sanitizeForumSchoolSelection
+} from '@/utils/forum-school-options'
 
 function buildSchoolOptions(rawOptions = [], currentSchool = '') {
-  const nextOptions = []
-  const seen = new Set()
-
-  ;[currentSchool, ...rawOptions, DEFAULT_FORUM_SCHOOL].forEach((item) => {
-    const school = String(item || '').trim()
-    if (!school || seen.has(school)) return
-    seen.add(school)
-    nextOptions.push(school)
-  })
-
-  return nextOptions
+  const baseOptions = getForumSchoolOptions()
+  const current = sanitizeForumSchoolSelection(currentSchool)
+  if (!current || current === DEFAULT_FORUM_SCHOOL) {
+    return baseOptions
+  }
+  return [current, ...baseOptions.filter((item) => item !== current)]
 }
 
 export default {
@@ -174,10 +172,13 @@ export default {
 
         const data = res.data || {}
         const options = buildSchoolOptions(
-          Array.isArray(data.school_options) ? data.school_options : [],
-          cachedProfile.school || data.current_school || ''
+          [],
+          sanitizeForumSchoolSelection(cachedProfile.school || data.current_school, DEFAULT_FORUM_SCHOOL)
         )
-        const currentSchool = cachedProfile.school || data.current_school || ''
+        const currentSchool = sanitizeForumSchoolSelection(
+          cachedProfile.school || data.current_school,
+          DEFAULT_FORUM_SCHOOL
+        )
 
         this.schoolOptions = options
         this.selectedSchool = currentSchool || options[0] || DEFAULT_FORUM_SCHOOL
@@ -210,11 +211,12 @@ export default {
       const safeSchool = String(school || '').trim()
       if (!safeSchool) return
 
-      this.schoolOptions = buildSchoolOptions(this.schoolOptions, safeSchool)
+      const normalizedSchool = sanitizeForumSchoolSelection(safeSchool, DEFAULT_FORUM_SCHOOL)
+      this.schoolOptions = buildSchoolOptions([], normalizedSchool)
       if (!String(this.selectedSchool || '').trim()) {
-        this.selectedSchool = safeSchool
+        this.selectedSchool = normalizedSchool
       } else if (!this.schoolOptions.includes(this.selectedSchool)) {
-        this.selectedSchool = safeSchool
+        this.selectedSchool = normalizedSchool
       }
     },
     openPublishProfileDialog(profile = {}) {
@@ -237,7 +239,7 @@ export default {
         const result = await saveForumPublishProfile(payload)
         this.publishProfileForm = Object.assign({}, result.profile)
         this.applyProfileSchool(result.profile.school)
-        this.selectedSchool = result.profile.school || this.selectedSchool
+        this.selectedSchool = sanitizeForumSchoolSelection(result.profile.school, this.selectedSchool || DEFAULT_FORUM_SCHOOL)
         this.showPublishProfileDialog = false
         uni.showToast({
           title: '信息已保存',

@@ -87,12 +87,12 @@ export const volunteerInstitutionLoaderMethods = {
     if (options === undefined) options = {}
     this.institutions = (Array.isArray(items) ? items : []).filter(isValidInstitution)
     this.institutionBaseCacheKey = cacheKey
-    this.page = 1
+    this.page = Math.max(1, Number(options.page || 1))
     this.total = Number(options.total || 0) || this.institutions.length
     this.errorText = ''
     this.loading = false
-    this.loadingMore = false
-    this.institutionLoadProgressText = ''
+    this.loadingMore = Boolean(options.loadingMore)
+    this.institutionLoadProgressText = String(options.progressText || '')
     console.log('[volunteer][load] applyInstitutionResults:', {
       count: this.institutions.length,
       total: this.total,
@@ -220,7 +220,7 @@ export const volunteerInstitutionLoaderMethods = {
 
     console.log('[volunteer][load] start loading, query:', JSON.stringify(query))
 
-    const requestPromise = this.fetchAllInstitutionPages(query, requestSeq, cacheKey)
+    const requestPromise = this.fetchInstitutionFirstPage(query, requestSeq, cacheKey)
     this.activeInstitutionRequestKey = requestKey
     this.activeInstitutionRequestPromise = requestPromise
 
@@ -228,8 +228,17 @@ export const volunteerInstitutionLoaderMethods = {
       const result = await requestPromise
       if (!result || requestSeq !== this.institutionRequestSeq) return
 
-      this.applyInstitutionResults(result.items, cacheKey, { total: result.total })
-      writeLocalInstitutionCache(cacheKey, result.items)
+      if (result.pageCount <= 1) {
+        writeLocalInstitutionCache(cacheKey, result.items)
+        return
+      }
+
+      this.streamRemainingInstitutionPages(query, requestSeq, cacheKey, result).catch((error) => {
+        if (requestSeq !== this.institutionRequestSeq) return
+        console.warn('[volunteer][load] remaining pages stream failed:', error && error.message)
+        this.loadingMore = false
+        this.institutionLoadProgressText = ''
+      })
     } catch (error) {
       if (requestSeq !== this.institutionRequestSeq) return
 
@@ -285,11 +294,10 @@ export const volunteerInstitutionLoaderMethods = {
 
       if (requestSeq === this.institutionRequestSeq) {
         this.loading = false
-        this.loadingMore = false
       }
     }
   },
-  async fetchAllInstitutionPages(query, requestSeq, cacheKey) {
+  async fetchInstitutionFirstPage(query, requestSeq, cacheKey) {
     const pageSize = Number(query.pageSize) || INSTITUTION_CACHE_PAGE_SIZE
     const firstEnvelope = await requestAdmissionEnvelope('/admission/institutions', query, { auth: true })
     const firstResult = firstEnvelope.body.data
@@ -300,8 +308,8 @@ export const volunteerInstitutionLoaderMethods = {
     const firstItems = ((firstResult && firstResult.items) || []).filter(isValidInstitution)
     const total = this.resolvePaginationTotal(firstResult, firstItems.length)
     const pageCount = pageSize > 0 ? Math.ceil(total / pageSize) : 1
-    let mergedItems = firstItems
-    let loadedPages = 1
+    const mergedItems = firstItems
+    const loadedPages = 1
 
     console.log('[volunteer][load] page 1:', {
       total,
@@ -312,10 +320,12 @@ export const volunteerInstitutionLoaderMethods = {
 
     // 显示第一页
     if (requestSeq === this.institutionRequestSeq) {
-      this.loading = false
-      this.loadingMore = pageCount > 1
-      this.institutions = mergedItems.slice()
-      this.institutionLoadProgressText = pageCount > 1 ? ('已加载 ' + mergedItems.length + '/' + total + ' 所') : ''
+      this.applyInstitutionResults(mergedItems, cacheKey, {
+        total,
+        page: 1,
+        loadingMore: pageCount > 1,
+        progressText: pageCount > 1 ? ('已加载 ' + mergedItems.length + '/' + total + ' 所') : ''
+      })
       if (typeof this.setAdmissionDebugPayload === 'function') {
         this.setAdmissionDebugPayload({
           source: 'remote',
@@ -338,7 +348,25 @@ export const volunteerInstitutionLoaderMethods = {
       }
     }
 
-    // 继续拉后续页
+    return {
+      items: mergedItems,
+      total: Math.max(total, mergedItems.length),
+      pageCount,
+      pageSize,
+      loadedPages,
+      firstEnvelope
+    }
+  },
+  async streamRemainingInstitutionPages(query, requestSeq, cacheKey, initialResult) {
+    if (!initialResult || requestSeq !== this.institutionRequestSeq) return
+
+    const pageCount = Number(initialResult.pageCount || 0)
+    const total = Number(initialResult.total || 0)
+    const pageSize = Number(initialResult.pageSize || INSTITUTION_CACHE_PAGE_SIZE)
+    const firstEnvelope = initialResult.firstEnvelope
+    let mergedItems = Array.isArray(initialResult.items) ? initialResult.items.slice() : []
+    let loadedPages = Number(initialResult.loadedPages || 1)
+
     for (let page = 2; page <= pageCount; page += 1) {
       if (requestSeq !== this.institutionRequestSeq) return null
 
@@ -358,9 +386,12 @@ export const volunteerInstitutionLoaderMethods = {
       loadedPages = page
 
       if (requestSeq === this.institutionRequestSeq) {
-        this.loadingMore = page < pageCount
-        this.institutions = mergedItems.slice()
-        this.institutionLoadProgressText = page < pageCount ? ('已加载 ' + mergedItems.length + '/' + total + ' 所') : ''
+        this.applyInstitutionResults(mergedItems, cacheKey, {
+          total,
+          page,
+          loadingMore: page < pageCount,
+          progressText: page < pageCount ? ('已加载 ' + mergedItems.length + '/' + total + ' 所') : ''
+        })
         if (typeof this.setAdmissionDebugPayload === 'function') {
           this.setAdmissionDebugPayload({
             source: 'remote',
@@ -384,9 +415,14 @@ export const volunteerInstitutionLoaderMethods = {
       }
     }
 
-    return {
-      items: mergedItems,
-      total: Math.max(total, mergedItems.length)
+    if (requestSeq === this.institutionRequestSeq) {
+      this.applyInstitutionResults(mergedItems, cacheKey, {
+        total: Math.max(total, mergedItems.length),
+        page: pageCount,
+        loadingMore: false,
+        progressText: ''
+      })
+      writeLocalInstitutionCache(cacheKey, mergedItems)
     }
   },
   resolvePaginationTotal(result, fallbackTotal) {

@@ -93,7 +93,7 @@ function defaultSummary(title) {
 }
 
 function defaultContent(title) {
-	return `<p>请点击下方按钮阅读 PDF 文档：${title}</p>`
+	return `<p>请点击上方按钮阅读 PDF 文档：${title}</p>`
 }
 
 function defaultArticlePayload(partial) {

@@ -463,9 +463,43 @@
   }
 }
 
-.basic-dropdown {
+.basic-dropdown,
+.basic-picker {
   flex: 1;
   min-width: 0;
+}
+
+.basic-picker-trigger {
+  height: var(--control-height, 76rpx);
+  padding: 0 24rpx;
+  border-radius: 18rpx;
+  background: var(--control-bg, #ffffff);
+  border: 1rpx solid var(--control-border, #e5e7eb);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+}
+
+.basic-picker-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 30rpx;
+  font-weight: 400;
+  color: var(--control-text, #374151);
+}
+
+.basic-picker-arrow {
+  width: 16rpx;
+  height: 16rpx;
+  flex-shrink: 0;
+  border-right: 4rpx solid #94a3b8;
+  border-bottom: 4rpx solid #94a3b8;
+  transform: rotate(45deg) translateY(-2rpx);
 }
 
 .select-arrow {

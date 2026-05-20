@@ -74,11 +74,13 @@
 
 <script>
 import { getHttpService, getCurrentUserInfo, getCurrentUserToken, normalizeUserInfo } from '@/utils/http-services'
+import { getApiBaseUrl } from '@/utils/api-switch.js'
 export default {
   data() {
     return {
       isLoggedIn: false,
       loginLoading: false,
+      loginRetryCount: 0,
       forceLogin: false,
       userId: '',
       userNickname: '',
@@ -166,6 +168,199 @@ export default {
     }
   },
   methods: {
+    isWechatCodeInvalid(result) {
+      const errcode = Number(result && result.details && result.details.errcode)
+      const combinedMessage = String(
+        (result && (result.message || result.error)) ||
+        ''
+      )
+
+      return errcode === 40029 || /invalid code/i.test(combinedMessage)
+    },
+
+    getWechatLoginCode() {
+      return new Promise((resolve, reject) => {
+        uni.login({
+          provider: 'weixin',
+          success: (loginRes) => {
+            const code = String(loginRes && loginRes.code || '').trim()
+            if (!code) {
+              reject(new Error('未获取到登录凭证'))
+              return
+            }
+
+            resolve(code)
+          },
+          fail: (err) => {
+            reject(err || new Error('获取登录凭证失败'))
+          }
+        })
+      })
+    },
+
+    async submitWechatLogin(code, retryCount = 0) {
+      const inviterId = String(this.inviterId || this.getPendingInviterId() || '').trim()
+      const inviteType = String(this.inviteType || '').trim()
+      const requestPayload = { code }
+      if (inviterId) {
+        requestPayload.inviterId = inviterId
+        requestPayload.inviter_id = inviterId
+        if (inviteType) {
+          requestPayload.inviteType = inviteType
+        }
+      }
+
+      console.log('[login] 准备登录，inviterId:', inviterId, 'inviteType:', inviteType, '来源:', this.inviterId ? 'URL参数' : '缓存', 'retryCount:', retryCount)
+
+      const result = await this.requestWechatLoginWithFallback(requestPayload)
+
+      if (result && result.ok && result.sessionToken) {
+        return result
+      }
+
+      if (retryCount < 2 && this.isWechatCodeInvalid(result)) {
+        console.warn('[login] 微信 code 已失效，自动重新获取后重试一次:', result)
+        const nextCode = await this.getWechatLoginCode()
+        this.loginRetryCount = retryCount + 1
+        return this.submitWechatLogin(nextCode, retryCount + 1)
+      }
+
+      return result
+    },
+
+    async requestWechatLoginRaw(url, payload) {
+      const response = await uni.request({
+        url,
+        method: 'POST',
+        data: payload,
+        header: {
+          'Content-Type': 'application/json'
+        },
+        timeout: 12000
+      })
+
+      return Array.isArray(response) ? response[1] : response
+    },
+
+    normalizeWechatLoginResult(response) {
+      const statusCode = Number(response && response.statusCode) || 0
+      const body = response && response.data
+      const payload = body && typeof body === 'object' ? body : {}
+      const data = payload && payload.data && typeof payload.data === 'object' ? payload.data : payload
+      const sessionToken = String(
+        (data && (data.accessToken || data.access_token || data.token)) ||
+        (payload && (payload.accessToken || payload.access_token || payload.token || payload.access_token)) ||
+        ''
+      ).trim()
+      const refreshToken = String((data && data.refreshToken) || payload.refreshToken || '').trim()
+      const userInfo = data && (data.userInfo || data.user) ? (data.userInfo || data.user) : (payload.user || null)
+      const message = String(
+        payload.message ||
+        payload.error ||
+        (payload.details && payload.details.errmsg) ||
+        ''
+      ).trim()
+
+      return {
+        statusCode,
+        raw: response,
+        payload,
+        data,
+        ok: (payload.code === 0 || payload.ok === true || statusCode === 200) && !!sessionToken,
+        sessionToken,
+        refreshToken,
+        userInfo,
+        uid: data && (data.uid || data.userId || data.user_id || data.id),
+        isNewUser: Boolean(data && data.isNewUser),
+        message: message || (statusCode === 200 ? '登录成功' : `登录失败(${statusCode || 'unknown'})`),
+        error: String(payload.error || '').trim(),
+        details: payload.details && typeof payload.details === 'object' ? payload.details : {}
+      }
+    },
+
+    async requestWechatLoginWithFallback(payload) {
+      const baseUrl = String(getApiBaseUrl() || '').replace(/\/+$/, '')
+      const candidateUrls = [
+        `${baseUrl}/auth/login/wechat`,
+        `${baseUrl}/auth/wechat-login`
+      ]
+
+      let lastResult = null
+
+      for (let index = 0; index < candidateUrls.length; index += 1) {
+        const url = candidateUrls[index]
+        try {
+          const response = await this.requestWechatLoginRaw(url, payload)
+          const result = this.normalizeWechatLoginResult(response)
+
+          if (result.ok) {
+            return result
+          }
+
+          lastResult = result
+
+          const isRetryableWechatCodeError = this.isWechatCodeInvalid(result)
+          const shouldTryNextEndpoint = !isRetryableWechatCodeError && index < candidateUrls.length - 1
+          if (shouldTryNextEndpoint) {
+            continue
+          }
+
+          return result
+        } catch (error) {
+          lastResult = {
+            ok: false,
+            sessionToken: '',
+            refreshToken: '',
+            userInfo: null,
+            uid: '',
+            isNewUser: false,
+            message: String(error && (error.message || error.errMsg) || '登录异常').trim(),
+            error: String(error && error.error || '').trim(),
+            details: {}
+          }
+        }
+      }
+
+      return lastResult || {
+        ok: false,
+        sessionToken: '',
+        refreshToken: '',
+        userInfo: null,
+        uid: '',
+        isNewUser: false,
+        message: '登录失败',
+        error: '',
+        details: {}
+      }
+    },
+
+    async requestCurrentUserProfile(token) {
+      const sessionToken = String(token || '').trim()
+      if (!sessionToken) return null
+
+      try {
+        const response = await uni.request({
+          url: `${String(getApiBaseUrl() || '').replace(/\/+$/, '')}/users/me`,
+          method: 'GET',
+          header: {
+            Authorization: `Bearer ${sessionToken}`,
+            'X-Access-Token': sessionToken
+          },
+          timeout: 12000
+        })
+        const raw = Array.isArray(response) ? response[1] : response
+        const statusCode = Number(raw && raw.statusCode) || 0
+        const payload = raw && raw.data && typeof raw.data === 'object' ? raw.data : {}
+        if (statusCode !== 200) return null
+
+        const data = payload && payload.data && typeof payload.data === 'object' ? payload.data : payload
+        return data && typeof data === 'object' ? data : null
+      } catch (error) {
+        console.warn('[login] 补拉用户信息失败:', error)
+        return null
+      }
+    },
+
     clearLocalSession() {
       uni.removeStorageSync('token')
       uni.removeStorageSync('accessToken')
@@ -312,76 +507,55 @@ export default {
 
       if (this.loginLoading) return
       this.loginLoading = true
+      this.loginRetryCount = 0
 
-      uni.login({
-        // provider 在多数平台可省略，这里显式指定微信小程序
-        provider: 'weixin',
-        success: async (loginRes) => {
-          const code = loginRes.code
-          if (!code) {
-            uni.showToast({ title: '未获取到登录凭证', icon: 'none' })
-            this.loginLoading = false
+      ;(async () => {
+        try {
+          const code = await this.getWechatLoginCode()
+          const result = await this.submitWechatLogin(code)
+
+          if (result && result.ok && result.sessionToken) {
+            const remoteUserInfo = result.userInfo || await this.requestCurrentUserProfile(result.sessionToken) || {}
+            const latestUserInfo = normalizeUserInfo(remoteUserInfo)
+            const sessionToken = result.sessionToken
+
+            this.isLoggedIn = true
+            this.userId = result.uid || latestUserInfo.uid || latestUserInfo.userId || ''
+            this.userNickname = latestUserInfo.nickname || latestUserInfo.username || ''
+            this.userAvatar = latestUserInfo.avatar || ''
+
+            uni.setStorageSync('userId', this.userId)
+            uni.setStorageSync('token', sessionToken)
+            uni.setStorageSync('accessToken', sessionToken)
+            uni.setStorageSync('uni_id_token', sessionToken)
+            if (result.refreshToken) {
+              uni.setStorageSync('refreshToken', result.refreshToken)
+            }
+            uni.setStorageSync('userInfo', latestUserInfo)
+
+            uni.showToast({
+              title: result.isNewUser ? 'Welcome!' : '登录成功',
+              icon: 'success'
+            })
+
+            this.handleLoginSuccess()
             return
           }
 
-          try {
-            // [双重保险] 优先使用URL参数的inviterId，兜底使用缓存
-            const inviterId = this.inviterId || this.getPendingInviterId()
-            const inviteType = this.inviteType || '' // 从 onLoad 时设置的 inviteType 读取
-            console.log('[login] 准备登录，inviterId:', inviterId, 'inviteType:', inviteType, '来源:', this.inviterId ? 'URL参数' : '缓存')
-            
-            const userCenter = getHttpService('user-center')
-            // [修改] 传递对象格式的 inviterId 参数
-            const inviterParam = inviterId ? { inviterId, inviteType } : undefined
-            const result = await userCenter.loginByWeixin({ code, inviterId: inviterParam })
-
-            if (result.code === 0 && result.data) {
-              const { uid, token, accessToken, refreshToken, userInfo, isNewUser } = result.data
-              const latestUserInfo = normalizeUserInfo(userInfo)
-              const sessionToken = accessToken || token || ''
-
-              this.isLoggedIn = true
-              this.userId = uid || latestUserInfo.uid || latestUserInfo.userId || ''
-              this.userNickname = latestUserInfo.nickname || latestUserInfo.username || ''
-              this.userAvatar = latestUserInfo.avatar || ''
-
-              // 持久化登录态，供其它页面和接口共用
-              uni.setStorageSync('userId', this.userId)
-              uni.setStorageSync('token', sessionToken)
-              uni.setStorageSync('accessToken', sessionToken)
-              if (refreshToken) {
-                uni.setStorageSync('refreshToken', refreshToken)
-              }
-              uni.setStorageSync('userInfo', latestUserInfo)
-              
-              uni.showToast({
-                title: isNewUser ? 'Welcome!' : '登录成功',
-                icon: 'success'
-              })
-
-              this.handleLoginSuccess()
-            } else {
-              uni.showToast({
-                title: result.message || '登录失败',
-                icon: 'none'
-              })
-            }
-          } catch (e) {
-            console.error('[login] 登录异常:', e)
-            uni.showToast({
-              title: e.message || '登录异常',
-              icon: 'none'
-            })
-          } finally {
-            this.loginLoading = false
-          }
-        },
-        fail: (err) => {
-          console.error('uni.login 失败:', err)
-          uni.showToast({ title: '获取登录凭证失败', icon: 'none' })
+          uni.showToast({
+            title: (result && result.message) || '登录失败',
+            icon: 'none'
+          })
+        } catch (e) {
+          console.error('[login] 登录异常:', e)
+          uni.showToast({
+            title: e.message || '登录异常',
+            icon: 'none'
+          })
+        } finally {
           this.loginLoading = false
         }
-      })
+      })()
     },
     // 统一处理登录后的跳转逻辑
     async handleLoginSuccess() {
@@ -419,7 +593,6 @@ export default {
       const tabBarPages = [
         '/pages/dashboard/index',
         '/pages/business/index',
-        '/pages/volunteer/index',
         '/pages/task-center/index',
         '/pages/profile/index'
       ]

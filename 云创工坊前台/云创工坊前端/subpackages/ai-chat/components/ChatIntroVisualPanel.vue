@@ -205,7 +205,7 @@ export default {
 .intro-section-overlay-guess-gaokao {
 	top: 106rpx;
 	left: 106rpx;
-	right: 78rpx;
+	right: 32rpx;
 }
 
 .intro-section-overlay-suggestions-gaokao {

@@ -59,6 +59,9 @@ export default {
 			if (this.$refs.heroOverlay && this.$refs.heroOverlay.loadLeaderboardData) {
 				this.$refs.heroOverlay.loadLeaderboardData()
 			}
+			if (this.$refs.heroOverlay && this.$refs.heroOverlay.refreshPartnerDynamics) {
+				this.$refs.heroOverlay.refreshPartnerDynamics(false)
+			}
 			if (this.$refs.heroOverlay && this.$refs.heroOverlay.refreshTaskProgress) {
 				this.$refs.heroOverlay.refreshTaskProgress()
 			}
@@ -70,6 +73,9 @@ export default {
 			this.$nextTick(() => {
 				if (this.$refs.heroOverlay && this.$refs.heroOverlay.loadLeaderboardData) {
 					this.$refs.heroOverlay.loadLeaderboardData()
+				}
+				if (this.$refs.heroOverlay && this.$refs.heroOverlay.refreshPartnerDynamics) {
+					this.$refs.heroOverlay.refreshPartnerDynamics(false)
 				}
 				if (this.$refs.heroOverlay && this.$refs.heroOverlay.refreshTaskProgress) {
 					this.$refs.heroOverlay.refreshTaskProgress()
@@ -157,7 +163,7 @@ export default {
 		},
 		goToKnowledgeHub() {
 			uni.navigateTo({
-				url: '/pages/article/list'
+				url: '/subpackages/task-center/knowledge-hub'
 			})
 		},
 		goToIntro() {

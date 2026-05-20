@@ -42,6 +42,7 @@
 
 <script>
 import { getHttpService } from '@/utils/http-services'
+import { loadCachedTeamDynamics, saveCachedTeamDynamics } from '@/utils/team-dynamics-cache'
 
 export default {
 	name: 'TaskCenterPartnerDynamicsPanel',
@@ -55,6 +56,7 @@ export default {
 		return {
 			teamDynamics: [],
 			loading: false,
+			hasLoadedCache: false,
 			defaultAvatar: 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png'
 		}
 	},
@@ -91,6 +93,16 @@ export default {
 		this.loadTeamDynamics()
 	},
 	methods: {
+		applyCachedTeamDynamics() {
+			const cached = loadCachedTeamDynamics({
+				minLimit: this.limit,
+				allowPartial: true
+			})
+			if (!cached || !Array.isArray(cached.list)) return false
+			this.teamDynamics = cached.list
+			this.hasLoadedCache = true
+			return true
+		},
 		goToTeamDynamics() {
 			if (!this.hasToken) {
 				uni.navigateTo({
@@ -103,15 +115,24 @@ export default {
 				url: '/pages/extra/team-dynamics'
 			})
 		},
-		async loadTeamDynamics() {
+		async loadTeamDynamics(options = {}) {
+			const config = options && typeof options === 'object' ? options : {}
+			const forceRefresh = config.forceRefresh === true
+			if (this.loading) return
 			const token = uni.getStorageSync('token')
 			if (!token) {
 				this.teamDynamics = []
+				this.hasLoadedCache = false
 				return
 			}
 
+			if (!forceRefresh) {
+				const hitCache = this.applyCachedTeamDynamics()
+				if (hitCache) return
+			}
+
 			try {
-				this.loading = true
+				this.loading = !this.teamDynamics.length
 				const dashboardService = getHttpService('dashboard-service')
 				const res = await dashboardService.getTeamDynamics({
 					_token: token,
@@ -120,13 +141,18 @@ export default {
 
 				if (res && res.code === 0 && Array.isArray(res.data)) {
 					this.teamDynamics = res.data
+					saveCachedTeamDynamics(res.data, { fetchedLimit: this.limit })
 				} else {
-					this.teamDynamics = []
+					if (!this.hasLoadedCache) {
+						this.teamDynamics = []
+					}
 					console.warn('[task-center] 获取伙伴动态失败', res)
 				}
 			} catch (error) {
 				console.error('[task-center] 获取伙伴动态异常', error)
-				this.teamDynamics = []
+				if (!this.hasLoadedCache) {
+					this.teamDynamics = []
+				}
 			} finally {
 				this.loading = false
 			}
@@ -175,14 +201,15 @@ export default {
 
 .task-center-dynamics-list {
 	display: flex;
-	flex: 1;
 	flex-direction: column;
 	gap: 4rpx;
 	justify-content: flex-start;
-	margin-top: 8rpx;
+	height: 110rpx;
+	margin-top: 4rpx;
 	margin-left: -4rpx;
 	margin-right: -4rpx;
-	transform: translateY(25rpx);
+	transform: translateY(16rpx);
+	overflow: hidden;
 }
 
 .task-center-dynamics-item {
@@ -191,7 +218,8 @@ export default {
 	align-items: flex-end;
 	gap: 8rpx;
 	width: 100%;
-	padding: 9rpx 8rpx 5rpx 10rpx;
+	min-height: 42rpx;
+	padding: 7rpx 8rpx 4rpx 10rpx;
 	border-radius: 14rpx;
 	background: transparent;
 	border: none;

@@ -109,6 +109,7 @@ import {
 	getCurrentUserToken,
 	normalizeUserInfo
 } from '@/utils/http-services'
+import { getCachedImageSync, resolveCachedImages } from '@/utils/remote-image-cache'
 import { uploadImageWithPresign } from '@/utils/presigned-upload'
 import {
 	extractRequestErrorMessage,
@@ -119,6 +120,12 @@ const PROFILE_HEADER_BG_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/
 const PROFILE_EDIT_BUTTON_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/profile/buttons/profile-edit-button-v1.png'
 const PROFILE_COPY_BUTTON_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/profile/buttons/profile-copy-button-v1.png'
 const CAMPUS_PARTNER_BADGE_URL = 'https://xuechuang.xyz/oss/share-assets/admission/admin/images/0/2026/05/13/95a93cff-0ec4-4b1a-8bbd-187a2ec300c2.webp'
+const PROFILE_HEADER_STATIC_IMAGE_FIELDS = Object.freeze([
+	['profileHeaderBgUrl', PROFILE_HEADER_BG_URL],
+	['profileEditButtonUrl', PROFILE_EDIT_BUTTON_URL],
+	['profileCopyButtonUrl', PROFILE_COPY_BUTTON_URL],
+	['campusPartnerBadgeUrl', CAMPUS_PARTNER_BADGE_URL]
+])
 
 export default {
 	name: 'ProfileHeader',
@@ -141,10 +148,10 @@ export default {
 			userInfo: null,
 			hasSession: false,
 			defaultAvatar: 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png',
-			profileHeaderBgUrl: PROFILE_HEADER_BG_URL,
-			profileEditButtonUrl: PROFILE_EDIT_BUTTON_URL,
-			profileCopyButtonUrl: PROFILE_COPY_BUTTON_URL,
-			campusPartnerBadgeUrl: CAMPUS_PARTNER_BADGE_URL,
+			profileHeaderBgUrl: getCachedImageSync(PROFILE_HEADER_BG_URL) || PROFILE_HEADER_BG_URL,
+			profileEditButtonUrl: getCachedImageSync(PROFILE_EDIT_BUTTON_URL) || PROFILE_EDIT_BUTTON_URL,
+			profileCopyButtonUrl: getCachedImageSync(PROFILE_COPY_BUTTON_URL) || PROFILE_COPY_BUTTON_URL,
+			campusPartnerBadgeUrl: getCachedImageSync(CAMPUS_PARTNER_BADGE_URL) || CAMPUS_PARTNER_BADGE_URL,
 			isEditingNickname: false,
 			editNickname: '',
 			isUploadingAvatar: false
@@ -258,6 +265,19 @@ export default {
 		}
 	},
 	methods: {
+		async cacheStaticImages() {
+			try {
+				const cachedUrls = await resolveCachedImages(PROFILE_HEADER_STATIC_IMAGE_FIELDS.map(([, url]) => url))
+				PROFILE_HEADER_STATIC_IMAGE_FIELDS.forEach(([field, url], index) => {
+					const nextUrl = cachedUrls[index] || url
+					if (nextUrl && this[field] !== nextUrl) {
+						this[field] = nextUrl
+					}
+				})
+			} catch (error) {
+				console.warn('[ProfileHeader] cache static images failed', error)
+			}
+		},
 		handleQrcodeTap() {
 			if (!this.teamMetrics || !this.teamMetrics.hasTeam) {
 				return
@@ -539,6 +559,7 @@ export default {
 		}
 	},
 	mounted() {
+		this.cacheStaticImages()
 		this.loadUserInfo()
 	}
 }

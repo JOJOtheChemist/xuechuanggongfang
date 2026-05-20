@@ -1,13 +1,20 @@
 import { getApiBaseUrl } from '@/utils/api-switch.js'
 import {
+	fetchAdmissionUnlockStatus,
+	startAdmissionUnlockPayment
+} from '@/utils/admission-access.js'
+import {
+	VOLUNTEER_CUSTOMER_SERVICE_PHONE,
+	createDefaultUnlockStatus,
+	normalizeUnlockStatus
+} from '@/utils/volunteer-local-admission.js'
+import { buildVolunteerPaymentConfirmText } from '@/utils/volunteer-support-rules.js'
+import {
 	CHAT_PATH,
 	buildRequestError,
 	createSessionId,
 	extractDisplayUserInfo,
-	extractPayloadMessage,
-	getCurrentAuthToken,
 	getDailyNoticeKey,
-	getStoredRefreshToken,
 	getStoredTokenByPriority,
 	getStoredValue,
 	getResponsePayload,
@@ -15,11 +22,8 @@ import {
 	hasAuthFailure,
 	hasPowerFailure,
 	hasServiceFailure,
-	isJwtLikeToken,
 	isSuccessPayload,
-	maskToken,
 	normalizeText,
-	nowTimeText,
 	requestJsonWithRefresh,
 	requestRaw,
 	resolveActiveToken,
@@ -33,26 +37,387 @@ function clipInlineText(value, limit = 120) {
 	return text.length > limit ? `${text.slice(0, Math.max(0, limit - 1)).trim()}…` : text
 }
 
-function stringifyPreview(value, fallback = '-', limit = 220) {
-	if (value === undefined || value === null || value === '') return fallback
-	try {
-		if (typeof value === 'string') {
-			return clipInlineText(value, limit)
-		}
-		return clipInlineText(JSON.stringify(value), limit)
-	} catch (error) {
-		return fallback
+function syncCurrentUserProfile(ctx) {
+	const userInfo = extractDisplayUserInfo()
+	ctx.currentUserId = userInfo.userId || ''
+	ctx.currentUserName = userInfo.nickname || '我'
+	ctx.currentUserAvatarUrl = userInfo.avatar || ''
+}
+
+function resolveAssistantAvatarUrl(nextAvatarUrl, currentAvatarUrl) {
+	const next = normalizeText(nextAvatarUrl, '')
+	if (!next) {
+		return normalizeText(currentAvatarUrl, '')
 	}
+
+	const current = normalizeText(currentAvatarUrl, '')
+	if (current && /^\/(?:subpackages|static)\//.test(next)) {
+		return current
+	}
+
+	return next
+}
+
+function hasLocalStoredLogin() {
+	const tokenEntry = getStoredTokenByPriority()
+	return !!String(tokenEntry.value || '').trim()
 }
 
 const TEAM_BROWSER_ROUTE = '/pages/extra/team-browser'
 const TEAM_DYNAMICS_ROUTE = '/pages/extra/team-dynamics'
 const GOAL_SETTING_ROUTE = '/pages/extra/goal-setting'
+const DIRECT_SCORE_SHARE_ENTRY_PATH = '/subpackages/volunteer/index?entry=direct_score'
 const MAX_VISIBLE_CHOICE_CARDS = 2
 const MAX_VISIBLE_GOAL_CARDS = 1
 const MAX_VISIBLE_ARTICLE_CARDS = 3
 const MAX_VISIBLE_MEMBERSHIP_CARDS = 2
 const MAX_VISIBLE_SCHOOL_CARDS = 5
+
+function isRecord(value) {
+	return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function decodeUtf8Bytes(uint8) {
+	if (!(uint8 instanceof Uint8Array) || uint8.length === 0) return ''
+
+	let output = ''
+	let index = 0
+
+	while (index < uint8.length) {
+		const byte1 = uint8[index]
+
+		if (byte1 < 0x80) {
+			output += String.fromCharCode(byte1)
+			index += 1
+			continue
+		}
+
+		if (byte1 >= 0xc2 && byte1 <= 0xdf && index + 1 < uint8.length) {
+			const byte2 = uint8[index + 1]
+			if ((byte2 & 0xc0) === 0x80) {
+				output += String.fromCharCode(((byte1 & 0x1f) << 6) | (byte2 & 0x3f))
+				index += 2
+				continue
+			}
+		}
+
+		if (byte1 >= 0xe0 && byte1 <= 0xef && index + 2 < uint8.length) {
+			const byte2 = uint8[index + 1]
+			const byte3 = uint8[index + 2]
+			const validSecondByte =
+				(byte2 & 0xc0) === 0x80 &&
+				(byte3 & 0xc0) === 0x80 &&
+				!(byte1 === 0xe0 && byte2 < 0xa0) &&
+				!(byte1 === 0xed && byte2 >= 0xa0)
+			if (validSecondByte) {
+				output += String.fromCharCode(
+					((byte1 & 0x0f) << 12) | ((byte2 & 0x3f) << 6) | (byte3 & 0x3f)
+				)
+				index += 3
+				continue
+			}
+		}
+
+		if (byte1 >= 0xf0 && byte1 <= 0xf4 && index + 3 < uint8.length) {
+			const byte2 = uint8[index + 1]
+			const byte3 = uint8[index + 2]
+			const byte4 = uint8[index + 3]
+			const validFourBytes =
+				(byte2 & 0xc0) === 0x80 &&
+				(byte3 & 0xc0) === 0x80 &&
+				(byte4 & 0xc0) === 0x80 &&
+				!(byte1 === 0xf0 && byte2 < 0x90) &&
+				!(byte1 === 0xf4 && byte2 >= 0x90)
+			if (validFourBytes) {
+				const codePoint =
+					((byte1 & 0x07) << 18) |
+					((byte2 & 0x3f) << 12) |
+					((byte3 & 0x3f) << 6) |
+					(byte4 & 0x3f)
+				output += String.fromCodePoint(codePoint)
+				index += 4
+				continue
+			}
+		}
+
+		output += '\uFFFD'
+		index += 1
+	}
+
+	return output
+}
+
+function decodeArrayBufferText(value, decoder = null, stream = false) {
+	if (typeof value === 'string') return value
+
+	const textDecoder = decoder || (typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8') : null)
+	let uint8 = null
+
+	if (value instanceof ArrayBuffer) {
+		uint8 = new Uint8Array(value)
+	} else if (value && value.buffer instanceof ArrayBuffer) {
+		uint8 = new Uint8Array(value.buffer, value.byteOffset || 0, value.byteLength || value.length || 0)
+	}
+
+	if (!uint8) {
+		return String(value || '')
+	}
+
+	if (textDecoder) {
+		try {
+			return textDecoder.decode(uint8, { stream })
+		} catch (error) {
+			return textDecoder.decode(uint8)
+		}
+	}
+
+	return decodeUtf8Bytes(uint8)
+}
+
+function parseSseEventBlock(block) {
+	const lines = String(block || '').split(/\r?\n/)
+	let eventType = 'message'
+	const dataLines = []
+
+	for (let index = 0; index < lines.length; index += 1) {
+		const line = lines[index]
+		if (!line || line.startsWith(':')) continue
+		if (line.startsWith('event:')) {
+			eventType = line.slice(6).trim() || 'message'
+			continue
+		}
+		if (line.startsWith('data:')) {
+			dataLines.push(line.slice(5).replace(/^\s/, ''))
+		}
+	}
+
+	if (!dataLines.length) return null
+
+	const rawData = dataLines.join('\n')
+	let data = rawData
+	try {
+		data = JSON.parse(rawData)
+	} catch (error) {
+		data = rawData
+	}
+
+	return { type: eventType, data }
+}
+
+function consumeSseBuffer(buffer) {
+	const normalized = String(buffer || '').replace(/\r\n/g, '\n')
+	const segments = normalized.split('\n\n')
+	const rest = segments.pop() || ''
+	return {
+		rest,
+		events: segments.map(parseSseEventBlock).filter(Boolean)
+	}
+}
+
+function buildStreamHeaders(token = '') {
+	return {
+		'Content-Type': 'application/json',
+		Accept: 'text/event-stream',
+		...(token ? { Authorization: `Bearer ${token}`, 'X-Access-Token': token } : {})
+	}
+}
+
+function parseStreamResponsePayload(response) {
+	const raw = response && response.data
+	if (isRecord(raw)) return raw
+
+	const text = decodeArrayBufferText(raw).trim()
+	if (!text) return {}
+
+	try {
+		const payload = JSON.parse(text)
+		return isRecord(payload) ? payload : {}
+	} catch (error) {
+		return { message: text }
+	}
+}
+
+function createStreamRequest({ url, data, token = '', onEvent }) {
+	return new Promise((resolve, reject) => {
+		let settled = false
+		let buffer = ''
+		let sawCompleteEvent = false
+		let sawErrorEvent = false
+		let chunkCount = 0
+		let eventCount = 0
+		let streamStartedAt = Date.now()
+		let firstChunkAt = 0
+		const traceSessionId = normalizeText(data && data.sessionId, '')
+		const traceAgentId = normalizeText(data && data.agentId, '')
+		const traceId = `${traceAgentId || 'agent'}:${traceSessionId || 'session'}:${streamStartedAt}`
+		const decoder = typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8') : null
+
+		console.log(`[ai-chat][stream][${traceId}] request start`, {
+			url,
+			agentId: traceAgentId,
+			sessionId: traceSessionId
+		})
+
+		const emitBufferedEvents = (forceFinalBlock = false) => {
+			const parsed = consumeSseBuffer(buffer)
+			buffer = parsed.rest
+			const events = parsed.events.slice()
+
+			if (forceFinalBlock) {
+				const trailingEvent = parseSseEventBlock(buffer)
+				if (trailingEvent) {
+					events.push(trailingEvent)
+					buffer = ''
+				}
+			}
+
+			events.forEach((event) => {
+				eventCount += 1
+				if (event && event.type === 'complete') {
+					sawCompleteEvent = true
+					console.log(`[ai-chat][stream][${traceId}] complete event`, {
+						eventCount,
+						chunkCount,
+						elapsed: Date.now() - streamStartedAt
+					})
+				}
+				if (event && event.type === 'error') {
+					sawErrorEvent = true
+					console.warn(`[ai-chat][stream][${traceId}] error event`, {
+						eventCount,
+						chunkCount,
+						elapsed: Date.now() - streamStartedAt,
+						payload: event.data
+					})
+				}
+				if (event && event.type === 'text' && (eventCount <= 3 || eventCount % 20 === 0)) {
+					console.log(`[ai-chat][stream][${traceId}] text event`, {
+						eventCount,
+						chunkCount,
+						deltaLength: String(event.data && event.data.delta || '').length
+					})
+				}
+				if (typeof onEvent === 'function') onEvent(event)
+			})
+		}
+
+		const finish = (handler, payload) => {
+			if (settled) return
+			settled = true
+			handler(payload)
+		}
+
+		const requestTask = uni.request({
+			url,
+			method: 'POST',
+			data,
+			enableChunked: true,
+			responseType: 'arraybuffer',
+			header: buildStreamHeaders(token),
+			success: (response) => {
+				if (decoder) {
+					try {
+						buffer += decoder.decode()
+					} catch (error) {
+						console.warn('[ai-chat] flush stream decoder failed:', error)
+					}
+				}
+				emitBufferedEvents(true)
+				console.log(`[ai-chat][stream][${traceId}] request success`, {
+					statusCode: response && response.statusCode,
+					chunkCount,
+					eventCount,
+					sawCompleteEvent,
+					sawErrorEvent,
+					elapsed: Date.now() - streamStartedAt
+				})
+				finish(resolve, { unsupported: false, response })
+			},
+			fail: (error) => {
+				if (decoder) {
+					try {
+						buffer += decoder.decode()
+					} catch (flushError) {
+						console.warn('[ai-chat] flush stream decoder on fail failed:', flushError)
+					}
+				}
+
+				try {
+					emitBufferedEvents(true)
+				} catch (eventError) {
+					finish(reject, eventError)
+					return
+				}
+
+				const errMsg = normalizeText(error && error.errMsg, '')
+				const isRecoverableTailFailure =
+					sawCompleteEvent &&
+					!sawErrorEvent &&
+					(chunkCount > 0 || /network error|ERR_INCOMPLETE_CHUNKED_ENCODING|abort|fail/i.test(errMsg))
+
+				console.warn(`[ai-chat][stream][${traceId}] request fail`, {
+					errMsg,
+					chunkCount,
+					eventCount,
+					sawCompleteEvent,
+					sawErrorEvent,
+					elapsed: Date.now() - streamStartedAt
+				})
+
+				if (isRecoverableTailFailure) {
+					console.warn('[ai-chat] stream tail failure recovered after complete event:', errMsg || error)
+					finish(resolve, {
+						unsupported: false,
+						response: {
+							statusCode: 200,
+							data: '',
+							errMsg
+						},
+						recoveredFromFail: true
+					})
+					return
+				}
+
+				finish(reject, error)
+			}
+		})
+
+		if (!requestTask || typeof requestTask.onChunkReceived !== 'function') {
+			if (requestTask && typeof requestTask.abort === 'function') {
+				try {
+					requestTask.abort()
+				} catch (error) {
+					console.warn('[ai-chat] abort unsupported stream request failed:', error)
+				}
+			}
+			finish(resolve, { unsupported: true, response: null })
+			return
+		}
+
+		requestTask.onChunkReceived((chunk) => {
+			try {
+				chunkCount += 1
+				if (!firstChunkAt) {
+					firstChunkAt = Date.now()
+					console.log(`[ai-chat][stream][${traceId}] first chunk`, {
+						after: firstChunkAt - streamStartedAt
+					})
+				}
+				if (chunkCount <= 3 || chunkCount % 20 === 0) {
+					console.log(`[ai-chat][stream][${traceId}] chunk received`, {
+						chunkCount,
+						elapsed: Date.now() - streamStartedAt
+					})
+				}
+				buffer += decodeArrayBufferText(chunk && chunk.data !== undefined ? chunk.data : chunk, decoder, true)
+				emitBufferedEvents()
+			} catch (error) {
+				console.error(`[ai-chat][stream][${traceId}] chunk parse failed`, error)
+				finish(reject, error)
+			}
+		})
+	})
+}
 
 const MEMBERSHIP_CARD_PRESETS = {
 	cobuilder: {
@@ -191,6 +556,8 @@ function normalizeSchoolCards(schoolCards) {
 				title,
 				summary: clipInlineText(item && item.summary, 120),
 				city: normalizeText(item && item.city, ''),
+				area: normalizeText(item && (item.area || item.location || item.city), ''),
+				location: normalizeText(item && (item.location || item.area || item.city), ''),
 				schoolLevel: normalizeText(item && item.schoolLevel, ''),
 				ownershipType: normalizeText(item && item.ownershipType, ''),
 				schoolType: normalizeText(item && item.schoolType, ''),
@@ -218,43 +585,68 @@ function normalizeSchoolCards(schoolCards) {
 function normalizeToolCalls(toolCalls) {
 	if (!Array.isArray(toolCalls)) return []
 	return toolCalls
-		.map((tool, index) => {
-			const name = normalizeText(tool && tool.name, '')
-			const label = normalizeText(tool && tool.label, name || '工具')
-			const params = tool && Object.prototype.hasOwnProperty.call(tool, 'params')
-				? tool.params
-				: normalizeText(tool && tool.input, '')
-			const inputPreview = clipInlineText(
-				tool && Object.prototype.hasOwnProperty.call(tool, 'input')
-					? tool.input
-					: params,
-				120
-			)
-			const summary = clipInlineText(tool && tool.summary, 160)
-			const durationMs = Number(tool && tool.durationMs)
-			const hasParams = typeof (tool && tool.hasParams) === 'boolean'
-				? tool.hasParams
-				: (
-					typeof params === 'string'
-						? !!params.trim()
-						: Array.isArray(params)
-							? params.length > 0
-							: !!(params && typeof params === 'object')
-				)
-
-			return {
-				id: normalizeText(tool && tool.id, `${name || 'tool'}-${index}-${Date.now()}`),
-				name,
-				label,
-				params,
-				hasParams,
-				inputPreview,
-				summary,
-				state: normalizeText(tool && tool.state, ''),
-				durationText: Number.isFinite(durationMs) && durationMs >= 0 ? `${durationMs}ms` : ''
-			}
-		})
+		.map((tool, index) => normalizeToolCall(tool, index))
 		.filter((tool) => tool.name || tool.summary || tool.inputPreview || tool.hasParams)
+}
+
+function normalizeToolCall(tool, index = 0) {
+	const name = normalizeText(tool && tool.name, '')
+	const label = normalizeText(tool && tool.label, name || '工具')
+	const params = tool && Object.prototype.hasOwnProperty.call(tool, 'params')
+		? tool.params
+		: tool && Object.prototype.hasOwnProperty.call(tool, 'input')
+			? tool.input
+			: ''
+	const inputSource = tool && Object.prototype.hasOwnProperty.call(tool, 'inputPreview')
+		? tool.inputPreview
+		: tool && Object.prototype.hasOwnProperty.call(tool, 'input')
+			? tool.input
+			: params
+	const inputPreview = clipInlineText(inputSource, 120)
+	const summary = clipInlineText(tool && tool.summary, 160)
+	const rawDurationMs = tool && Object.prototype.hasOwnProperty.call(tool, 'durationMs')
+		? tool.durationMs
+		: tool && Object.prototype.hasOwnProperty.call(tool, 'duration')
+			? tool.duration
+			: null
+	const durationMs = Number(rawDurationMs)
+	const hasParams = typeof (tool && tool.hasParams) === 'boolean'
+		? tool.hasParams
+		: (
+			typeof params === 'string'
+				? !!params.trim()
+				: Array.isArray(params)
+					? params.length > 0
+					: !!(params && typeof params === 'object' && Object.keys(params).length > 0)
+		)
+
+	return {
+		id: normalizeText(tool && tool.id, `${name || 'tool'}-${index}-${Date.now()}`),
+		name,
+		label,
+		params,
+		hasParams,
+		inputPreview,
+		summary,
+		state: normalizeText(tool && tool.state, ''),
+		durationText: Number.isFinite(durationMs) && durationMs >= 0 ? `${durationMs}ms` : ''
+	}
+}
+
+function normalizeSkillDebug(skillDebug) {
+	const source = skillDebug && typeof skillDebug === 'object' ? skillDebug : {}
+	return {
+		activatedSkills: Array.isArray(source.activatedSkills)
+			? source.activatedSkills.map((item) => normalizeText(item, '')).filter(Boolean)
+			: [],
+		loadedSkillFiles: Array.isArray(source.loadedSkillFiles)
+			? source.loadedSkillFiles.map((item) => normalizeText(item, '')).filter(Boolean)
+			: [],
+		skillPromptChars: Number(source.skillPromptChars) || 0,
+		skillMatchReason: Array.isArray(source.skillMatchReason)
+			? source.skillMatchReason.map((item) => normalizeText(item, '')).filter(Boolean)
+			: []
+	}
 }
 
 function normalizeBusinessCards(businessCards = []) {
@@ -336,76 +728,65 @@ function normalizeArticleCards(articleCards = []) {
 		.slice(0, MAX_VISIBLE_ARTICLE_CARDS)
 }
 
-export function createDefaultDebugInfo() {
-	return {
-		localLoginState: '未知',
-		aiAuthState: '未知',
-		tokenSource: '-',
-		tokenIsJwt: false,
-		tokenPreview: '-',
-		refreshTokenState: '-',
-		userId: '-',
-		nickname: '-',
-		lastAction: '初始化',
-		lastStatusCode: '-',
-		lastMessage: '-',
-		avatar: '-',
-		userInfoPreview: '-',
-		updatedAt: '-'
-	}
-}
-
 export const chatPageMethods = {
-	refreshDebugPanel(reason = 'manual') {
-		const tokenEntry = getStoredTokenByPriority()
-		const refreshToken = getStoredRefreshToken()
-		const userInfo = extractDisplayUserInfo()
-		const rawUserInfo = getStoredValue('userInfo', {})
-		const hasLocalLogin = !!tokenEntry.value
-		const tokenIsJwt = isJwtLikeToken(tokenEntry.value)
-		const localLoginState = !hasLocalLogin
-			? '未登录(本地无 token)'
-			: tokenIsJwt
-				? '已登录(本地缓存存在)'
-				: '已登录(本地 token 不是 AI JWT)'
-
-		this.debugInfo = Object.assign({}, this.debugInfo, {
-			localLoginState,
-			tokenSource: tokenEntry.key,
-			tokenIsJwt,
-			tokenPreview: maskToken(tokenEntry.value),
-			refreshTokenState: refreshToken ? '有' : '无',
-			userId: userInfo.userId || '-',
-			nickname: userInfo.nickname || '-',
-			avatar: userInfo.avatar || '-',
-			userInfoPreview: stringifyPreview(rawUserInfo, '-'),
-			lastAction: reason || this.debugInfo.lastAction,
-			updatedAt: nowTimeText()
-		})
-		this.currentUserName = userInfo.nickname || '我'
-		this.currentUserAvatarUrl = userInfo.avatar || ''
-	},
-	updateDebugRequestState(action, { statusCode = '', payload = null, aiAuthState = '', note = '' } = {}) {
-		const message = note || extractPayloadMessage(payload) || this.debugInfo.lastMessage || '-'
-		this.refreshDebugPanel(action)
-		this.debugInfo = Object.assign({}, this.debugInfo, {
-			aiAuthState: aiAuthState || this.debugInfo.aiAuthState || '未知',
-			lastStatusCode: statusCode === '' || statusCode === undefined || statusCode === null ? '-' : String(statusCode),
-			lastMessage: message || '-',
-			updatedAt: nowTimeText()
-		})
-	},
 	async bootstrapPage() {
+		syncCurrentUserProfile(this)
 		await this.syncAccessState()
 		await this.loadAgentMeta()
+		await this.refreshProfileDebugData()
 	},
 	async syncAccessState() {
-		this.refreshDebugPanel('syncAccessState')
+		syncCurrentUserProfile(this)
 		await this.refreshAiPowerBalance({ silent: true, showDailyNotice: true })
+		await this.refreshAdmissionUnlockState({ silent: true })
+	},
+	async refreshAdmissionUnlockState(options = {}) {
+		if (!this.requiresVolunteerUnlock) {
+			this.admissionUnlockStatus = normalizeUnlockStatus(this.admissionUnlockStatus || {})
+			return this.admissionUnlockStatus
+		}
+
+		const token = await resolveActiveToken()
+		if (!token) {
+			this.admissionUnlockStatus = createDefaultUnlockStatus()
+			return this.admissionUnlockStatus
+		}
+
+		this.unlockStatusLoading = true
+		try {
+			const result = await fetchAdmissionUnlockStatus()
+			const nextStatus = normalizeUnlockStatus(result && result.data)
+			this.admissionUnlockStatus = nextStatus
+			if (!nextStatus.unlocked) {
+				this.connectionText = '待解锁'
+			} else if (!this.showPowerPrompt) {
+				this.connectionText = '已就绪'
+			}
+			return nextStatus
+		} catch (error) {
+			console.warn('[ai-chat] refresh admission unlock state failed:', error)
+			this.admissionUnlockStatus = createDefaultUnlockStatus()
+			if (!options.silent) {
+				uni.showToast({
+					title: '解锁状态获取失败',
+					icon: 'none'
+				})
+			}
+			return this.admissionUnlockStatus
+		} finally {
+			this.unlockStatusLoading = false
+		}
 	},
 	async loadAgentMeta() {
 		try {
 			const token = await resolveActiveToken()
+			if (!token) {
+				if (!this.messages.length && !this.hideWelcomeMessage) {
+					this.messages = [{ id: 'welcome', role: 'assistant', content: '你好，先登录后我就能继续帮你分析和回答。' }]
+					this.scrollToBottom()
+				}
+				return
+			}
 			const url = `${getApiBaseUrl()}/chat/agents/${encodeURIComponent(this.agentId)}/meta`
 			const response = await requestRaw(url, 'GET', null, token)
 			const statusCode = getResponseStatusCode(response)
@@ -413,12 +794,29 @@ export const chatPageMethods = {
 			const data = unwrapPayloadData(payload)
 
 			if (statusCode === 200 && data) {
-				this.updateDebugRequestState('loadAgentMeta', { statusCode, payload, aiAuthState: '通过' })
+				this.resolvedAgentId = normalizeText(
+					data.resolvedAgentId || data.agentId,
+					this.resolvedAgentId || this.agentId
+				)
+				this.resolvedAgentName = normalizeText(
+					data.resolvedAgentName || data.assistantName,
+					this.resolvedAgentName || this.assistantName
+				)
 				this.assistantName = normalizeText(data.assistantName, this.assistantName)
 				this.assistantRole = normalizeText(data.assistantRole, this.assistantRole)
-				this.assistantAvatarUrl = normalizeText(data.avatarUrl, this.assistantAvatarUrl || '')
+				this.assistantAvatarUrl = resolveAssistantAvatarUrl(
+					data.avatarUrl,
+					this.assistantAvatarUrl || ''
+				)
 				if (Array.isArray(data.quickPrompts) && data.quickPrompts.length) {
 					this.quickPrompts = data.quickPrompts
+				}
+				if (Array.isArray(data.introQuickPrompts) && data.introQuickPrompts.length) {
+					this.visualGuessPrompts = data.introQuickPrompts
+					this.visualGuessPromptBatchIndex = 0
+				}
+				if (Array.isArray(data.introSuggestionPrompts) && data.introSuggestionPrompts.length) {
+					this.visualSuggestionPrompts = data.introSuggestionPrompts
 				}
 				this.composerPlaceholderOverride = normalizeText(
 					data.composerPlaceholder,
@@ -437,15 +835,10 @@ export const chatPageMethods = {
 			}
 
 			if (hasAuthFailure(statusCode, payload)) {
-				this.updateDebugRequestState('loadAgentMeta', { statusCode, payload, aiAuthState: '被拒绝' })
-				this.presentLoginPrompt('AI 接口认证未通过，请查看 Debug Panel', { authRejected: true })
+				this.presentLoginPrompt('AI 接口认证未通过，请重新登录后再试', { authRejected: true })
 			}
 		} catch (error) {
 			console.warn('[ai-chat] meta load failed', error)
-			this.updateDebugRequestState('loadAgentMeta', {
-				note: normalizeText(error && (error.message || error.errMsg), 'meta 请求异常'),
-				aiAuthState: '异常'
-			})
 		}
 
 		if (!this.messages.length && !this.hideWelcomeMessage) {
@@ -458,10 +851,6 @@ export const chatPageMethods = {
 		if (!token) {
 			this.aiPowerLoading = false
 			this.aiPowerRemaining = 0
-			this.updateDebugRequestState('refreshAiPowerBalance', {
-				aiAuthState: '缺少 token',
-				note: '未拿到可用 access token'
-			})
 			this.presentLoginPrompt('请先登录后再试')
 			return null
 		}
@@ -474,25 +863,20 @@ export const chatPageMethods = {
 
 			if (statusCode !== 200 || !isSuccessPayload(payload, response)) {
 				if (hasAuthFailure(statusCode, payload)) {
-					this.updateDebugRequestState('refreshAiPowerBalance', { statusCode, payload, aiAuthState: '被拒绝' })
-					this.presentLoginPrompt('AI 接口认证未通过，请查看 Debug Panel', { authRejected: true })
+					this.presentLoginPrompt('AI 接口认证未通过，请重新登录后再试', { authRejected: true })
 					return null
 				}
 				throw buildRequestError(payload.error || payload.message || '算力状态获取失败', statusCode, payload.errorCode || payload.code)
 			}
 
-			this.updateDebugRequestState('refreshAiPowerBalance', {
-				statusCode,
-				payload,
-				aiAuthState: '通过',
-				note: `算力 ${Number(data && (data.remaining ?? data.balance ?? data.computing_power ?? 0)) || 0}`
-			})
 			const balance = Number(data && (data.remaining ?? data.balance ?? data.computing_power ?? 0))
 			this.aiPowerRemaining = Number.isFinite(balance) ? Math.max(0, Math.floor(balance)) : 0
 			if (this.aiPowerRemaining > 0) {
 				this.clearAccessPrompt()
 				this.connectionText = '已就绪'
-			} else if (!this.showLoginPrompt) {
+			} else {
+				// 一旦算力接口成功返回，说明登录认证已经通过。
+				// 这里必须覆盖掉旧的 login prompt，避免页面残留“未登录”假象。
 				this.chatAccessPromptType = 'power'
 				this.connectionText = '算力不足'
 			}
@@ -504,21 +888,9 @@ export const chatPageMethods = {
 		} catch (error) {
 			console.warn('[ai-chat] refresh ai power failed:', error)
 			if (hasAuthFailure(error.statusCode, error)) {
-				this.updateDebugRequestState('refreshAiPowerBalance', {
-					statusCode: error.statusCode,
-					payload: error,
-					aiAuthState: '被拒绝',
-					note: normalizeText(error.message, 'AI 接口认证失败')
-				})
-				this.presentLoginPrompt('AI 接口认证未通过，请查看 Debug Panel', { authRejected: true })
+				this.presentLoginPrompt('AI 接口认证未通过，请重新登录后再试', { authRejected: true })
 				return null
 			}
-			this.updateDebugRequestState('refreshAiPowerBalance', {
-				statusCode: error.statusCode,
-				payload: error,
-				aiAuthState: '异常',
-				note: normalizeText(error.message, '算力状态获取失败')
-			})
 			if (!options.silent) this.connectionText = '算力获取失败'
 			return null
 		} finally {
@@ -538,22 +910,11 @@ export const chatPageMethods = {
 	},
 	presentLoginPrompt(message = '登录状态已失效，请先登录后再试', options = {}) {
 		this.chatAccessPromptType = 'login'
-		this.refreshDebugPanel('presentLoginPrompt')
-		const hasLocalLogin = this.debugInfo.localLoginState.indexOf('已登录') === 0
+		const hasLocalLogin = hasLocalStoredLogin()
 		if (options.authRejected && hasLocalLogin) {
 			this.connectionText = '认证异常'
-			this.debugInfo = Object.assign({}, this.debugInfo, {
-				aiAuthState: '本地已登录，但 AI 接口拒绝 token',
-				lastMessage: message || this.debugInfo.lastMessage,
-				updatedAt: nowTimeText()
-			})
 		} else {
 			this.connectionText = '需要登录'
-			this.debugInfo = Object.assign({}, this.debugInfo, {
-				aiAuthState: hasLocalLogin ? this.debugInfo.aiAuthState : '未登录',
-				lastMessage: message || this.debugInfo.lastMessage,
-				updatedAt: nowTimeText()
-			})
 		}
 		if (message) uni.showToast({ title: message, icon: 'none' })
 	},
@@ -571,7 +932,7 @@ export const chatPageMethods = {
 		this.messages = this.messages.concat([{ id: `a-${Date.now()}`, role: 'assistant', content: text }])
 		this.scrollToBottom()
 	},
-	appendAssistantPayloadMessage(payload = {}) {
+	buildAssistantPayloadMessage(payload = {}, fixedId = '') {
 		let text = normalizeText(payload.content || payload.reply || payload.message, '')
 		const toolCalls = normalizeToolCalls(payload.toolCalls || payload.tools)
 		const businessCards = normalizeBusinessCards(payload.businessCards)
@@ -583,10 +944,6 @@ export const chatPageMethods = {
 		const inviteCards = Array.isArray(payload.inviteCards) ? payload.inviteCards : []
 		const choiceCards = this.normalizeChoiceCards(payload.choiceCards)
 		const membershipCards = this.normalizeMembershipCards(payload.membershipCards)
-
-		if (schoolCards.length > 0) {
-			text = clipInlineText(text, 120)
-		}
 
 		if (
 			!text &&
@@ -600,10 +957,10 @@ export const chatPageMethods = {
 			inviteCards.length === 0 &&
 			choiceCards.length === 0 &&
 			membershipCards.length === 0
-		) return
+		) return null
 
-		this.messages = this.messages.concat([{
-			id: `a-${Date.now()}`,
+		return {
+			id: fixedId || `a-${Date.now()}`,
 			role: 'assistant',
 			content: text,
 			toolCalls,
@@ -616,8 +973,347 @@ export const chatPageMethods = {
 			inviteCards,
 			choiceCards,
 			membershipCards
+		}
+	},
+	appendAssistantPayloadMessage(payload = {}) {
+		const message = this.buildAssistantPayloadMessage(payload)
+		if (!message) return
+		this.skillDebug = normalizeSkillDebug(payload.skillDebug)
+		this.messages = this.messages.concat([message])
+		this.scrollToBottom()
+	},
+	upsertAssistantPayloadMessage(payload = {}, messageId = '') {
+		const message = this.buildAssistantPayloadMessage(payload, messageId || this.activeAssistantMessageId)
+		if (!message) return
+		this.skillDebug = normalizeSkillDebug(payload.skillDebug)
+
+		const targetId = message.id
+		const index = this.messages.findIndex((item) => item && item.id === targetId)
+		if (index === -1) {
+			this.messages = this.messages.concat([message])
+		} else {
+			const previousMessage = this.messages[index] || {}
+			const hasOwn = (key) => Object.prototype.hasOwnProperty.call(payload || {}, key)
+			const mergedMessage = {
+				...previousMessage,
+				...message,
+				content: message.content || previousMessage.content || '',
+				toolCalls: hasOwn('toolCalls') || hasOwn('tools')
+					? message.toolCalls
+					: (Array.isArray(previousMessage.toolCalls) ? previousMessage.toolCalls : []),
+				businessCards: hasOwn('businessCards')
+					? message.businessCards
+					: (Array.isArray(previousMessage.businessCards) ? previousMessage.businessCards : []),
+				goalCards: hasOwn('goalCards')
+					? message.goalCards
+					: (Array.isArray(previousMessage.goalCards) ? previousMessage.goalCards : []),
+				articleCards: hasOwn('articleCards')
+					? message.articleCards
+					: (Array.isArray(previousMessage.articleCards) ? previousMessage.articleCards : []),
+				projectCards: hasOwn('projectCards')
+					? message.projectCards
+					: (Array.isArray(previousMessage.projectCards) ? previousMessage.projectCards : []),
+				activityCards: hasOwn('activityCards')
+					? message.activityCards
+					: (Array.isArray(previousMessage.activityCards) ? previousMessage.activityCards : []),
+				schoolCards: hasOwn('schoolCards')
+					? message.schoolCards
+					: (Array.isArray(previousMessage.schoolCards) ? previousMessage.schoolCards : []),
+				inviteCards: hasOwn('inviteCards')
+					? message.inviteCards
+					: (Array.isArray(previousMessage.inviteCards) ? previousMessage.inviteCards : []),
+				choiceCards: hasOwn('choiceCards')
+					? message.choiceCards
+					: (Array.isArray(previousMessage.choiceCards) ? previousMessage.choiceCards : []),
+				membershipCards: hasOwn('membershipCards')
+					? message.membershipCards
+					: (Array.isArray(previousMessage.membershipCards) ? previousMessage.membershipCards : [])
+			}
+			const nextMessages = this.messages.slice()
+			nextMessages.splice(index, 1, mergedMessage)
+			this.messages = nextMessages
+		}
+
+		if (targetId) {
+			this.activeAssistantMessageId = targetId
+		}
+		this.scrollToBottom()
+	},
+	upsertAssistantStreamToolCall(toolPayload = {}) {
+		const normalizedTool = normalizeToolCall(toolPayload, 0)
+		if (!normalizedTool || !normalizedTool.id) return
+
+		const messageId = this.activeAssistantMessageId || this.beginAssistantStreamMessage('')
+		const nextMessages = this.messages.map((item) => {
+			if (!item || item.id !== messageId) return item
+
+			const currentTools = Array.isArray(item.toolCalls) ? item.toolCalls.slice() : []
+			const existingIndex = currentTools.findIndex(
+				(entry) => entry && String(entry.id || '') === normalizedTool.id
+			)
+
+			if (existingIndex === -1) {
+				currentTools.push(normalizedTool)
+			} else {
+				const existingTool = currentTools[existingIndex] || {}
+				const shouldUseIncomingParams =
+					typeof normalizedTool.hasParams === 'boolean' && normalizedTool.hasParams
+
+				currentTools.splice(existingIndex, 1, {
+					...existingTool,
+					...normalizedTool,
+					name: normalizedTool.name || existingTool.name || '',
+					label: normalizedTool.label || existingTool.label || normalizedTool.name || existingTool.name || '工具',
+					inputPreview: normalizedTool.inputPreview || existingTool.inputPreview || '',
+					summary: normalizedTool.summary || existingTool.summary || '',
+					state: normalizedTool.state || existingTool.state || '',
+					durationText: normalizedTool.durationText || existingTool.durationText || '',
+					hasParams: shouldUseIncomingParams ? true : !!existingTool.hasParams,
+					params: shouldUseIncomingParams ? normalizedTool.params : existingTool.params
+				})
+			}
+
+			return {
+				...item,
+				toolCalls: currentTools
+			}
+		})
+
+		this.messages = nextMessages
+		this.streamReplyStarted = true
+		this.scrollToBottom()
+	},
+	beginAssistantStreamMessage(initialContent = '') {
+		const messageId = `a-${Date.now()}`
+		this.activeAssistantMessageId = messageId
+		this.streamReplyStarted = !!String(initialContent || '')
+		this.messages = this.messages.concat([{
+			id: messageId,
+			role: 'assistant',
+			content: String(initialContent || ''),
+			toolCalls: [],
+			businessCards: [],
+			goalCards: [],
+			articleCards: [],
+			projectCards: [],
+			activityCards: [],
+			schoolCards: [],
+			inviteCards: [],
+			choiceCards: [],
+			membershipCards: []
 		}])
 		this.scrollToBottom()
+		return messageId
+	},
+	updateAssistantStreamText(content = '') {
+		const nextContent = String(content || '')
+		const messageId = this.activeAssistantMessageId || this.beginAssistantStreamMessage(nextContent)
+		const nextMessages = this.messages.map((item) => {
+			if (!item || item.id !== messageId) return item
+			return {
+				...item,
+				content: nextContent
+			}
+		})
+		this.messages = nextMessages
+		this.streamReplyStarted = !!nextContent
+		this.scrollToBottom()
+	},
+	async sendMessageSyncRequest(content, token) {
+		const url = `${getApiBaseUrl()}/chat/sync`
+		const { response, payload, statusCode } = await requestJsonWithRefresh({
+			url,
+			method: 'POST',
+			data: { message: content, agentId: this.agentId, sessionId: this.sessionId },
+			token
+		})
+
+		if (statusCode !== 200 || !isSuccessPayload(payload, response)) {
+			const error = buildRequestError(
+				payload.error || payload.message || '回复失败',
+				statusCode,
+				payload.errorCode || payload.code
+			)
+			error.payload = payload
+			error.error = payload.error
+			error.code = payload.code
+			error.errMsg = payload.errMsg
+			throw error
+		}
+
+		const data = unwrapPayloadData(payload)
+		if (data && data.sessionId) this.sessionId = normalizeText(data.sessionId, this.sessionId)
+		if (data) {
+			this.resolvedAgentId = normalizeText(
+				data.resolvedAgentId || data.agentId,
+				this.resolvedAgentId || this.agentId
+			)
+		}
+
+		this.appendAssistantPayloadMessage({
+			content: normalizeText(data && (data.reply || data.message), '收到，我继续帮你整理。'),
+			toolCalls: data && (data.toolCalls || data.tools),
+			businessCards: data && data.businessCards,
+			goalCards: data && data.goalCards,
+			articleCards: data && data.articleCards,
+			projectCards: data && data.projectCards,
+			activityCards: data && data.activityCards,
+			schoolCards: data && data.schoolCards,
+			inviteCards: data && data.inviteCards,
+			choiceCards: data && data.choiceCards,
+			membershipCards: data && data.membershipCards,
+			skillDebug: data && data.skillDebug
+		})
+	},
+	async sendMessageStreamRequest(content, token) {
+		const url = `${getApiBaseUrl()}/chat`
+		let streamedText = ''
+		let completedPayload = null
+
+		const result = await createStreamRequest({
+			url,
+			token,
+			data: { message: content, agentId: this.agentId, sessionId: this.sessionId },
+			onEvent: (event) => {
+				const eventData = isRecord(event && event.data) ? event.data : {}
+				const eventType = normalizeText(event && event.type, '')
+
+				if (eventData.sessionId) {
+					this.sessionId = normalizeText(eventData.sessionId, this.sessionId)
+				}
+
+				if (eventType === 'start') {
+					this.connectionText = '流式回复中'
+					return
+				}
+
+				if (eventType === 'text') {
+					streamedText += String(eventData.delta || '')
+					this.updateAssistantStreamText(streamedText)
+					this.connectionText = '生成中'
+					return
+				}
+
+				if (eventType === 'tool_start') {
+					this.connectionText = '调用工具中'
+					this.upsertAssistantStreamToolCall({
+						id: eventData.id,
+						name: eventData.name,
+						label: eventData.label,
+						input: eventData.input,
+						inputPreview: eventData.inputPreview,
+						params: Object.prototype.hasOwnProperty.call(eventData, 'params')
+							? eventData.params
+							: eventData.input,
+						hasParams: eventData.hasParams,
+						state: eventData.state || 'executing'
+					})
+					return
+				}
+
+				if (eventType === 'tool_end') {
+					this.connectionText = '生成中'
+					this.upsertAssistantStreamToolCall({
+						id: eventData.id,
+						name: eventData.name,
+						label: eventData.label,
+						summary: eventData.summary,
+						durationMs: eventData.durationMs || eventData.duration,
+						state: eventData.state || 'completed'
+					})
+					return
+				}
+
+				if (eventType === 'tool') {
+					this.connectionText = '生成中'
+					this.upsertAssistantStreamToolCall({
+						id: eventData.id,
+						name: eventData.name,
+						label: eventData.label,
+						input: eventData.input,
+						inputPreview: eventData.inputPreview,
+						params: Object.prototype.hasOwnProperty.call(eventData, 'params')
+							? eventData.params
+							: eventData.input,
+						hasParams: eventData.hasParams,
+						summary: eventData.summary,
+						durationMs: eventData.durationMs || eventData.duration,
+						state: eventData.state || 'completed'
+					})
+					return
+				}
+
+				if (eventType === 'complete') {
+					completedPayload = eventData
+				}
+
+				if (eventType === 'error') {
+					const error = buildRequestError(
+						eventData.message || '聊天服务异常',
+						500,
+						eventData.errorCode || ''
+					)
+					error.payload = eventData
+					error.error = eventData.message
+					throw error
+				}
+			}
+		})
+
+		if (result && result.unsupported) {
+			return 'unsupported'
+		}
+
+		const response = result && result.response
+		const statusCode = getResponseStatusCode(response)
+		if (statusCode !== 200) {
+			const payload = parseStreamResponsePayload(response)
+			const error = buildRequestError(
+				payload.error || payload.message || '回复失败',
+				statusCode,
+				payload.errorCode || payload.code
+			)
+			error.payload = payload
+			error.error = payload.error
+			error.code = payload.code
+			error.errMsg = payload.errMsg
+			throw error
+		}
+
+		if (completedPayload) {
+			this.resolvedAgentId = normalizeText(
+				completedPayload.resolvedAgentId || completedPayload.agentId,
+				this.resolvedAgentId || this.agentId
+			)
+		}
+
+		if (completedPayload) {
+			this.upsertAssistantPayloadMessage({
+				content: normalizeText(
+					completedPayload.reply,
+					streamedText || '收到，我继续帮你整理。'
+				),
+				toolCalls: completedPayload.toolCalls,
+				businessCards: completedPayload.businessCards,
+				goalCards: completedPayload.goalCards,
+				articleCards: completedPayload.articleCards,
+				projectCards: completedPayload.projectCards,
+				activityCards: completedPayload.activityCards,
+				schoolCards: completedPayload.schoolCards,
+				inviteCards: completedPayload.inviteCards,
+				choiceCards: completedPayload.choiceCards,
+				membershipCards: completedPayload.membershipCards,
+				skillDebug: completedPayload.skillDebug
+			})
+			return true
+		}
+
+		if (streamedText) {
+			this.updateAssistantStreamText(streamedText)
+			return true
+		}
+
+		throw buildRequestError('流式回复为空，请稍后再试', 500, 'EMPTY_STREAM_REPLY')
 	},
 	normalizeChoiceCards(choiceCards) {
 		if (!Array.isArray(choiceCards)) return []
@@ -750,18 +1446,166 @@ export const chatPageMethods = {
 		const redirect = encodeURIComponent(
 			`${CHAT_PATH}?agentId=${encodeURIComponent(this.agentId)}&sessionId=${encodeURIComponent(this.sessionId)}`
 		)
-		const hasLocalLogin = this.debugInfo && String(this.debugInfo.localLoginState || '').indexOf('已登录') === 0
+		const hasLocalLogin = hasLocalStoredLogin()
 		const forceLogin = hasLocalLogin ? '&forceLogin=1' : ''
 		uni.navigateTo({ url: `/pages/auth/login/index?redirect=${redirect}${forceLogin}` })
+	},
+	openVolunteerInviteEntry() {
+		if (!this.currentUserId) {
+			this.goToLogin()
+			return
+		}
+
+		this.shareInviteSheetVisible = true
+	},
+	closeShareInviteSheet() {
+		this.shareInviteSheetVisible = false
+	},
+	showShareUnlockPrompt() {
+		if (!this.currentUserId) {
+			this.goToLogin()
+			return
+		}
+
+		this.openVolunteerInviteEntry()
+	},
+	async handleAdmissionUnlockPayment() {
+		if (!this.currentUserId) {
+			this.goToLogin()
+			return
+		}
+
+		if (this.unlockPaymentProcessing) {
+			return
+		}
+
+		const paymentAmount = Number(this.admissionUnlockStatus && this.admissionUnlockStatus.paymentAmount) || 19.9
+		const confirmed = await new Promise((resolve) => {
+			uni.showModal({
+				title: '支付解锁高考 AI',
+				content: buildVolunteerPaymentConfirmText({
+					paymentAmount
+				}),
+				confirmText: '创建订单',
+				success: (res) => resolve(Boolean(res && res.confirm)),
+				fail: () => resolve(false)
+			})
+		})
+
+		if (!confirmed) {
+			return
+		}
+
+		this.unlockPaymentProcessing = true
+		try {
+			await startAdmissionUnlockPayment({
+				businessName: '高考 AI 对话解锁',
+				extraData: {
+					scene: 'admission_unlock',
+					module: 'ai_chat',
+					agentId: this.agentId
+				}
+			})
+			const status = await this.refreshAdmissionUnlockState()
+			if (status && status.unlocked) {
+				uni.showToast({
+					title: '支付成功，已解锁',
+					icon: 'success'
+				})
+			}
+		} catch (error) {
+			const message = String((error && error.message) || '')
+			if (/cancel/i.test(message)) {
+				uni.showToast({
+					title: '已取消支付',
+					icon: 'none'
+				})
+				return
+			}
+
+			uni.showModal({
+				title: '支付失败',
+				content: message || '支付失败，请稍后重试',
+				showCancel: false
+			})
+		} finally {
+			this.unlockPaymentProcessing = false
+		}
+	},
+	contactCustomerService() {
+		const phoneNumber = String(VOLUNTEER_CUSTOMER_SERVICE_PHONE || '').trim()
+		if (!phoneNumber) return
+
+		uni.setClipboardData({
+			data: phoneNumber,
+			success: () => {
+				uni.showToast({
+					title: '号码已复制',
+					icon: 'none'
+				})
+			}
+		})
+	},
+	showVipOpenedServiceModal() {
+		const phoneNumber = String(VOLUNTEER_CUSTOMER_SERVICE_PHONE || '').trim()
+		if (!phoneNumber) return
+
+		uni.showModal({
+			title: '联系客服',
+			content: `已开通高考 AI / 查分权限，如需继续协助请联系客服。\n客服电话：${phoneNumber}`,
+			confirmText: '复制号码',
+			cancelText: '稍后再说',
+			success: (res) => {
+				if (res && res.confirm) {
+					this.contactCustomerService()
+				}
+			}
+		})
+	},
+	buildVolunteerUnlockSharePayload() {
+		const inviterId = normalizeText(this.currentUserId, '')
+		const inviterName = normalizeText(this.currentUserName, '') || '一位同学'
+		const title = `${inviterName}邀请你解锁高考 AI 对话和查分功能`
+
+		if (!inviterId) {
+			return {
+				title: '邀请你解锁高考 AI 对话和查分功能',
+				path: DIRECT_SCORE_SHARE_ENTRY_PATH
+			}
+		}
+
+		return {
+			title,
+			path: `${DIRECT_SCORE_SHARE_ENTRY_PATH}&inviter_id=${encodeURIComponent(inviterId)}&type=business&businessId=admission_unlock&source=volunteer_unlock`
+		}
 	},
 	resetSession() {
 		if (this.isSending) return
 		this.sessionId = createSessionId()
 		this.draftText = ''
 		this.messages = []
+		this.resolvedAgentId = this.agentId
+		this.resolvedAgentName = this.assistantName
+		this.skillDebug = {
+			activatedSkills: [],
+			loadedSkillFiles: [],
+			skillPromptChars: 0,
+			skillMatchReason: []
+		}
+		this.profileDebugData = {
+			sessionId: '',
+			requestedAgentId: this.agentId,
+			resolvedAgentId: this.resolvedAgentId || this.agentId,
+			resolvedAgentName: this.resolvedAgentName || this.assistantName,
+			sessionAgentId: '',
+			fetchedAt: '',
+			error: '',
+			profileSnapshot: null,
+			gaokaoSnapshot: null,
+			recentUserMessages: []
+		}
 		this.connectionText = '连接中'
 		this.clearAccessPrompt()
-		this.refreshDebugPanel('resetSession')
 		this.bootstrapPage()
 	},
 	handleQuickActionSelect(item) {
@@ -778,31 +1622,137 @@ export const chatPageMethods = {
 			success: () => uni.showToast({ title: '已复制', icon: 'none' })
 		})
 	},
-	copyDebugInfo() {
-		const debugInfo = this.debugInfo || {}
-		const content = [
-			`Agent ID: ${normalizeText(this.agentId, '-')}`,
-			`Session ID: ${normalizeText(this.sessionId, '-')}`,
-			`本地登录态: ${normalizeText(debugInfo.localLoginState, '-')}`,
-			`AI 认证态: ${normalizeText(debugInfo.aiAuthState, '-')}`,
-			`Token 来源: ${normalizeText(debugInfo.tokenSource, '-')}`,
-			`JWT 格式: ${debugInfo.tokenIsJwt ? '是' : '否'}`,
-			`Access Token: ${normalizeText(debugInfo.tokenPreview, '-')}`,
-			`Refresh Token: ${normalizeText(debugInfo.refreshTokenState, '-')}`,
-			`User ID: ${normalizeText(debugInfo.userId, '-')}`,
-			`昵称: ${normalizeText(debugInfo.nickname, '-')}`,
-			`头像: ${normalizeText(debugInfo.avatar, '-')}`,
-			`最近动作: ${normalizeText(debugInfo.lastAction, '-')}`,
-			`最近状态码: ${normalizeText(debugInfo.lastStatusCode, '-')}`,
-			`最近响应: ${normalizeText(debugInfo.lastMessage, '-')}`,
-			`UserInfo 缓存: ${normalizeText(debugInfo.userInfoPreview, '-')}`,
-			`最近更新时间: ${normalizeText(debugInfo.updatedAt, '-')}`
-		].join('\n')
-		this.copyText(content)
+	async refreshProfileDebugData() {
+		const token = await resolveActiveToken()
+		if (!token) return
+
+		try {
+			const url = `${getApiBaseUrl()}/chat/agents/${encodeURIComponent(this.agentId)}/debug-profile?sessionId=${encodeURIComponent(this.sessionId)}`
+			const { response, payload, statusCode } = await requestJsonWithRefresh({
+				url,
+				method: 'GET',
+				token
+			})
+
+			if (statusCode !== 200 || !isSuccessPayload(payload, response)) {
+				if (statusCode === 404) {
+					await this.refreshProfileDebugDataFallback(token)
+					return
+				}
+				this.profileDebugData = {
+					sessionId: this.sessionId,
+					requestedAgentId: this.agentId,
+					resolvedAgentId: this.resolvedAgentId || this.agentId,
+					resolvedAgentName: this.resolvedAgentName || this.assistantName,
+					sessionAgentId: '',
+					fetchedAt: '',
+					error: normalizeText(
+						payload && (payload.error || payload.message || payload.errMsg || payload.errorCode || payload.code),
+						`profile debug 请求失败: ${statusCode || 'unknown'}`
+					),
+					profileSnapshot: null,
+					gaokaoSnapshot: null,
+					recentUserMessages: []
+				}
+				return
+			}
+
+			const data = unwrapPayloadData(payload)
+			this.profileDebugData = {
+				sessionId: normalizeText(data && data.sessionId, this.sessionId),
+				requestedAgentId: normalizeText(data && data.requestedAgentId, this.agentId),
+				resolvedAgentId: normalizeText(data && data.resolvedAgentId, this.resolvedAgentId || this.agentId),
+				resolvedAgentName: normalizeText(data && data.resolvedAgentName, this.resolvedAgentName || this.assistantName),
+				sessionAgentId: normalizeText(data && data.sessionAgentId, ''),
+				fetchedAt: normalizeText(data && data.fetchedAt, ''),
+				error: '',
+				profileSnapshot: data && data.profileSnapshot ? data.profileSnapshot : null,
+				gaokaoSnapshot: data && data.gaokaoSnapshot ? data.gaokaoSnapshot : null,
+				recentUserMessages: Array.isArray(data && data.recentUserMessages) ? data.recentUserMessages : []
+			}
+		} catch (error) {
+			console.warn('[ai-chat] refresh profile debug failed:', error)
+			const payload = isRecord(error && error.payload) ? error.payload : {}
+			if (String((payload && (payload.error || payload.message)) || error?.message || '').includes('404')) {
+				await this.refreshProfileDebugDataFallback(token)
+				return
+			}
+			this.profileDebugData = {
+				sessionId: this.sessionId,
+				fetchedAt: '',
+				error: normalizeText(
+					(payload && (payload.error || payload.message)) ||
+					error?.message ||
+					'profile debug 拉取失败',
+					'profile debug 拉取失败'
+				),
+				profileSnapshot: null,
+				gaokaoSnapshot: null,
+				recentUserMessages: []
+			}
+		}
+	},
+	async refreshProfileDebugDataFallback(token) {
+		const requestData = async (path) => {
+			try {
+				const { response, payload, statusCode } = await requestJsonWithRefresh({
+					url: `${getApiBaseUrl()}${path}`,
+					method: 'GET',
+					token
+				})
+				if (statusCode !== 200) return null
+				return unwrapPayloadData(payload)
+			} catch (error) {
+				return null
+			}
+		}
+
+		const [userProfile, gaokaoState, intelligenceBundle, sessionDetail] = await Promise.all([
+			requestData('/users/me'),
+			requestData('/users/me/gaokao-consultation?noteLimit=20'),
+			requestData('/users/me/intelligence?memory_limit=10'),
+			requestData(`/sessions/${encodeURIComponent(this.sessionId)}`)
+		])
+
+		const session = sessionDetail && sessionDetail.session ? sessionDetail.session : sessionDetail
+		const sessionMessages = Array.isArray(session && session.messages) ? session.messages : []
+		const recentUserMessages = (sessionMessages.length ? sessionMessages : this.messages || [])
+			.filter((item) => item && item.role === 'user' && normalizeText(item.content, ''))
+			.slice(-20)
+			.map((item) => ({
+				id: normalizeText(item.id, ''),
+				content: normalizeText(item.content, ''),
+				timestamp: normalizeText(item.timestamp || item.dateTime, '')
+			}))
+
+		const combinedProfile = {
+			userProfile: userProfile || null,
+			intelligence: intelligenceBundle || null
+		}
+
+		this.profileDebugData = {
+			sessionId: this.sessionId,
+			fetchedAt: userProfile || gaokaoState || intelligenceBundle || recentUserMessages.length
+				? new Date().toISOString()
+				: '',
+			error: userProfile || gaokaoState || intelligenceBundle || recentUserMessages.length
+				? '[]'
+				: 'debug-profile 路由未发布，且 fallback 接口也没有取到数据',
+			profileSnapshot: combinedProfile,
+			gaokaoSnapshot: gaokaoState || null,
+			recentUserMessages
+		}
 	},
 	async sendMessage(overrideText = '') {
 		const content = normalizeText(overrideText || this.draftText, '')
 		if (!content || this.isSending) return
+		if (this.showVolunteerUnlockPrompt) {
+			uni.showToast({
+				title: '请先邀请好友或付费解锁',
+				icon: 'none'
+			})
+			return
+		}
 		if (this.showPowerPrompt) {
 			this.presentPowerPrompt('算力不足，暂时无法继续发送')
 			return
@@ -810,7 +1760,6 @@ export const chatPageMethods = {
 
 		const token = await resolveActiveToken()
 		if (!token) {
-			this.updateDebugRequestState('sendMessage', { aiAuthState: '缺少 token', note: '发送前未拿到可用 token' })
 			this.presentLoginPrompt('请先登录后再试')
 			this.appendAssistantMessage('登录后才能继续聊。')
 			return
@@ -819,59 +1768,21 @@ export const chatPageMethods = {
 		this.messages = this.messages.concat([{ id: `u-${Date.now()}`, role: 'user', content }])
 		this.draftText = ''
 		this.isSending = true
+		this.streamReplyStarted = false
+		this.activeAssistantMessageId = ''
 		this.connectionText = '响应中'
 		this.scrollToBottom()
 
 		try {
-			const url = `${getApiBaseUrl()}/chat/sync`
-			const { response, payload, statusCode } = await requestJsonWithRefresh({
-				url,
-				method: 'POST',
-				data: { message: content, agentId: this.agentId, sessionId: this.sessionId },
-				token
-			})
-
-			if (statusCode !== 200 || !isSuccessPayload(payload, response)) {
-				if (hasAuthFailure(statusCode, payload)) {
-					this.updateDebugRequestState('sendMessage', { statusCode, payload, aiAuthState: '被拒绝' })
-					this.presentLoginPrompt('AI 接口认证未通过，请查看 Debug Panel', { authRejected: true })
-					this.appendAssistantMessage('登录状态已失效，请先登录后再试。')
-					return
+			const shouldUseStream = normalizeText(this.transportMode, 'stream') !== 'sync'
+			if (shouldUseStream) {
+				const streamed = await this.sendMessageStreamRequest(content, token)
+				if (streamed === 'unsupported') {
+					await this.sendMessageSyncRequest(content, token)
 				}
-				if (hasPowerFailure(statusCode, payload)) {
-					this.updateDebugRequestState('sendMessage', { statusCode, payload, aiAuthState: '通过' })
-					this.presentPowerPrompt('算力不足，暂时无法继续发送')
-					this.appendAssistantMessage('算力不足，先去个人页补充后再试。')
-					return
-				}
-				if (hasServiceFailure(statusCode, payload)) {
-					this.updateDebugRequestState('sendMessage', { statusCode, payload, aiAuthState: '服务异常' })
-					this.appendAssistantMessage('小春鹿这会儿有点忙，AI 服务暂时不可用，稍后再试就好。')
-					this.connectionText = '服务异常'
-					uni.showToast({ title: 'AI 服务暂时不可用', icon: 'none' })
-					return
-				}
-				throw buildRequestError(payload.error || payload.message || '回复失败', statusCode, payload.errorCode || payload.code)
+			} else {
+				await this.sendMessageSyncRequest(content, token)
 			}
-
-			const data = unwrapPayloadData(payload)
-			if (data && data.sessionId) this.sessionId = normalizeText(data.sessionId, this.sessionId)
-			if (data && data.agentId) this.agentId = normalizeText(data.agentId, this.agentId)
-
-			this.updateDebugRequestState('sendMessage', { statusCode, payload, aiAuthState: '通过', note: '发送成功' })
-			this.appendAssistantPayloadMessage({
-				content: normalizeText(data && (data.reply || data.message), '收到，我继续帮你整理。'),
-				toolCalls: data && (data.toolCalls || data.tools),
-				businessCards: data && data.businessCards,
-				goalCards: data && data.goalCards,
-				articleCards: data && data.articleCards,
-				projectCards: data && data.projectCards,
-				activityCards: data && data.activityCards,
-				schoolCards: data && data.schoolCards,
-				inviteCards: data && data.inviteCards,
-				choiceCards: data && data.choiceCards,
-				membershipCards: data && data.membershipCards
-			})
 
 			if (Number(this.aiPowerRemaining) > 0) {
 				this.aiPowerRemaining = Math.max(0, Math.floor(Number(this.aiPowerRemaining) - 1))
@@ -880,54 +1791,43 @@ export const chatPageMethods = {
 			this.clearAccessPrompt()
 		} catch (error) {
 			console.error('[ai-chat] send failed', error)
-			if (hasAuthFailure(error.statusCode, error)) {
-				this.updateDebugRequestState('sendMessage', {
-					statusCode: error.statusCode,
-					payload: error,
-					aiAuthState: '被拒绝',
-					note: normalizeText(error.message, 'AI 接口认证失败')
-				})
-				this.presentLoginPrompt('AI 接口认证未通过，请查看 Debug Panel', { authRejected: true })
-			} else if (hasPowerFailure(error.statusCode, error)) {
-				this.updateDebugRequestState('sendMessage', {
-					statusCode: error.statusCode,
-					payload: error,
-					aiAuthState: '通过',
-					note: normalizeText(error.message, '算力不足')
-				})
+			const errorPayload = isRecord(error && error.payload) ? error.payload : error
+			const hasPartialAssistantReply =
+				!!this.activeAssistantMessageId ||
+				this.messages.some((item) => item && item.role === 'assistant' && normalizeText(item.content, ''))
+			if (hasAuthFailure(error.statusCode, errorPayload)) {
+				this.presentLoginPrompt('AI 接口认证未通过，请重新登录后再试', { authRejected: true })
+			} else if (hasPowerFailure(error.statusCode, errorPayload)) {
 				this.presentPowerPrompt('算力不足，暂时无法继续发送')
-			} else if (hasServiceFailure(error.statusCode, error)) {
-				this.updateDebugRequestState('sendMessage', {
-					statusCode: error.statusCode,
-					payload: error,
-					aiAuthState: '服务异常',
-					note: normalizeText(error.message, 'AI 服务暂时不可用')
-				})
+			} else if (hasServiceFailure(error.statusCode, errorPayload)) {
 				this.appendAssistantMessage('小春鹿这会儿有点忙，AI 服务暂时不可用，稍后再试就好。')
 				this.connectionText = '服务异常'
 				uni.showToast({ title: 'AI 服务暂时不可用', icon: 'none' })
 				return
-			} else {
-				this.updateDebugRequestState('sendMessage', {
-					statusCode: error.statusCode,
-					payload: error,
-					aiAuthState: '异常',
-					note: normalizeText(error.message, '发送失败')
+			}
+			if (!hasPartialAssistantReply) {
+				this.appendAssistantMessage('这次请求没成功，你可以稍后再试。')
+			}
+			if (!hasServiceFailure(error.statusCode, errorPayload)) {
+				uni.showToast({
+					title: hasPartialAssistantReply ? '回复中断，请稍后再试' : '发送失败',
+					icon: 'none'
 				})
 			}
-			this.appendAssistantMessage('这次请求没成功，你可以稍后再试。')
-			if (!hasServiceFailure(error.statusCode, error)) {
-				uni.showToast({ title: '发送失败', icon: 'none' })
-			}
-			this.connectionText = hasAuthFailure(error.statusCode, error)
+			this.connectionText = hasAuthFailure(error.statusCode, errorPayload)
 				? '登录失效'
-				: hasPowerFailure(error.statusCode, error)
+				: hasPowerFailure(error.statusCode, errorPayload)
 					? '算力不足'
-					: hasServiceFailure(error.statusCode, error)
+					: hasServiceFailure(error.statusCode, errorPayload)
 						? '服务异常'
-					: '发送失败'
+						: hasPartialAssistantReply
+							? '回复中断'
+							: '发送失败'
 		} finally {
 			this.isSending = false
+			this.streamReplyStarted = false
+			this.activeAssistantMessageId = ''
+			await this.refreshProfileDebugData()
 			this.scrollToBottom()
 		}
 	}

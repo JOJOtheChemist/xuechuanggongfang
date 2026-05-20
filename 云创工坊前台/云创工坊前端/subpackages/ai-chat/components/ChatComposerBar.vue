@@ -9,6 +9,7 @@
 		/>
 		<view class="composer-content" :class="contentClassName">
 		<textarea
+			ref="composerInput"
 			class="composer-input"
 			:class="inputClassName"
 			:value="value"
@@ -21,7 +22,8 @@
 			cursor-spacing="28"
 			@input="handleInput"
 			@confirm="handleConfirm"
-			@keydown="handleKeydown"
+			@focus="handleFocus"
+			@blur="handleBlur"
 			@compositionstart="handleCompositionStart"
 			@compositionend="handleCompositionEnd"
 		></textarea>
@@ -77,7 +79,19 @@ export default {
 		return {
 			isComposing: false,
 			lastCompositionEndAt: 0,
-			backgroundImageLoadFailed: false
+			backgroundImageLoadFailed: false,
+			isFocused: false,
+			lastSubmitAt: 0
+		}
+	},
+	mounted() {
+		if (typeof window !== 'undefined' && window && typeof window.addEventListener === 'function') {
+			window.addEventListener('keydown', this.handleGlobalKeydown, true)
+		}
+	},
+	beforeDestroy() {
+		if (typeof window !== 'undefined' && window && typeof window.removeEventListener === 'function') {
+			window.removeEventListener('keydown', this.handleGlobalKeydown, true)
 		}
 	},
 	computed: {
@@ -141,6 +155,12 @@ export default {
 		handleInput(event) {
 			this.$emit('input', event && event.detail ? event.detail.value : '')
 		},
+		handleFocus() {
+			this.isFocused = true
+		},
+		handleBlur() {
+			this.isFocused = false
+		},
 		handleCompositionStart() {
 			this.isComposing = true
 		},
@@ -160,6 +180,24 @@ export default {
 				return true
 			}
 			return Date.now() - this.lastCompositionEndAt < 80
+		},
+		handleGlobalKeydown(event) {
+			if (!this.isFocused) {
+				return
+			}
+			if (!this.isEnterEvent(event)) {
+				return
+			}
+			if (event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) {
+				return
+			}
+			if (this.shouldBlockSubmit(event)) {
+				return
+			}
+			if (typeof event.preventDefault === 'function') {
+				event.preventDefault()
+			}
+			this.emitSubmit()
 		},
 		handleKeydown(event) {
 			if (!this.isEnterEvent(event)) {
@@ -189,6 +227,10 @@ export default {
 			if (this.inputDisabled || !this.trimmedValue) {
 				return
 			}
+			if (Date.now() - this.lastSubmitAt < 300) {
+				return
+			}
+			this.lastSubmitAt = Date.now()
 			this.$emit('submit', this.trimmedValue)
 		}
 	}

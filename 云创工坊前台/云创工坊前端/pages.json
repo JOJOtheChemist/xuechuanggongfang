@@ -22,7 +22,6 @@
 				"^business-detail-card$": "@/components/business/BusinessDetailCard.vue",
 			"^article-list$": "@/components/business/ArticleList.vue",
 			"^check-in-card-compact$": "@/components/tasks/CheckInCardCompact.vue",
-			"^knowledge-section$": "@/components/tasks/KnowledgeSection.vue",
 			"^growth-log$": "@/components/tasks/GrowthLog.vue"
 		}
 	},
@@ -39,14 +38,6 @@
 			"style": {
 				"navigationBarTitleText": "学习中心",
 				"navigationStyle": "custom"
-			}
-		},
-		{
-			"path": "pages/volunteer/index",
-			"style": {
-				"navigationBarTitleText": "志愿",
-				"navigationStyle": "custom",
-				"onReachBottomDistance": 120
 			}
 		},
 		{
@@ -125,6 +116,18 @@
 						"navigationBarTitleText": "AI chat",
 						"navigationStyle": "custom",
 						"backgroundColor": "#ffffff"
+					}
+				}
+			]
+		},
+		{
+			"root": "subpackages/task-center",
+			"pages": [
+				{
+					"path": "knowledge-hub",
+					"style": {
+						"navigationBarTitleText": "创业资料库",
+						"backgroundColor": "#f8fafc"
 					}
 				}
 			]

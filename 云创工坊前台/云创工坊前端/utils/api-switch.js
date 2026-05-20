@@ -8,6 +8,7 @@ const LEGACY_DEVTOOLS_API_BASE_URL = 'http://127.0.0.1:3001/api/v1'
 const DEFAULT_STUDY_ARTICLE_COVER_URL =
 	'https://xuechuang.xyz/oss/share-assets/admission/admin/images/0/2026/05/12/a7391291-a94d-41e5-82ee-83b75f64ef0b.jpg'
 const AUTH_PROMPT_INTERVAL = 2500
+const AUTH_REFRESH_RETRY_COOLDOWN_MS = 5 * 60 * 1000
 const AUTH_STORAGE_KEYS = [
 	'token',
 	'accessToken',
@@ -20,6 +21,7 @@ const AUTH_STORAGE_KEYS = [
 
 let lastAuthPromptAt = 0
 let authRefreshPromise = null
+let lastAuthRefreshFailedAt = 0
 
 function sleep(ms) {
 	return new Promise((resolve) => {
@@ -58,6 +60,24 @@ function clearAuthStorage() {
 
 function getStoredRefreshToken() {
 	return getUniStorage('refreshToken', '')
+}
+
+function hasStoredAuthEvidence() {
+	if (getUniStorage('token', '')) return true
+	if (getUniStorage('accessToken', '')) return true
+	if (getUniStorage('uni_id_token', '')) return true
+	if (getStoredRefreshToken()) return true
+	if (String(getUniStorage('userId', '')).trim()) return true
+
+	const userInfo = getUniStorage('userInfo', {})
+	if (isPlainObject(userInfo)) {
+		const profileUserId = String(
+			userInfo.uid || userInfo.userId || userInfo.user_id || userInfo.id || ''
+		).trim()
+		if (profileUserId) return true
+	}
+
+	return false
 }
 
 function persistAuthSession(payload = {}) {
@@ -215,6 +235,9 @@ function isHttpAuthTokenCompatible(token) {
 }
 
 async function refreshAuthSession() {
+	if (!hasStoredAuthEvidence()) return ''
+	if (Date.now() - lastAuthRefreshFailedAt < AUTH_REFRESH_RETRY_COOLDOWN_MS) return ''
+
 	const refreshToken = getStoredRefreshToken()
 	if (!refreshToken) return ''
 
@@ -233,6 +256,7 @@ async function refreshAuthSession() {
 				const nextAccessToken = String(result?.data?.accessToken || '').trim()
 
 				if (result && result.code === 0 && isJwtLikeToken(nextAccessToken)) {
+					lastAuthRefreshFailedAt = 0
 					persistAuthSession({
 						token: nextAccessToken,
 						accessToken: nextAccessToken,
@@ -241,7 +265,10 @@ async function refreshAuthSession() {
 					})
 					return nextAccessToken
 				}
+
+				lastAuthRefreshFailedAt = Date.now()
 			} catch (error) {
+				lastAuthRefreshFailedAt = Date.now()
 				console.warn('[api-switch] refresh auth failed:', error)
 			} finally {
 				authRefreshPromise = null
@@ -336,15 +363,29 @@ function normalizeResponse(rawResponse) {
 	let body = response && response.data
 
 	if (!isPlainObject(body)) {
+		let fallbackMessage = statusCode >= 400 ? 'request failed' : 'ok'
+		if (statusCode >= 502) {
+			fallbackMessage = '服务暂时不可用，请稍后重试'
+		} else if (statusCode >= 500) {
+			fallbackMessage = '服务开小差了，请稍后重试'
+		} else if (statusCode === 404) {
+			fallbackMessage = '接口不存在'
+		}
+
 		body = {
 			code: statusCode >= 400 ? -1 : 0,
-			message: statusCode >= 400 ? 'request failed' : 'ok',
+			message: fallbackMessage,
 			data: body
 		}
 	}
 
 	if (body.code === undefined) {
-		const fallbackMessage = body.message || body.error || (statusCode >= 400 ? 'request failed' : 'ok')
+		let fallbackMessage = body.message || body.error || (statusCode >= 400 ? 'request failed' : 'ok')
+		if ((!body.message && !body.error) && statusCode >= 502) {
+			fallbackMessage = '服务暂时不可用，请稍后重试'
+		} else if ((!body.message && !body.error) && statusCode >= 500) {
+			fallbackMessage = '服务开小差了，请稍后重试'
+		}
 		body = Object.assign({
 			code: statusCode >= 400 ? -1 : 0,
 			message: fallbackMessage
@@ -447,6 +488,9 @@ async function requestHttp(definition, args, runtime = {}) {
 	try {
 		let config = buildRequestConfig(definition, args, runtime.overrideToken)
 		if (definition.auth === true && !config.token) {
+			if (!hasStoredAuthEvidence()) {
+				return createAuthFailureResponse('请先登录')
+			}
 			if (!runtime.retriedAfterRefresh) {
 				const refreshedToken = await refreshAuthSession()
 				if (refreshedToken) {

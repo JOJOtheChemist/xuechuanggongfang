@@ -31,9 +31,11 @@
 
 <script>
 import { TABBAR_ICON_URLS } from '@/utils/cloud-static-assets'
+import { getCachedImageSync, resolveCachedImages } from '@/utils/remote-image-cache'
 
 const VOLUNTEER_PATH = '/subpackages/volunteer/guide-redirect'
 const FORUM_PATH = '/subpackages/forum/index'
+const TABBAR_ICON_ENTRIES = Object.entries(TABBAR_ICON_URLS).filter(([, url]) => Boolean(url))
 
 export default {
 	name: 'BottomNav',
@@ -45,10 +47,32 @@ export default {
 	},
 	data() {
 		return {
-			tabbarIcons: TABBAR_ICON_URLS
+			tabbarIcons: TABBAR_ICON_ENTRIES.reduce((icons, [key, url]) => {
+				icons[key] = getCachedImageSync(url) || url || ''
+				return icons
+			}, {})
 		}
 	},
+	mounted() {
+		this.cacheTabbarIcons()
+	},
 	methods: {
+		async cacheTabbarIcons() {
+			if (!TABBAR_ICON_ENTRIES.length) return
+
+			try {
+				const cachedUrls = await resolveCachedImages(TABBAR_ICON_ENTRIES.map(([, url]) => url))
+				const nextIcons = Object.assign({}, this.tabbarIcons)
+
+				TABBAR_ICON_ENTRIES.forEach(([key, url], index) => {
+					nextIcons[key] = cachedUrls[index] || url
+				})
+
+				this.tabbarIcons = nextIcons
+			} catch (error) {
+				console.warn('[BottomNav] cache icons failed', error)
+			}
+		},
 		goForum() {
 			if (this.active !== 'forum') {
 				uni.reLaunch({

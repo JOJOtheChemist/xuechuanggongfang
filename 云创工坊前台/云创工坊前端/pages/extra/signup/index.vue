@@ -417,7 +417,7 @@ export default {
 				// [FIX] 只读模式下可能没有 id 参数（已从 fetchSignupDetail 获取），不应跳转
 				if (!this.isReadonly) {
 					uni.showToast({ title: '缺少业务参数', icon: 'none' })
-					setTimeout(() => uni.reLaunch({ url: '/pages/volunteer/index' }), 1500)
+					setTimeout(() => uni.reLaunch({ url: '/subpackages/volunteer/guide-redirect' }), 1500)
 				}
     }
 
@@ -820,7 +820,7 @@ export default {
             showCancel: false,
             success: () => {
               setTimeout(() => {
-                uni.reLaunch({ url: '/pages/volunteer/index' })
+                uni.reLaunch({ url: '/subpackages/volunteer/guide-redirect' })
               }, 300)
             }
           })

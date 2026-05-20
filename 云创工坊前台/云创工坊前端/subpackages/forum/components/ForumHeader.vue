@@ -19,7 +19,7 @@
           :class="{ active: activeTab === 'hot' }"
           @tap="$emit('change-tab', 'hot')"
         >
-          <text>热门</text>
+          <text>7天内热门</text>
         </view>
       </view>
     </view>
@@ -68,7 +68,7 @@ export default {
 
 .school-selector {
   position: absolute;
-  top: 58rpx;
+  top: 48rpx;
   left: 72rpx;
   min-width: 0;
   max-width: 320rpx;
@@ -95,7 +95,7 @@ export default {
 
 .tabs {
   position: absolute;
-  top: 115rpx;
+  top: 105rpx;
   left: 24rpx;
   display: flex;
   align-items: center;

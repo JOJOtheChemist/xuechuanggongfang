@@ -21,6 +21,7 @@
 						class="avatar-image"
 						:src="resolvedAvatarUrl"
 						mode="aspectFill"
+						@error="handleAvatarError"
 					/>
 					<view v-else class="avatar-badge">AI</view>
 				</view>
@@ -41,11 +42,6 @@
 				@copy="$emit('copy', $event)"
 				@refresh-power="$emit('refresh-power')"
 			/>
-			<ChatDebugPanel
-				:debug-info="debugInfo"
-				@copy="$emit('copy-debug')"
-				@refresh="$emit('refresh-debug')"
-			/>
 
 			<view v-if="showFloatingMeta" class="starter-row">
 				<ChatQuickActionBar
@@ -59,7 +55,6 @@
 </template>
 
 <script>
-import ChatDebugPanel from './ChatDebugPanel.vue'
 import ChatHeroToolbar from './ChatHeroToolbar.vue'
 import ChatQuickActionBar from './ChatQuickActionBar.vue'
 import ChatSessionMetaGrid from './ChatSessionMetaGrid.vue'
@@ -68,7 +63,6 @@ import { normalizeAvatarUrl } from '@/utils/avatar.js'
 export default {
 	name: 'ChatHeroCard',
 	components: {
-		ChatDebugPanel,
 		ChatHeroToolbar,
 		ChatQuickActionBar,
 		ChatSessionMetaGrid
@@ -106,10 +100,6 @@ export default {
 			type: String,
 			default: '--'
 		},
-		debugInfo: {
-			type: Object,
-			default: () => ({})
-		},
 		quickPrompts: {
 			type: Array,
 			default: () => []
@@ -125,7 +115,8 @@ export default {
 	},
 	data() {
 		return {
-			topImageLoadFailed: false
+			topImageLoadFailed: false,
+			avatarLoadFailed: false
 		}
 	},
 	computed: {
@@ -144,23 +135,30 @@ export default {
 				: 'hero-card-visual hero-card-xiaochunlu'
 		},
 		resolvedAvatarUrl() {
+			if (this.avatarLoadFailed) return ''
 			return this.assistantAvatarUrl ? normalizeAvatarUrl(this.assistantAvatarUrl, '') : ''
 		},
 		showFloatingMeta() {
 			return !this.shouldRenderVisualHeroImage
 		},
 		showMetaPanel() {
-			return true
+			return this.showFloatingMeta
 		}
 	},
 	watch: {
 		topImageUrl() {
 			this.topImageLoadFailed = false
+		},
+		assistantAvatarUrl() {
+			this.avatarLoadFailed = false
 		}
 	},
 	methods: {
 		handleTopImageError() {
 			this.topImageLoadFailed = true
+		},
+		handleAvatarError() {
+			this.avatarLoadFailed = true
 		}
 	}
 }
@@ -176,19 +174,14 @@ export default {
 	padding: 24rpx 24rpx 0;
 }
 
-.hero-card-xiaochunlu {
-	display: flex;
-	flex-direction: column;
-	gap: 0;
-}
-
 .hero-card-visual {
 	display: flex;
 	flex-direction: column;
 	gap: 0;
 }
 
-.hero-card-gaokao {
+.hero-card-gaokao,
+.hero-card-xiaochunlu {
 	position: sticky;
 	top: 0;
 	z-index: 12;
@@ -202,11 +195,12 @@ export default {
 }
 
 .hero-image-hotspots {
-	position: absolute;
+	position: fixed;
 	top: 0;
 	left: 0;
 	right: 0;
 	height: 220rpx;
+	z-index: 28;
 	pointer-events: none;
 }
 

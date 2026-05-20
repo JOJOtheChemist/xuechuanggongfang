@@ -28,6 +28,7 @@
 <script>
 import { getHttpService } from '@/utils/http-services'
 import { getCurrentUserInfo } from '@/utils/http-services'
+import { getCachedImageSync, resolveCachedImages } from '@/utils/remote-image-cache'
 
 const ANNUAL_COIN_STATS_IMAGE_URL =
   'https://xuechuang.xyz/oss/share-assets/xuechuang/profile/summary/profile-annual-coin-stats-v1.png'
@@ -43,7 +44,7 @@ export default {
   data() {
     const now = new Date()
     return {
-      annualCardImageUrl: ANNUAL_COIN_STATS_IMAGE_URL,
+      annualCardImageUrl: getCachedImageSync(ANNUAL_COIN_STATS_IMAGE_URL) || ANNUAL_COIN_STATS_IMAGE_URL,
       year: now.getFullYear(),
       loading: false,
       teamName: '',
@@ -95,6 +96,14 @@ export default {
     }
   },
   methods: {
+    async cacheAnnualCardImage() {
+      try {
+        const cachedUrls = await resolveCachedImages([ANNUAL_COIN_STATS_IMAGE_URL])
+        this.annualCardImageUrl = cachedUrls[0] || ANNUAL_COIN_STATS_IMAGE_URL
+      } catch (error) {
+        console.warn('[AnnualCoinStats] cache image failed', error)
+      }
+    },
     resolveTeamNameFromStorage() {
       const userInfo = getCurrentUserInfo()
       const partnerInfo = userInfo && userInfo.partner_info ? userInfo.partner_info : {}
@@ -136,6 +145,7 @@ export default {
     }
   },
   mounted() {
+    this.cacheAnnualCardImage()
     if (this.hasExternalStats) {
       return
     }

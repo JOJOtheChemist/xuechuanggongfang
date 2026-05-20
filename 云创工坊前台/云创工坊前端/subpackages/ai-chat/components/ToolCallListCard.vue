@@ -11,8 +11,14 @@
 				:key="tool.id"
 				class="tool-call-card"
 			>
-				<view class="tool-call-card-head">
-					<view class="tool-call-card-main">
+				<view
+					class="tool-call-card-head"
+					:class="{ 'tool-call-card-head-expanded': isToolExpanded(tool.id) }"
+				>
+					<view
+						class="tool-call-card-main"
+						:class="{ 'tool-call-card-main-collapsed': !isToolExpanded(tool.id) }"
+					>
 						<view class="tool-call-title-row">
 							<text class="tool-call-title">{{ tool.label || tool.name || '工具' }}</text>
 							<view
@@ -22,22 +28,35 @@
 								<text class="tool-call-state-chip-text">{{ resolveStateLabel(tool.state) }}</text>
 							</view>
 						</view>
-						<text v-if="tool.summary" class="tool-call-summary">{{ tool.summary }}</text>
-						<text v-else-if="tool.inputPreview" class="tool-call-summary">{{ tool.inputPreview }}</text>
+						<text
+							v-if="resolveCollapsedPreview(tool)"
+							class="tool-call-summary"
+							:class="{ 'tool-call-summary-inline': !isToolExpanded(tool.id) }"
+						>
+							{{ resolveCollapsedPreview(tool) }}
+						</text>
 					</view>
 
-					<text v-if="tool.durationText" class="tool-call-duration">{{ tool.durationText }}</text>
+					<view
+						class="tool-call-card-side"
+						:class="{ 'tool-call-card-side-collapsed': !isToolExpanded(tool.id) }"
+					>
+						<text v-if="tool.durationText" class="tool-call-duration">{{ tool.durationText }}</text>
+						<text
+							v-if="tool.hasParams"
+							class="tool-call-inline-toggle"
+							@tap.stop="toggleToolParams(tool)"
+						>
+							{{ isToolExpanded(tool.id) ? '收起 JSON' : '展开 JSON' }}
+						</text>
+					</view>
 				</view>
 
-				<view v-if="tool.hasParams" class="tool-call-section">
+				<view v-if="tool.hasParams && isToolExpanded(tool.id)" class="tool-call-section">
 					<view class="tool-call-section-head">
 						<text class="tool-call-section-title">调用参数</text>
 						<view class="tool-call-section-actions">
-							<text class="tool-call-toggle-btn" @tap.stop="toggleToolParams(tool)">
-								{{ isToolExpanded(tool.id) ? '收起 JSON' : '展开 JSON' }}
-							</text>
 							<text
-								v-if="isToolExpanded(tool.id)"
 								class="tool-call-copy-btn"
 								@tap.stop="copyToolParams(tool)"
 							>
@@ -45,7 +64,7 @@
 							</text>
 						</view>
 					</view>
-					<view v-if="isToolExpanded(tool.id)" class="tool-call-code-shell">
+					<view class="tool-call-code-shell">
 						<text
 							v-for="lineItem in tool.paramLineItems"
 							:key="lineItem.key"
@@ -54,15 +73,14 @@
 							{{ lineItem.text || ' ' }}
 						</text>
 					</view>
-					<text v-else class="tool-call-collapsed-hint">点击展开后可查看完整参数 JSON</text>
 				</view>
 
-				<view v-if="tool.summary" class="tool-call-section">
+				<view v-if="tool.summary && isToolExpanded(tool.id)" class="tool-call-section">
 					<text class="tool-call-section-title">执行结果</text>
 					<text class="tool-call-section-text">{{ tool.summary }}</text>
 				</view>
 
-				<view v-if="!tool.hasParams && !tool.summary" class="tool-call-empty">
+				<view v-if="isToolExpanded(tool.id) && !resolveCollapsedPreview(tool)" class="tool-call-empty">
 					<text class="tool-call-empty-text">当前工具没有可展示的细节。</text>
 				</view>
 			</view>
@@ -85,6 +103,12 @@ function stringifyToolParams(value) {
 	} catch (error) {
 		return String(value)
 	}
+}
+
+function compactToolText(value) {
+	return String(value || '')
+		.replace(/\s+/g, ' ')
+		.trim()
 }
 
 function hasToolParams(value) {
@@ -138,6 +162,7 @@ export default {
 						inputPreview: String((tool && (tool.inputPreview || tool.input)) || '').trim(),
 						hasParams: typeof (tool && tool.hasParams) === 'boolean' ? tool.hasParams : hasToolParams(params),
 						paramText,
+						compactParamText: compactToolText(paramText),
 						paramLineItems: paramLines.map((line, lineIndex) => ({
 							key: `${id}-line-${lineIndex}`,
 							text: line
@@ -196,6 +221,13 @@ export default {
 			if (normalized === 'failed' || normalized === 'error' || normalized === 'denied') return 'error'
 			if (normalized === 'executing' || normalized === 'running' || normalized === 'pending') return 'pending'
 			return 'neutral'
+		},
+		resolveCollapsedPreview(tool = {}) {
+			return compactToolText(
+				tool.summary ||
+				tool.inputPreview ||
+				tool.compactParamText
+			)
 		}
 	}
 }
@@ -207,12 +239,17 @@ export default {
 	flex-direction: column;
 	gap: 14rpx;
 	margin-top: 18rpx;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
 }
 
 .tool-call-panel-head {
 	display: flex;
 	flex-direction: column;
 	gap: 6rpx;
+	min-width: 0;
 }
 
 .tool-call-panel-title {
@@ -222,23 +259,34 @@ export default {
 }
 
 .tool-call-panel-subtitle {
+	min-width: 0;
 	font-size: 20rpx;
-	line-height: 1.5;
+	line-height: 1.4;
 	color: rgba(43, 54, 87, 0.6);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .tool-call-stack {
 	display: flex;
 	flex-direction: column;
 	gap: 14rpx;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
 }
 
 .tool-call-card {
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
 	padding: 20rpx;
 	border-radius: 22rpx;
 	background: #ffffff;
 	border: 1rpx solid rgba(133, 161, 219, 0.18);
 	box-shadow: 0 10rpx 24rpx rgba(81, 103, 151, 0.06);
+	box-sizing: border-box;
 }
 
 .tool-call-card-head {
@@ -246,6 +294,12 @@ export default {
 	align-items: flex-start;
 	justify-content: space-between;
 	gap: 16rpx;
+	min-width: 0;
+	overflow: hidden;
+}
+
+.tool-call-card-head-expanded {
+	align-items: flex-start;
 }
 
 .tool-call-card-main {
@@ -254,22 +308,53 @@ export default {
 	display: flex;
 	flex-direction: column;
 	gap: 8rpx;
+	overflow: hidden;
+}
+
+.tool-call-card-main-collapsed {
+	flex-direction: column;
+	align-items: stretch;
 }
 
 .tool-call-title-row {
 	display: flex;
 	align-items: center;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
 	gap: 10rpx;
+	flex-shrink: 1;
+	min-width: 0;
+	overflow: hidden;
+}
+
+.tool-call-card-side {
+	flex-shrink: 0;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 8rpx;
+	overflow: hidden;
+}
+
+.tool-call-card-side-collapsed {
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 8rpx;
 }
 
 .tool-call-title {
+	flex: 1;
+	min-width: 0;
 	font-size: 24rpx;
 	font-weight: 700;
 	color: #24314f;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .tool-call-state-chip {
+	flex-shrink: 0;
 	padding: 4rpx 12rpx;
 	border-radius: 999rpx;
 }
@@ -294,6 +379,7 @@ export default {
 	font-size: 18rpx;
 	font-weight: 600;
 	color: #334155;
+	white-space: nowrap;
 }
 
 .tool-call-summary,
@@ -302,12 +388,41 @@ export default {
 	font-size: 22rpx;
 	line-height: 1.6;
 	color: rgba(36, 49, 79, 0.78);
+	word-break: break-all;
+	overflow-wrap: anywhere;
+}
+
+.tool-call-summary {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 100%;
+}
+
+.tool-call-summary-inline {
+	display: block;
 }
 
 .tool-call-duration {
 	flex-shrink: 0;
 	font-size: 18rpx;
 	color: rgba(36, 49, 79, 0.5);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.tool-call-inline-toggle {
+	flex-shrink: 0;
+	padding: 6rpx 14rpx;
+	border-radius: 999rpx;
+	font-size: 18rpx;
+	font-weight: 600;
+	color: #2563eb;
+	background: rgba(59, 130, 246, 0.08);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .tool-call-section {
@@ -315,6 +430,7 @@ export default {
 	flex-direction: column;
 	gap: 10rpx;
 	margin-top: 16rpx;
+	min-width: 0;
 }
 
 .tool-call-section-head {
@@ -338,18 +454,12 @@ export default {
 	color: #314264;
 }
 
-.tool-call-toggle-btn,
 .tool-call-copy-btn {
 	flex-shrink: 0;
 	padding: 8rpx 16rpx;
 	border-radius: 999rpx;
 	font-size: 18rpx;
 	font-weight: 600;
-}
-
-.tool-call-toggle-btn {
-	background: rgba(59, 130, 246, 0.08);
-	color: #2563eb;
 }
 
 .tool-call-copy-btn {
@@ -361,10 +471,14 @@ export default {
 	display: flex;
 	flex-direction: column;
 	gap: 4rpx;
+	width: 100%;
+	max-width: 100%;
 	padding: 18rpx;
 	border-radius: 18rpx;
 	background: #ffffff;
 	border: 1rpx solid rgba(148, 163, 184, 0.28);
+	box-sizing: border-box;
+	overflow: hidden;
 }
 
 .tool-call-code-line {
@@ -373,13 +487,8 @@ export default {
 	color: #334155;
 	font-family: Monaco, Consolas, monospace;
 	word-break: break-all;
+	overflow-wrap: anywhere;
 	white-space: pre-wrap;
-}
-
-.tool-call-collapsed-hint {
-	font-size: 20rpx;
-	line-height: 1.6;
-	color: rgba(71, 85, 105, 0.68);
 }
 
 .tool-call-empty {

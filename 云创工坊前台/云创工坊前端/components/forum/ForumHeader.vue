@@ -21,7 +21,7 @@
         :class="{ active: activeTab === 'hot' }"
         @tap="$emit('change-tab', 'hot')"
       >
-        <text>热门</text>
+        <text>7天内热门</text>
       </view>
     </view>
   </view>

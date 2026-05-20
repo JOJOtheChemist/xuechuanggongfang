@@ -33,6 +33,7 @@ import {
 	FORUM_LIKE_ACTIVE_ICON_URL,
 	FORUM_LIKE_ICON_URL
 } from '@/utils/cloud-static-assets'
+import { getCachedImageSync, resolveCachedImages } from '@/utils/remote-image-cache'
 
 export default {
   name: 'ForumPostCard',
@@ -46,9 +47,12 @@ export default {
     return {
       suppressTapOnce: false,
       suppressTapTimer: null,
-      likeIcon: FORUM_LIKE_ICON_URL,
-      likeActiveIcon: FORUM_LIKE_ACTIVE_ICON_URL
+      likeIcon: getCachedImageSync(FORUM_LIKE_ICON_URL) || FORUM_LIKE_ICON_URL,
+      likeActiveIcon: getCachedImageSync(FORUM_LIKE_ACTIVE_ICON_URL) || FORUM_LIKE_ACTIVE_ICON_URL
     }
+  },
+  created() {
+    this.cacheLikeIcons()
   },
   beforeDestroy() {
     if (this.suppressTapTimer) {
@@ -83,6 +87,15 @@ export default {
     }
   },
   methods: {
+    async cacheLikeIcons() {
+      try {
+        const cachedUrls = await resolveCachedImages([FORUM_LIKE_ICON_URL, FORUM_LIKE_ACTIVE_ICON_URL])
+        this.likeIcon = cachedUrls[0] || FORUM_LIKE_ICON_URL
+        this.likeActiveIcon = cachedUrls[1] || FORUM_LIKE_ACTIVE_ICON_URL
+      } catch (error) {
+        console.warn('[ForumPostCard] cache like icons failed', error)
+      }
+    },
     handleTap() {
       if (this.suppressTapOnce) {
         this.suppressTapOnce = false

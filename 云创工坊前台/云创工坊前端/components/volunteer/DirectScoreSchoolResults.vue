@@ -5,6 +5,7 @@
         v-for="school in schoolItems"
         :key="school.renderKey"
         class="school-list-item school-preview-card"
+        :class="{ 'school-preview-card-single-major': !shouldUseMajorScroll(school) }"
         @tap="handleSelect(school)"
       >
         <view class="school-preview-head">
@@ -38,6 +39,10 @@
             :key="tag.renderKey"
             class="school-preview-tag"
           >{{ tag.label }}</text>
+        </view>
+
+        <view v-if="school.loadingDetails" class="school-preview-loading">
+          <text class="school-preview-loading-text">专业分数正在补充加载</text>
         </view>
 
         <scroll-view
@@ -220,7 +225,11 @@ export default {
     return {
       failedThumbMap: {},
       cachedThumbMap: {},
-      thumbCacheTaskToken: 0
+      thumbCacheTaskToken: 0,
+      schoolItems: [],
+      schoolHydrationTimer: null,
+      schoolHydrationTaskToken: 0,
+      hydratedSchoolMap: {}
     }
   },
   watch: {
@@ -228,8 +237,19 @@ export default {
       immediate: true,
       handler() {
         this.syncSchoolThumbCache()
+        this.scheduleSchoolHydration()
       }
+    },
+    majorCategoryFilter() {
+      this.scheduleSchoolHydration()
+    },
+    subjectTrackFilter() {
+      this.scheduleSchoolHydration()
     }
+  },
+  beforeDestroy() {
+    this.clearSchoolHydrationTimer()
+    this.schoolHydrationTaskToken += 1
   },
   computed: {
     normalizedMajorCategoryFilter() {
@@ -240,27 +260,6 @@ export default {
     },
     scoreTableColumns() {
       return SCORE_TABLE_COLUMNS
-    },
-    schoolItems() {
-      const source = Array.isArray(this.institutions) ? this.institutions.slice() : []
-      const keyCount = {}
-
-      return source
-        .map((item, index) => this.mapInstitutionToSchool(item, index))
-        .filter(Boolean)
-        .map((school) => {
-          const baseKey = school.renderKey
-          const count = keyCount[baseKey] || 0
-          keyCount[baseKey] = count + 1
-
-          if (count > 0) {
-            return Object.assign({}, school, {
-              renderKey: `${baseKey}-${count}`
-            })
-          }
-
-          return school
-        })
     }
   },
   methods: {
@@ -318,10 +317,146 @@ export default {
 
         if (changed) {
           this.cachedThumbMap = nextMap
+          this.refreshRenderedSchoolThumbs()
         }
       } catch (error) {
         console.warn('[direct-score-results] cache school thumbs failed:', error)
       }
+    },
+    clearSchoolHydrationTimer() {
+      if (this.schoolHydrationTimer) {
+        clearTimeout(this.schoolHydrationTimer)
+        this.schoolHydrationTimer = null
+      }
+    },
+    refreshRenderedSchoolThumbs() {
+      if (!Array.isArray(this.schoolItems) || !this.schoolItems.length) {
+        return
+      }
+
+      const nextItems = this.schoolItems.map((school) => {
+        if (!school || !school.raw) return school
+
+        const nextThumbUrl = this.resolveCachedThumbUrl(this.resolveSchoolThumb(school.raw))
+        if (nextThumbUrl === school.thumbUrl) {
+          return school
+        }
+
+        return Object.assign({}, school, {
+          thumbUrl: nextThumbUrl
+        })
+      })
+
+      this.schoolItems = nextItems
+    },
+    scheduleSchoolHydration() {
+      this.clearSchoolHydrationTimer()
+
+      const source = Array.isArray(this.institutions) ? this.institutions.slice() : []
+      const keyCount = {}
+      const pendingHydrations = []
+      const nextSchoolItems = []
+
+      source.forEach((item, index) => {
+        const schoolShell = this.buildSchoolShell(item, index)
+        if (!schoolShell) {
+          return
+        }
+
+        const baseKey = schoolShell.renderKey
+        const duplicateCount = keyCount[baseKey] || 0
+        keyCount[baseKey] = duplicateCount + 1
+
+        const renderKey = duplicateCount > 0 ? `${baseKey}-${duplicateCount}` : baseKey
+        const hydratedCacheKey = this.buildHydratedSchoolCacheKey(item, index)
+        const cachedSchool = this.hydratedSchoolMap[hydratedCacheKey]
+        const schoolItem = cachedSchool
+          ? this.withSchoolRenderKeys(cachedSchool, renderKey)
+          : this.withSchoolRenderKeys(schoolShell, renderKey)
+
+        const listIndex = nextSchoolItems.push(schoolItem) - 1
+        if (!cachedSchool) {
+          pendingHydrations.push({
+            item,
+            index,
+            listIndex,
+            renderKey,
+            hydratedCacheKey
+          })
+        }
+      })
+
+      this.schoolItems = nextSchoolItems
+      if (!pendingHydrations.length) {
+        return
+      }
+
+      const taskToken = this.schoolHydrationTaskToken + 1
+      this.schoolHydrationTaskToken = taskToken
+
+      const hydrateBatch = (startIndex) => {
+        if (taskToken !== this.schoolHydrationTaskToken) {
+          return
+        }
+
+        const nextItems = this.schoolItems.slice()
+        const batchSize = startIndex === 0 ? 4 : 3
+        const batch = pendingHydrations.slice(startIndex, startIndex + batchSize)
+        let changed = false
+
+        batch.forEach((entry) => {
+          const hydratedSchool = this.mapInstitutionToSchool(entry.item, entry.index)
+          if (!hydratedSchool) {
+            return
+          }
+
+          this.hydratedSchoolMap[entry.hydratedCacheKey] = hydratedSchool
+          nextItems[entry.listIndex] = this.withSchoolRenderKeys(hydratedSchool, entry.renderKey)
+          changed = true
+        })
+
+        if (changed) {
+          this.schoolItems = nextItems
+        }
+
+        const nextStartIndex = startIndex + batch.length
+        if (nextStartIndex >= pendingHydrations.length) {
+          this.schoolHydrationTimer = null
+          return
+        }
+
+        this.schoolHydrationTimer = setTimeout(() => {
+          hydrateBatch(nextStartIndex)
+        }, 16)
+      }
+
+      hydrateBatch(0)
+    },
+    buildHydratedSchoolCacheKey(item, index) {
+      return [
+        this.resolveInstitutionStableId(item, index),
+        this.normalizedMajorCategoryFilter,
+        this.normalizedSubjectTrackFilter
+      ].join('::')
+    },
+    withSchoolRenderKeys(school, renderKey) {
+      if (!school || typeof school !== 'object') {
+        return school
+      }
+
+      return Object.assign({}, school, {
+        renderKey,
+        metaTags: (Array.isArray(school.metaTags) ? school.metaTags : []).map((tag, index) => {
+          return Object.assign({}, tag, {
+            renderKey: `${renderKey}-tag-${index}`
+          })
+        }),
+        majors: (Array.isArray(school.majors) ? school.majors : []).map((major, index) => {
+          return Object.assign({}, major, {
+            renderKey: `${renderKey}-major-${index}`
+          })
+        })
+      })
     },
     shouldShowSchoolThumb(school) {
       if (!school || !school.thumbUrl) return false
@@ -341,7 +476,7 @@ export default {
     },
     shouldUseMajorScroll(school) {
       const majorCount = Array.isArray(school && school.majors) ? school.majors.length : 0
-      return majorCount > 1 || Number(school && school.moreMajorCount) > 0
+      return majorCount > 2
     },
     getPreviewMajors(item) {
       if (Array.isArray(item && item.majorPreview)) return item.majorPreview
@@ -362,6 +497,24 @@ export default {
       }
 
       return 0
+    },
+    resolveVisibleMajorPreviews(item) {
+      const previewMajors = this.getPreviewMajors(item)
+
+      return this.filterMajorsByCategory(previewMajors)
+        .map((major) => {
+          const subjectTrack = this.resolveMajorSubjectTrack(major) || this.normalizedSubjectTrackFilter
+          return Object.assign({}, major, {
+            subjectTrack
+          })
+        })
+        .filter((major) => {
+          if (!this.normalizedSubjectTrackFilter) {
+            return true
+          }
+
+          return normalizeSubjectTrack(major.subjectTrack) === this.normalizedSubjectTrackFilter
+        })
     },
     filterMajorsByCategory(majors) {
       const normalizedFilter = this.normalizedMajorCategoryFilter
@@ -550,6 +703,61 @@ export default {
 
       return `fallback-${index}`
     },
+    buildSchoolShell(item, index) {
+      if (!item || typeof item !== 'object') return null
+
+      const visibleMajors = this.resolveVisibleMajorPreviews(item)
+      if (!visibleMajors.length) {
+        return null
+      }
+
+      const stableId = this.resolveInstitutionStableId(item, index)
+      const renderKey = `school-${stableId}`
+      const schoolMeta = this.buildSchoolMeta(item)
+      const majorCount = this.getMajorCount(item) || visibleMajors.length
+      const majorLabels = visibleMajors
+        .map((major) => this.formatMajorName(major))
+        .filter(Boolean)
+      const city = item.city || item.city_name || '地区待补充'
+      const level = item.schoolLevel || item.school_level || '层次待补充'
+      const nature = normalizeNature(item.ownershipType || item.ownership_type) || '性质待补充'
+      const placeholderLabel = majorLabels.length
+        ? `已匹配 ${Math.min(majorLabels.length, majorCount)} 个专业，分数加载中`
+        : '院校已找到，分数加载中'
+
+      return {
+        id: item.id,
+        stableId,
+        renderKey,
+        raw: item,
+        name: item.name,
+        badge: badgeFromName(item.name),
+        thumbUrl: this.resolveCachedThumbUrl(this.resolveSchoolThumb(item)),
+        coverImageUrl: this.resolveSchoolCover(item),
+        city,
+        level,
+        nature,
+        subtitle: [city, level, nature].filter(Boolean).join(' · '),
+        category: item.schoolType || item.school_type || '类型待补充',
+        retentionRateText: this.buildRetentionRateText(),
+        metaTags: schoolMeta.map((tag, tagIndex) => ({
+          label: tag,
+          renderKey: `${renderKey}-tag-${tagIndex}`
+        })),
+        majors: [{
+          label: placeholderLabel,
+          scoreRows: [],
+          isPlaceholder: true,
+          isLoadingDetails: true,
+          renderKey: `${renderKey}-major-loading`
+        }],
+        majorCount,
+        moreMajorCount: majorCount > 1 ? majorCount - 1 : 0,
+        referenceScoreText: this.buildReferenceScoreText(item),
+        previewNote: majorCount > 0 ? `已收录 ${majorCount} 个专业` : '点击查看学校详情',
+        loadingDetails: true
+      }
+    },
     mapInstitutionToSchool(item, index) {
       if (!item || typeof item !== 'object') return null
 
@@ -614,7 +822,8 @@ export default {
         majorCount,
         moreMajorCount,
         referenceScoreText: this.buildReferenceScoreText(item),
-        previewNote: majorCount > 0 ? `已收录 ${majorCount} 个专业` : '点击查看学校详情'
+        previewNote: majorCount > 0 ? `已收录 ${majorCount} 个专业` : '点击查看学校详情',
+        loadingDetails: false
       }
     }
   }
@@ -642,6 +851,10 @@ export default {
   background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
   box-shadow: 0 18rpx 42rpx rgba(24, 34, 68, 0.18);
   box-sizing: border-box;
+}
+
+.school-preview-card-single-major {
+  padding-bottom: 18rpx;
 }
 
 .school-preview-head {
@@ -739,6 +952,21 @@ export default {
   margin-top: 18rpx;
 }
 
+.school-preview-loading {
+  margin-top: 16rpx;
+  padding: 12rpx 16rpx;
+  border-radius: 14rpx;
+  background: rgba(219, 234, 254, 0.42);
+  border: 1rpx solid rgba(147, 197, 253, 0.65);
+}
+
+.school-preview-loading-text {
+  display: block;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: #2563eb;
+}
+
 .school-preview-tag {
   padding: 8rpx 14rpx;
   border-radius: 999rpx;
@@ -764,6 +992,10 @@ export default {
 .school-preview-majors-static {
   margin-top: 8rpx;
   min-height: 0;
+}
+
+.school-preview-card-single-major .school-preview-majors-static {
+  margin-top: 4rpx;
 }
 
 .school-preview-major-card {

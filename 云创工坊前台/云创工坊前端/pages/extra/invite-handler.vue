@@ -61,7 +61,7 @@ import { getHttpService } from '@/utils/http-services'
 			// 3. 兜底: 延时跳转首页
 			console.log('[InviteHandler] 无有效邀请参数，跳转首页')
 			setTimeout(() => {
-				uni.reLaunch({ url: '/pages/volunteer/index' })
+				uni.reLaunch({ url: '/subpackages/volunteer/guide-redirect' })
 			}, 1000)
 		},
 		methods: {
@@ -188,12 +188,12 @@ import { getHttpService } from '@/utils/http-services'
 									if (inputRes.confirm && inputRes.content) {
 										this.parseScene(inputRes.content)
 									} else {
-										uni.reLaunch({ url: '/pages/volunteer/index' })
+										uni.reLaunch({ url: '/subpackages/volunteer/guide-redirect' })
 									}
 								}
 							})
 						} else {
-							uni.reLaunch({ url: '/pages/volunteer/index' })
+							uni.reLaunch({ url: '/subpackages/volunteer/guide-redirect' })
 						}
 					}
 				})

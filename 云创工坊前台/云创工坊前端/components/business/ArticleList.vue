@@ -50,7 +50,7 @@ export default {
 		},
 		title: {
 			type: String,
-			default: '🔥 热门文章'
+			default: '🔥 7天内热门文章'
 		},
 		categoryId: {
 			type: String,
@@ -114,9 +114,9 @@ export default {
 			)
 		},
 		placeholderTitle() {
-			if (!this.loaded) return '热门文章加载中...'
+			if (!this.loaded) return '7天内热门文章加载中...'
 			if (!this.isLoggedIn) return '游客模式可先浏览文章'
-			return '暂时没有可展示的热门文章'
+			return '暂时没有可展示的7天内热门文章'
 		},
 		placeholderDesc() {
 			if (!this.loaded) return '请稍候，我们正在为你请求最新的学习干货'

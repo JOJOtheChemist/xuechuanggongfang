@@ -1,6 +1,7 @@
 import { DEFAULT_AGENT_ID } from './chat-auth.js'
+import gaokaoConsultantAvatarUrl from '../static/gaokao-consultant-avatar.png'
 
-const GAOKAO_CONSULTANT_AVATAR_URL = '/subpackages/ai-chat/static/gaokao-consultant-avatar.png'
+const GAOKAO_CONSULTANT_AVATAR_URL = gaokaoConsultantAvatarUrl
 const XIAOCHUNLU_AVATAR_URL =
 	'https://xuechuang.xyz/oss/share-assets/xuechuang/ai-chat/avatars/xiaochunlu-chat-avatar-v1.png'
 const XIAOCHUNLU_TOPIC_IMAGE_ROOT =
@@ -61,46 +62,49 @@ const XIAOCHUNLU_TOPIC_PROMPTS = {
 	}
 }
 const GAOKAO_GUESS_PROMPT_POOL = [
-	'我这个分数能报哪样学校',
-	'帮我按冲稳保搭一下志愿',
-	'云南这几所学校到底怎么比',
-	'这个专业以后好不好就业',
-	'春季高考和职教高考怎么选',
-	'征集志愿还能不能捡漏',
-	'位次和分数到底该先看哪个',
-	'服从调剂到底要不要勾',
-	'怕滑档的话志愿顺序怎么排',
-	'公办和民办学校应该怎么选',
-	'想留在云南读书怎么筛学校',
-	'医学类专业报考要注意哪些坑',
-	'师范类学校和综合大学怎么比',
-	'家长最容易忽略的填报风险有哪些',
-	'专科和本科志愿能不能一起规划',
-	'如果分数刚压线应该怎么报更稳',
-	'热门专业是不是都不适合冲',
-	'录取概率怎么看才不容易误判'
+	'我云南物理类，520分，想学计算机，先帮我按冲稳保筛学校。',
+	'我家孩子历史类，485分，想留昆明，师范和汉语言哪个好报？',
+	'临床医学和口腔医学到底怎么选？普通家庭更适合哪个？',
+	'如果只看就业，云南本地读书和去省外读书怎么选？',
+	'云南物理类，498分，想走电气或自动化，公办本科先怎么筛？',
+	'历史类女生，502分，想考编，先看师范院校还是先看城市？',
+	'家里预算一般，想学医学，护理、临床、口腔到底怎么排优先级？',
+	'分数刚过一本线，想冲省外双非，值不值得赌一把？',
+	'以后想进国企，云南读工科和去外省读工科差别大不大？',
+	'不想被调剂到天坑专业，志愿顺序到底该怎么排？',
+	'孩子想学法学，但只看就业的话，这专业到底值不值得报？',
+	'专科想走就业，云南本地有哪些专业比硬冲本科更稳？'
 ]
 
 const AGENT_UI_ID_ALIASES = {
-	'xiaochunlu-campus-startup-mentor': 'xiaochunlu-ai-v2'
+	'xiaochunlu-campus-startup-mentor': 'xiaochunlu-ai-v2',
+	'yunnan-gaokao-volunteer-consultant': DEFAULT_AGENT_ID,
+	'yunnan-gaokao-volunteer-consultant-v2': DEFAULT_AGENT_ID,
+	'yunnan-gaokao-volunteer-consultant-v3-2': DEFAULT_AGENT_ID,
+	'yunnan-gaokao-volunteer-consultant-v4': DEFAULT_AGENT_ID,
+	'yunnan-gaokao-volunteer-consultant-v5': DEFAULT_AGENT_ID,
+	'yunnan-gaokao-volunteer-consultant-v6': DEFAULT_AGENT_ID,
+	'yunnan-gaokao-volunteer-consultant-v7': DEFAULT_AGENT_ID,
+	'yunnan-zhangxuefeng-volunteer-consultant-v3': DEFAULT_AGENT_ID
 }
 
 const AGENT_UI_CONFIGS = {
 	[DEFAULT_AGENT_ID]: {
-		assistantName: '云南志愿填报顾问',
+		assistantName: '云南志愿填报老师 雪峰哥',
 		assistantRole: '高考志愿顾问',
 		assistantAvatarUrl: GAOKAO_CONSULTANT_AVATAR_URL,
+		transportMode: 'sync',
 		introQuickPrompts: GAOKAO_GUESS_PROMPT_POOL,
 		introSuggestionPrompts: [
-			'冲稳保怎么搭',
-			'这个分数报哪里',
-			'云南院校怎么比',
-			'专业方向怎么选'
+			'520分冲稳保',
+			'昆明学校怎么选',
+			'医学专业怎么比',
+			'省内省外怎么选'
 		],
 		quickPrompts: [
-			'我这个分数能报哪样学校',
-			'帮我按冲稳保搭一下志愿',
-			'云南这几所学校到底怎么比'
+			'我云南物理类，520分，想学计算机，先帮我按冲稳保筛学校。',
+			'我家孩子历史类，485分，想留昆明，师范和汉语言哪个好报？',
+			'临床医学和口腔医学到底怎么选？普通家庭更适合哪个？'
 		],
 		composerPlaceholder: '直接输入分数、位次、科类、城市或专业方向'
 	},
@@ -108,6 +112,7 @@ const AGENT_UI_CONFIGS = {
 		assistantName: '小春鹿',
 		assistantRole: '校园成长顾问',
 		assistantAvatarUrl: XIAOCHUNLU_AVATAR_URL,
+		transportMode: 'stream',
 		introTopics: [
 			{
 				topicKey: 'article',

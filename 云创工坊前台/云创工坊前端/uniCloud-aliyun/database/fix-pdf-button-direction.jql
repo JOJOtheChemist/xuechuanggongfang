@@ -1,0 +1,37 @@
+// 批量修复 PDF 文章详情页中的提示文案
+// 由于前端已将 PDF 阅读按钮移动到正文上方，旧文案“下方按钮”需要改为“上方按钮”
+// 按 Command+R 运行
+
+const db = uniCloud.database()
+const batchSize = 500
+let totalMatched = 0
+let totalUpdated = 0
+
+while (true) {
+  const res = await db
+    .collection('articles')
+    .where({
+      content: /请点击下方按钮阅读 PDF 文档：/
+    })
+    .limit(batchSize)
+    .get()
+
+  const articles = Array.isArray(res.data) ? res.data : []
+  if (!articles.length) break
+
+  totalMatched += articles.length
+
+  for (const article of articles) {
+    const content = typeof article.content === 'string' ? article.content : ''
+    const nextContent = content.replace(/请点击下方按钮阅读 PDF 文档：/g, '请点击上方按钮阅读 PDF 文档：')
+
+    if (nextContent === content) continue
+
+    await db.collection('articles').doc(article._id).update({
+      content: nextContent
+    })
+    totalUpdated += 1
+  }
+}
+
+console.log(`PDF 按钮方向文案修复完成：匹配 ${totalMatched} 条，更新 ${totalUpdated} 条`)

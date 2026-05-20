@@ -8,6 +8,7 @@
 </template>
 
 <script>
+import { getCachedImageSync, resolveCachedImage } from '@/utils/remote-image-cache'
 import { getStaticAssetUrl } from '@/utils/cloud-static-assets'
 
 export default {
@@ -22,12 +23,34 @@ export default {
 			default: ''
 		}
 	},
-	computed: {
-		resolvedImageSrc() {
-			return getStaticAssetUrl(this.imageSrc || '')
+	data() {
+		return {
+			resolvedImageSrc: ''
+		}
+	},
+	watch: {
+		imageSrc: {
+			immediate: true,
+			handler(value) {
+				const source = getStaticAssetUrl(value || '')
+				this.resolvedImageSrc = getCachedImageSync(source) || source || ''
+				this.syncImage(source)
+			}
 		}
 	},
 	methods: {
+		async syncImage(value) {
+			const source = String(value || '').trim()
+			if (!source) return
+			try {
+				const cached = await resolveCachedImage(source)
+				if (cached) {
+					this.resolvedImageSrc = cached
+				}
+			} catch (error) {
+				console.warn('[GuideActionButton] cache failed', error)
+			}
+		},
 		handleTap() {
 			this.$emit('primary')
 		}

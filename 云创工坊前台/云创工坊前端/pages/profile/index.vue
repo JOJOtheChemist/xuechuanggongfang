@@ -114,9 +114,14 @@ import WalletCard from '../../components/profile/WalletCard.vue'
 import IncentiveSystem from '../../components/tasks/IncentiveSystem.vue'
 import { getHttpService, getCurrentUserToken } from '../../utils/http-services'
 import { getPointsStats } from '../../utils/points-api'
+import { getCachedImageSync, resolveCachedImages } from '../../utils/remote-image-cache'
 
 const TEAM_CENTER_ENTRY_IMAGE_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/profile/team-entry/team-center-entry-v1.webp'
 const TEAM_MEMBER_LIST_ENTRY_IMAGE_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/profile/team-entry/team-member-list-entry-v1.webp'
+const PROFILE_PAGE_STATIC_IMAGE_FIELDS = Object.freeze([
+	['teamCenterEntryImageUrl', TEAM_CENTER_ENTRY_IMAGE_URL],
+	['teamMemberListEntryImageUrl', TEAM_MEMBER_LIST_ENTRY_IMAGE_URL]
+])
 
 function createDefaultTeamCardState(overrides = {}) {
 	return Object.assign(
@@ -144,8 +149,8 @@ export default {
 	},
 	data() {
 		return {
-			teamCenterEntryImageUrl: TEAM_CENTER_ENTRY_IMAGE_URL,
-			teamMemberListEntryImageUrl: TEAM_MEMBER_LIST_ENTRY_IMAGE_URL,
+			teamCenterEntryImageUrl: getCachedImageSync(TEAM_CENTER_ENTRY_IMAGE_URL) || TEAM_CENTER_ENTRY_IMAGE_URL,
+			teamMemberListEntryImageUrl: getCachedImageSync(TEAM_MEMBER_LIST_ENTRY_IMAGE_URL) || TEAM_MEMBER_LIST_ENTRY_IMAGE_URL,
 			pointsBalance: 0,
 			coinStats: {
 				currentBalance: 0,
@@ -180,6 +185,7 @@ export default {
 		}
 	},
 	onShow() {
+		this.cacheStaticImages()
 		const shouldRefreshChildren = this.hasInitialized
 		this.hasInitialized = true
 		if (shouldRefreshChildren) {
@@ -208,6 +214,19 @@ export default {
 		}
 	},
 	methods: {
+		async cacheStaticImages() {
+			try {
+				const cachedUrls = await resolveCachedImages(PROFILE_PAGE_STATIC_IMAGE_FIELDS.map(([, url]) => url))
+				PROFILE_PAGE_STATIC_IMAGE_FIELDS.forEach(([field, url], index) => {
+					const nextUrl = cachedUrls[index] || url
+					if (nextUrl && this[field] !== nextUrl) {
+						this[field] = nextUrl
+					}
+				})
+			} catch (error) {
+				console.warn('[profile] cache static images failed', error)
+			}
+		},
 		getAuthToken() {
 			return getCurrentUserToken()
 		},

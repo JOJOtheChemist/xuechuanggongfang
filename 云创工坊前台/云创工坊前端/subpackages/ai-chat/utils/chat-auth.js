@@ -1,9 +1,12 @@
 import { getApiBaseUrl } from '@/utils/api-switch.js'
 import { getCurrentUserToken } from '@/utils/http-services.js'
 
-export const DEFAULT_AGENT_ID = 'yunnan-gaokao-volunteer-consultant-v2'
+export const DEFAULT_AGENT_ID = 'yunnan-gaokao-volunteer-consultant'
 export const DAILY_NOTICE_KEY_PREFIX = 'ai_chat_daily_notice_'
 export const CHAT_PATH = '/subpackages/ai-chat/index'
+const SILENT_WECHAT_LOGIN_RETRY_COOLDOWN_MS = 5 * 60 * 1000
+
+let lastSilentWechatLoginFailedAt = 0
 
 export function createSessionId() {
 	const stamp = Date.now().toString(36)
@@ -129,6 +132,26 @@ export function getStoredTokenByPriority() {
 	}
 
 	return { key: 'none', value: '' }
+}
+
+export function hasStoredAuthEvidence() {
+	const tokenEntry = getStoredTokenByPriority()
+	if (tokenEntry.value) return true
+	if (getStoredRefreshToken()) return true
+
+	const rawUserId = normalizeText(getStoredValue('userId'), '')
+	if (rawUserId) return true
+
+	const rawUserInfo = getStoredValue('userInfo', {})
+	if (isPlainObject(rawUserInfo)) {
+		const profileUserId = normalizeText(
+			rawUserInfo.uid || rawUserInfo.userId || rawUserInfo.user_id || rawUserInfo.id,
+			''
+		)
+		if (profileUserId) return true
+	}
+
+	return false
 }
 
 export function extractDisplayUserInfo() {
@@ -273,6 +296,14 @@ export async function refreshAuthToken() {
 }
 
 export async function exchangeWechatCodeForAiToken() {
+	if (!hasStoredAuthEvidence()) {
+		return ''
+	}
+
+	if (Date.now() - lastSilentWechatLoginFailedAt < SILENT_WECHAT_LOGIN_RETRY_COOLDOWN_MS) {
+		return ''
+	}
+
 	return new Promise((resolve) => {
 		if (!uni || typeof uni.login !== 'function') {
 			resolve('')
@@ -289,7 +320,7 @@ export async function exchangeWechatCodeForAiToken() {
 				}
 
 				try {
-					const response = await requestRaw(`${getApiBaseUrl()}/auth/login/wechat`, 'POST', { code })
+					const response = await requestRaw(`${getApiBaseUrl()}/auth/wechat-login`, 'POST', { code })
 					const statusCode = getResponseStatusCode(response)
 					const payload = getResponsePayload(response)
 					const data = unwrapPayloadData(payload)
@@ -299,6 +330,7 @@ export async function exchangeWechatCodeForAiToken() {
 					)
 
 					if (statusCode === 200 && token && isJwtLikeToken(token)) {
+						lastSilentWechatLoginFailedAt = 0
 						persistAuthSession({
 							accessToken: token,
 							token,
@@ -308,13 +340,17 @@ export async function exchangeWechatCodeForAiToken() {
 						resolve(token)
 						return
 					}
+
+					lastSilentWechatLoginFailedAt = Date.now()
 				} catch (error) {
+					lastSilentWechatLoginFailedAt = Date.now()
 					console.warn('[ai-chat] exchange wechat code for AI token failed:', error)
 				}
 
 				resolve('')
 			},
 			fail: (error) => {
+				lastSilentWechatLoginFailedAt = Date.now()
 				console.warn('[ai-chat] uni.login failed during AI token exchange:', error)
 				resolve('')
 			}

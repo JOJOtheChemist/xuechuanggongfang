@@ -135,6 +135,8 @@
 </template>
 
 <script>
+import { getCachedImageSync, resolveCachedImages } from '@/utils/remote-image-cache'
+
 const COIN_HISTORY_ENTRY_IMAGE_URL = 'https://xuechuang.xyz/oss/share-assets/admission/admin/images/0/2026/05/13/6d5fa40b-c05d-4255-af7a-123f72ca6e11.png'
 const POINTS_LEDGER_ENTRY_IMAGE_URL = 'https://xuechuang.xyz/oss/share-assets/admission/admin/images/0/2026/05/13/6d5fa40b-c05d-4255-af7a-123f72ca6e11.png'
 const PROFILE_SUMMARY_IMAGES = [
@@ -151,6 +153,10 @@ const PROFILE_SUMMARY_IMAGES = [
 		url: 'https://xuechuang.xyz/oss/share-assets/xuechuang/profile/summary/profile-points-balance-v1.png'
 	}
 ]
+const PROFILE_SUMMARY_ENTRY_FIELDS = Object.freeze([
+	['coinHistoryEntryImageUrl', COIN_HISTORY_ENTRY_IMAGE_URL],
+	['pointsLedgerEntryImageUrl', POINTS_LEDGER_ENTRY_IMAGE_URL]
+])
 
 export default {
 	name: 'ProfileSummaryPanels',
@@ -170,10 +176,16 @@ export default {
 	},
 	data() {
 		return {
-			profileSummaryImages: PROFILE_SUMMARY_IMAGES,
-			coinHistoryEntryImageUrl: COIN_HISTORY_ENTRY_IMAGE_URL,
-			pointsLedgerEntryImageUrl: POINTS_LEDGER_ENTRY_IMAGE_URL
+			profileSummaryImages: PROFILE_SUMMARY_IMAGES.map((item) => ({
+				...item,
+				url: getCachedImageSync(item.url) || item.url
+			})),
+			coinHistoryEntryImageUrl: getCachedImageSync(COIN_HISTORY_ENTRY_IMAGE_URL) || COIN_HISTORY_ENTRY_IMAGE_URL,
+			pointsLedgerEntryImageUrl: getCachedImageSync(POINTS_LEDGER_ENTRY_IMAGE_URL) || POINTS_LEDGER_ENTRY_IMAGE_URL
 		}
+	},
+	created() {
+		this.cacheStaticImages()
 	},
 	computed: {
 		annualCoinTarget() {
@@ -181,6 +193,34 @@ export default {
 		}
 	},
 	methods: {
+		async cacheStaticImages() {
+			const originalSummaryUrls = PROFILE_SUMMARY_IMAGES.map((item) => item.url).filter(Boolean)
+			const entryUrls = PROFILE_SUMMARY_ENTRY_FIELDS.map(([, url]) => url).filter(Boolean)
+			const urls = [...originalSummaryUrls, ...entryUrls]
+			if (!urls.length) return
+
+			try {
+				const cachedUrls = await resolveCachedImages(urls)
+				const cachedUrlMap = {}
+				urls.forEach((url, index) => {
+					cachedUrlMap[url] = cachedUrls[index] || url
+				})
+
+				this.profileSummaryImages = PROFILE_SUMMARY_IMAGES.map((item) => ({
+					...item,
+					url: cachedUrlMap[item.url] || item.url
+				}))
+
+				PROFILE_SUMMARY_ENTRY_FIELDS.forEach(([field, url]) => {
+					const nextUrl = cachedUrlMap[url] || url
+					if (nextUrl && this[field] !== nextUrl) {
+						this[field] = nextUrl
+					}
+				})
+			} catch (error) {
+				console.warn('[ProfileSummaryPanels] cache static images failed', error)
+			}
+		},
 		formatCoinAmount(value) {
 			const numericValue = Number(value)
 			if (!Number.isFinite(numericValue)) {

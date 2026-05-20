@@ -136,7 +136,7 @@ export default {
 				console.error('[join-team-confirm] 参数错误 - 缺少 inviter_id 和 team_id，且缓存为空')
 				uni.showToast({ title: '参数错误', icon: 'none' })
 				setTimeout(() => {
-					uni.reLaunch({ url: '/pages/volunteer/index' })
+					uni.reLaunch({ url: '/subpackages/volunteer/guide-redirect' })
 				}, 1500)
 			}
 		}
@@ -348,7 +348,7 @@ export default {
 			uni.removeStorageSync('pending_inviter_id')
 			uni.removeStorageSync('pending_join_team_snapshot')
 			setTimeout(() => {
-				uni.reLaunch({ url: '/pages/volunteer/index' })
+				uni.reLaunch({ url: '/subpackages/volunteer/guide-redirect' })
 			}, 1200)
 		} else {
 			console.error('[join-team-confirm] 加入团队失败:', res)
@@ -390,7 +390,7 @@ export default {
 				// 策略：清除缓存，避免下次登录又跳进来。用户如果想加，需要重新扫码。
 				uni.removeStorageSync('pending_team_invite')
 				uni.removeStorageSync('pending_join_team_snapshot')
-				uni.reLaunch({ url: '/pages/volunteer/index' })
+				uni.reLaunch({ url: '/subpackages/volunteer/guide-redirect' })
 			},
 			handleBack() {
 				const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
@@ -438,24 +438,27 @@ export default {
 	position: absolute;
 	inset: 0;
 	z-index: 2;
-	display: flex;
-	flex-direction: column;
-	justify-content: space-between;
-	padding: 88rpx 56rpx 172rpx;
+	padding: 0;
 	box-sizing: border-box;
 	line-height: 1.4;
 }
 
 .overlay-top {
-	display: flex;
-	flex-direction: column;
-	gap: 252rpx;
+	position: absolute;
+	top: 48rpx;
+	left: 56rpx;
+	right: 56rpx;
+	min-height: 320rpx;
 }
 
 .invite-hero-meta {
+	position: absolute;
+	top: 390rpx;
+	left: 0;
 	display: flex;
-	flex-direction: column;
-	gap: 14rpx;
+	flex-direction: row;
+	align-items: center;
+	gap: 12rpx;
 	max-width: 420rpx;
 }
 
@@ -469,13 +472,13 @@ export default {
 .invite-hero-inviter {
 	display: flex;
 	align-items: center;
-	gap: 18rpx;
+	gap: 10rpx;
 }
 
 .inviter-avatar {
-	width: 84rpx;
-	height: 84rpx;
-	border-radius: 42rpx;
+	width: 56rpx;
+	height: 56rpx;
+	border-radius: 28rpx;
 	border: 4rpx solid rgba(255, 255, 255, 0.92);
 	box-shadow: 0 10rpx 24rpx rgba(15, 23, 42, 0.14);
 }
@@ -488,14 +491,17 @@ export default {
 }
 
 .hero-team-block {
+	position: absolute;
+	top: 104rpx;
+	left: 0;
 	display: flex;
 	flex-direction: column;
-	gap: 16rpx;
+	gap: 8rpx;
 	max-width: 470rpx;
 }
 
 .hero-team-title {
-	font-size: 46rpx;
+	font-size: 40rpx;
 	font-weight: 800;
 	line-height: 1.24;
 	color: #111827;
@@ -509,8 +515,10 @@ export default {
 }
 
 .action-footer {
-	width: 100%;
-	padding: 0 10rpx;
+	position: absolute;
+	left: 66rpx;
+	right: 66rpx;
+	bottom: 52rpx;
 	box-sizing: border-box;
 }
 

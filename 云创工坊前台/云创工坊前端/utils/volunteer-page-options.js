@@ -46,7 +46,7 @@ function normalizeNature(value) {
 
 const VOLUNTEER_HERO_BANNER_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/volunteer/banner/yunnan-spring-ai-volunteer-banner-v1.jpg'
 const DIRECT_SCORE_SHARE_IMAGE_URL = getStaticAssetUrl('/static/volunteer-guide/direct-score-top-hero.jpg')
-const DIRECT_SCORE_SHARE_ENTRY_PATH = '/pages/volunteer/index?entry=direct_score'
+const DIRECT_SCORE_SHARE_ENTRY_PATH = '/subpackages/volunteer/index?entry=direct_score'
 
 function decodeNicknameText(value) {
   let text = String(value || '').trim()
@@ -80,6 +80,18 @@ function buildVolunteerHeroBanners(imageUrl = VOLUNTEER_HERO_BANNER_URL) {
 
 function normalizeMajorCategory(value) {
   return String(value || '').trim()
+}
+
+const DIRECT_SCORE_HIDDEN_INSTITUTION_NAMES = new Set(['云南大学'])
+
+function normalizeInstitutionName(value) {
+  return String(value || '').replace(/\s+/g, '').trim()
+}
+
+function shouldHideDirectScoreInstitution(item) {
+  const institutionName = normalizeInstitutionName(item && item.name)
+  if (!institutionName) return false
+  return DIRECT_SCORE_HIDDEN_INSTITUTION_NAMES.has(institutionName)
 }
 
 function parseScoreNumber(value) {
@@ -779,12 +791,14 @@ export function createVolunteerPageOptions() {
 	      }
 	      const items = this.institutions
 	        .filter(isValidInstitution)
+          .filter((item) => !shouldHideDirectScoreInstitution(item))
 	        .filter((item) => institutionMatchesLocalFilters(item, localFilters))
 
 	      return this.scoreValue === null ? items : sortInstitutionsForScore(items, this.scoreValue)
 	    },
       guestPreviewInstitutionItems() {
-        return Array.isArray(this.guestPreviewInstitutions) ? this.guestPreviewInstitutions : []
+        return (Array.isArray(this.guestPreviewInstitutions) ? this.guestPreviewInstitutions : [])
+          .filter((item) => !shouldHideDirectScoreInstitution(item))
       },
       hasFullInstitutionAccess() {
         return Boolean(this.userLoggedIn && this.admissionUnlockStatus && this.admissionUnlockStatus.unlocked)
@@ -838,7 +852,10 @@ export function createVolunteerPageOptions() {
       },
       debugPreviewSchoolCard() {
         const previewItems = extractDebugPreviewInstitutions(this.admissionDebugPayload)
-        const matchedItem = previewItems.find((item) => isValidInstitution(item))
+        const matchedItem = previewItems.find((item) => (
+          isValidInstitution(item) &&
+          !shouldHideDirectScoreInstitution(item)
+        ))
         return matchedItem
           ? mapSchoolToPreviewCard(
               mapInstitutionToSchool(
@@ -904,7 +921,23 @@ export function createVolunteerPageOptions() {
         return `已展示 ${visibleCount} 所 · 已加载 ${loadedCount} 所`
       },
       institutionLoadingText() {
-        return this.institutionLoadProgressText || '正在加载院校数据'
+        const baseText = this.institutionLoadProgressText || '正在加载院校数据'
+        const loadedCount = Array.isArray(this.institutions) ? this.institutions.length : 0
+
+        if (this.loading && loadedCount === 0) {
+          return `${baseText}，首次加载会稍慢一点`
+        }
+
+        return baseText
+      },
+      institutionLoadingHintText() {
+        const loadedCount = Array.isArray(this.institutions) ? this.institutions.length : 0
+
+        if (this.loading && loadedCount === 0) {
+          return '首次正在整理院校库，请稍等；后续查分会更快。'
+        }
+
+        return '如果长时间停在这里，可以点下面按钮直接切换普通加载。'
       },
       emptyInstitutionStateText() {
         return this.scoreValue === null ? '暂无匹配院校' : '按当前分数未匹配到院校'
@@ -916,7 +949,7 @@ export function createVolunteerPageOptions() {
 	        return this.hasFullInstitutionAccess
 	      },
 	      canViewInstitutions() {
-	        return !this.userLoggedIn || this.hasFullInstitutionAccess
+	        return true
 	      },
       canOpenInstitutionDetail() {
         return this.hasFullInstitutionAccess
@@ -1315,6 +1348,14 @@ export function createVolunteerPageOptions() {
         this.appliedNatureIndex = this.selectedNatureIndex
         this.appliedSchoolTypeIndex = this.selectedSchoolTypeIndex
         this.appliedRiskFilterKey = this.draftScoreValue === null ? '' : this.selectedRiskFilterKey
+      },
+      isInstitutionBaseQueryChanged() {
+        return (
+          this.selectedTopFilterIndex !== this.appliedTopFilterIndex ||
+          String(this.draftExamValue || '') !== String(this.selectedExamValue || '') ||
+          String(this.draftSubjectTrackValue || '') !== String(this.selectedSubjectTrackValue || '') ||
+          String(this.draftMajorCategoryValue || '') !== String(this.selectedMajorCategoryValue || '')
+        )
       },
       async persistScoreIfNeeded() {
         const draftScore = this.draftScoreValue
@@ -2004,11 +2045,18 @@ export function createVolunteerPageOptions() {
         const consumed = await this.consumeAdmissionQueryCount()
         if (!consumed) return
 
+        const shouldReloadInstitutions = this.isInstitutionBaseQueryChanged() || this.institutions.length === 0
         this.applyDraftFilters()
-        await this.reloadInstitutions({
-          immediate: true,
-          skipScorePersist: true
-        })
+
+        if (shouldReloadInstitutions) {
+          await this.reloadInstitutions({
+            immediate: true,
+            skipScorePersist: true
+          })
+          return
+        }
+
+        this.errorText = ''
       },
       toggleDropdown(key) {
         this.activeDropdownKey = this.activeDropdownKey === key ? '' : key

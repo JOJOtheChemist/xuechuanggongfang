@@ -52,7 +52,7 @@ def generate_jql(url_file, output_jql):
             "title": filename,
             "category_id": category_id,
             "summary": f"{filename} 完整资料。",
-            "content": f"<p>请点击下方按钮阅读 PDF 文档：{filename}</p>",
+            "content": f"<p>请点击上方按钮阅读 PDF 文档：{filename}</p>",
             "price_points": 0,
             "author_name": "云创管家",
             "publish_time": now - (i * 1000), # Descending order

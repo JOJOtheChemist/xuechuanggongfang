@@ -185,7 +185,7 @@ for (const [lvl1, items] of Object.entries(resourcesByLevel1)) {
             title: fileNameBase,
             category_id: catId,
             summary: `${fileNameBase} 完整资料。`,
-            content: `<p>请点击下方按钮阅读 PDF 文档：${fileNameBase}</p>`, // User preferred format
+            content: `<p>请点击上方按钮阅读 PDF 文档：${fileNameBase}</p>`, // User preferred format
             price_points: 0,
             author_name: "云创管家",
             publish_time: Date.now(),

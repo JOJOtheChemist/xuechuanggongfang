@@ -118,7 +118,7 @@ export default {
 .intro-suggestion-text {
 	font-size: 23rpx;
 	line-height: 1.4;
-	font-weight: 600;
+	font-weight: 400;
 	color: #65779f;
 	text-align: center;
 }

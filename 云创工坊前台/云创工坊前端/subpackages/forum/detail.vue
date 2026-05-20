@@ -37,8 +37,13 @@
 
           <view class="stats-row">
             <view class="stat-btn" :class="{ active: post.is_liked }" @tap="toggleLike">
-              <text>{{ post.is_liked ? '❤ 已赞' : '♡ 点赞' }}</text>
-              <text class="stat-num">{{ post.like_count || 0 }}</text>
+              <image
+                class="like-icon"
+                :src="post.is_liked ? likeActiveIcon : likeIcon"
+                mode="aspectFit"
+              />
+              <text class="stat-label">{{ post.is_liked ? '已赞' : '点赞' }}</text>
+              <text class="stat-num">{{ formatCount(post.like_count) }}</text>
             </view>
             <view class="stat-btn" @tap="focusCommentInput">
               <text>💬 评论</text>
@@ -104,14 +109,6 @@
       </button>
     </view>
 
-    <view class="debug-panel">
-      <view class="debug-panel-head">
-        <text class="debug-panel-title">Debug Panel</text>
-        <button class="debug-copy-btn" @tap="copyDebugInfo">复制</button>
-      </view>
-      <text class="debug-panel-text">{{ debugInfo }}</text>
-    </view>
-
     <ForumContentSafetyNotice
       :visible="safetyNoticeVisible"
       :message="safetyNoticeMessage"
@@ -129,7 +126,10 @@ import {
   isContentSecurityViolation,
   normalizeContentSafetyMessage
 } from '@/utils/contentSafety.js'
-import { isJwtLikeToken } from '@/utils/http-services'
+import {
+  FORUM_LIKE_ACTIVE_ICON_URL,
+  FORUM_LIKE_ICON_URL
+} from '@/utils/cloud-static-assets'
 
 export default {
   components: {
@@ -150,6 +150,8 @@ export default {
       commentInputFocus: false,
       keyboardHeight: 0,
       postImageModes: [],
+      likeIcon: FORUM_LIKE_ICON_URL,
+      likeActiveIcon: FORUM_LIKE_ACTIVE_ICON_URL,
       safetyNoticeVisible: false,
       safetyNoticeMessage: '',
       lastError: ''
@@ -193,29 +195,6 @@ export default {
       return {
         height: `${140 + this.keyboardHeight}px`
       }
-    },
-    debugInfo() {
-      const token = this.getToken()
-      const userInfo = uni.getStorageSync('userInfo') || {}
-      const imageModeCount = Array.isArray(this.postImageModes) ? this.postImageModes.length : 0
-      const firstComment = Array.isArray(this.comments) && this.comments.length > 0 ? this.comments[0] : null
-      return [
-        '这里应该立刻显示评论',
-        `postId: ${this.postId || '-'}`,
-        `loading: ${this.loading}`,
-        `commentsLoading: ${this.commentsLoading}`,
-        `sendingComment: ${this.sendingComment}`,
-        `comments: ${(this.comments && this.comments.length) || 0}`,
-        `comment_count: ${this.post && this.post.comment_count != null ? this.post.comment_count : '-'}`,
-        `hasMore: ${this.commentsHasMore}`,
-        `token: ${token ? 'yes' : 'no'}`,
-        `tokenIsJwt: ${token ? isJwtLikeToken(token) : false}`,
-        `userId: ${uni.getStorageSync('userId') || userInfo.uid || '-'}`,
-        `lastError: ${this.lastError || '-'}`,
-        `imageModeKeys: ${imageModeCount}`,
-        `draftLength: ${String(this.commentText || '').length}`,
-        `topComment: ${firstComment ? String(firstComment.content || '').slice(0, 40) : '-'}`
-      ].join('\n')
     }
   },
   onLoad(options) {
@@ -453,23 +432,19 @@ export default {
         this.sendingComment = false
       }
     },
-    copyDebugInfo() {
-      uni.setClipboardData({
-        data: this.debugInfo,
-        success: () => {
-          uni.showToast({ title: '已复制', icon: 'none' })
-        },
-        fail: () => {
-          uni.showToast({ title: '复制失败', icon: 'none' })
-        }
-      })
-    },
     previewImage(index) {
       if (!this.post || !Array.isArray(this.post.images) || this.post.images.length === 0) return
       uni.previewImage({
         current: this.post.images[index] || this.post.images[0],
         urls: this.post.images
       })
+    },
+    formatCount(value) {
+      const num = Number(value || 0)
+      if (num >= 10000) {
+        return `${(num / 10000).toFixed(1)}w`
+      }
+      return String(num)
     },
     formatTime(ts) {
       const value = Number(ts || 0)
@@ -635,6 +610,16 @@ export default {
   font-weight: 700;
 }
 
+.stat-label {
+  line-height: 1;
+}
+
+.like-icon {
+  width: 28rpx;
+  height: 28rpx;
+  flex-shrink: 0;
+}
+
 .comment-card {
   margin: 20rpx 24rpx 0;
   border-radius: 18rpx;
@@ -727,53 +712,6 @@ export default {
   border-top: 1rpx solid #f1f5f9;
   z-index: 50;
   transition: bottom 0.2s ease;
-}
-
-.debug-panel {
-  position: fixed;
-  left: 16rpx;
-  right: 16rpx;
-  bottom: 176rpx;
-  z-index: 49;
-  background: rgba(15, 23, 42, 0.92);
-  border-radius: 16rpx;
-  padding: 18rpx;
-  box-sizing: border-box;
-}
-
-.debug-panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10rpx;
-}
-
-.debug-panel-title {
-  font-size: 26rpx;
-  font-weight: 700;
-  color: #f8fafc;
-}
-
-.debug-copy-btn {
-  margin: 0;
-  height: 54rpx;
-  line-height: 54rpx;
-  padding: 0 20rpx;
-  background: #38bdf8;
-  color: #0f172a;
-  border-radius: 999rpx;
-  font-size: 24rpx;
-  font-weight: 700;
-}
-
-.debug-panel-text {
-  display: block;
-  white-space: pre-wrap;
-  font-size: 22rpx;
-  line-height: 1.6;
-  color: #e2e8f0;
-  max-height: 260rpx;
-  overflow: hidden;
 }
 
 .comment-input {

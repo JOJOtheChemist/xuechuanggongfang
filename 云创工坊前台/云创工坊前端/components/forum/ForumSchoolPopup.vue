@@ -8,7 +8,24 @@
 				</text>
 			</view>
 
+			<view class="school-search-row">
+				<input
+					v-model="searchKeyword"
+					class="school-search-input"
+					type="text"
+					placeholder="搜索学校"
+					placeholder-class="school-search-placeholder"
+					confirm-type="search"
+				/>
+				<view v-if="searchKeyword" class="school-search-clear" @tap.stop="clearSearchKeyword">
+					<text class="school-search-clear-text">清空</text>
+				</view>
+			</view>
+
 			<scroll-view class="school-list" scroll-y>
+				<view v-if="schoolItems.length === 0" class="school-empty">
+					<text class="school-empty-text">没有找到相关学校</text>
+				</view>
 				<view
 					v-for="name in schoolItems"
 					:key="name"
@@ -69,6 +86,8 @@
 </template>
 
 <script>
+const FORUM_SCHOOL_POPUP_SEARCH_CACHE_KEY = 'forum_school_popup_search_keyword_v1'
+
 export default {
 	name: 'ForumSchoolPopup',
 	props: {
@@ -89,6 +108,7 @@ export default {
 	},
 	data() {
 		return {
+			searchKeyword: '',
 			showAddForm: false,
 			showDeleteForm: false,
 			manageMode: false,
@@ -115,17 +135,47 @@ export default {
 			if (current && !set.has(current)) {
 				list.unshift(current)
 			}
-			return list
+
+			const keyword = this.normalizeSearchText(this.searchKeyword)
+			if (!keyword) return list
+			return list.filter((name) => this.normalizeSearchText(name).indexOf(keyword) !== -1)
 		}
 	},
 	watch: {
 		visible(next) {
+			if (next) {
+				this.restoreSearchKeywordFromCache()
+			}
 			if (!next) {
 				this.resetForm()
 			}
+		},
+		searchKeyword(next) {
+			this.persistSearchKeywordToCache(next)
 		}
 	},
 	methods: {
+		normalizeSearchText(value) {
+			return String(value || '').trim().toLowerCase()
+		},
+		restoreSearchKeywordFromCache() {
+			try {
+				const cached = uni.getStorageSync(FORUM_SCHOOL_POPUP_SEARCH_CACHE_KEY)
+				this.searchKeyword = String(cached || '').trim()
+			} catch (error) {
+				// ignore
+			}
+		},
+		persistSearchKeywordToCache(value) {
+			try {
+				uni.setStorageSync(FORUM_SCHOOL_POPUP_SEARCH_CACHE_KEY, String(value || '').trim())
+			} catch (error) {
+				// ignore
+			}
+		},
+		clearSearchKeyword() {
+			this.searchKeyword = ''
+		},
 		normalizeSchoolDisplay(name) {
 			const safe = String(name || '').trim()
 			if (!safe) return ''
@@ -244,9 +294,57 @@ export default {
 	background: #ff5722;
 }
 
+.school-search-row {
+	margin-top: 18rpx;
+	display: flex;
+	align-items: center;
+	column-gap: 12rpx;
+}
+
+.school-search-input {
+	flex: 1;
+	height: 72rpx;
+	border: 1rpx solid #e2e8f0;
+	border-radius: 999rpx;
+	padding: 0 22rpx;
+	box-sizing: border-box;
+	font-size: 26rpx;
+	background: #f8fafc;
+	color: #0f172a;
+}
+
+.school-search-placeholder {
+	color: #94a3b8;
+}
+
+.school-search-clear {
+	height: 72rpx;
+	padding: 0 18rpx;
+	border-radius: 999rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: #f1f5f9;
+}
+
+.school-search-clear-text {
+	font-size: 24rpx;
+	color: #475569;
+}
+
 .school-list {
-	max-height: 300rpx;
+	height: 60vh;
+	max-height: 820rpx;
 	margin: 20rpx 0;
+}
+
+.school-empty {
+	padding: 28rpx 8rpx 18rpx;
+}
+
+.school-empty-text {
+	font-size: 24rpx;
+	color: #94a3b8;
 }
 
 .school-item {

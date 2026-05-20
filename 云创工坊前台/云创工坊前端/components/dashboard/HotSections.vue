@@ -32,14 +32,41 @@
 		HOT_CREATIVE_ICON_URL,
 		HOT_LEARNING_ICON_URL
 	} from '@/utils/cloud-static-assets'
+	import { getCachedImageSync, resolveCachedImages } from '@/utils/remote-image-cache'
+
+	const HOT_ICON_ENTRIES = Object.freeze([
+		['hotCreativeIconUrl', HOT_CREATIVE_ICON_URL],
+		['hotLearningIconUrl', HOT_LEARNING_ICON_URL],
+		['hotActivityIconUrl', HOT_ACTIVITY_ICON_URL]
+	].filter(([, url]) => Boolean(url)))
 
 	export default {
 		name: 'HotSections',
 		data() {
 			return {
-				hotCreativeIconUrl: HOT_CREATIVE_ICON_URL,
-				hotLearningIconUrl: HOT_LEARNING_ICON_URL,
-				hotActivityIconUrl: HOT_ACTIVITY_ICON_URL
+				hotCreativeIconUrl: getCachedImageSync(HOT_CREATIVE_ICON_URL) || HOT_CREATIVE_ICON_URL,
+				hotLearningIconUrl: getCachedImageSync(HOT_LEARNING_ICON_URL) || HOT_LEARNING_ICON_URL,
+				hotActivityIconUrl: getCachedImageSync(HOT_ACTIVITY_ICON_URL) || HOT_ACTIVITY_ICON_URL
+			}
+		},
+		mounted() {
+			this.cacheHotIcons()
+		},
+		methods: {
+			async cacheHotIcons() {
+				if (!HOT_ICON_ENTRIES.length) return
+
+				try {
+					const cachedUrls = await resolveCachedImages(HOT_ICON_ENTRIES.map(([, url]) => url))
+					HOT_ICON_ENTRIES.forEach(([field, url], index) => {
+						const nextUrl = cachedUrls[index] || url
+						if (nextUrl && this[field] !== nextUrl) {
+							this[field] = nextUrl
+						}
+					})
+				} catch (error) {
+					console.warn('[HotSections] cache icons failed', error)
+				}
 			}
 		}
 	}

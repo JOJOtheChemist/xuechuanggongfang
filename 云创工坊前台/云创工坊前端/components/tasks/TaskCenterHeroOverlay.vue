@@ -49,7 +49,7 @@
 				</view>
 				<view class="task-center-hero-panel task-center-hero-panel-half task-center-hero-panel-dynamics">
 					<view class="task-center-hero-half-shell task-center-hero-half-shell-dynamics">
-						<task-center-partner-dynamics-panel :limit="3" />
+						<task-center-partner-dynamics-panel ref="partnerDynamicsPanel" :limit="3" />
 					</view>
 				</view>
 			</view>
@@ -170,6 +170,12 @@ export default {
 		refreshTaskProgress() {
 			return this.loadTaskProgress()
 		},
+		refreshPartnerDynamics(forceRefresh = false) {
+			if (this.$refs.partnerDynamicsPanel && this.$refs.partnerDynamicsPanel.loadTeamDynamics) {
+				return this.$refs.partnerDynamicsPanel.loadTeamDynamics({ forceRefresh })
+			}
+			return Promise.resolve()
+		},
 		refreshStatsPanel() {
 			if (this.$refs.statsPanel && this.$refs.statsPanel.refresh) {
 				return this.$refs.statsPanel.refresh()
@@ -236,7 +242,7 @@ export default {
 		},
 		goToKnowledgeHub() {
 			uni.navigateTo({
-				url: '/pages/article/list'
+				url: '/subpackages/task-center/knowledge-hub'
 			})
 		},
 		goToGrowthLog() {
@@ -329,7 +335,7 @@ export default {
 	width: calc((100% - 16rpx) / 2);
 	max-width: calc((100% - 16rpx) / 2);
 	min-width: 0;
-	min-height: 190rpx;
+	min-height: 166rpx;
 }
 
 .task-center-hero-panel-ranking {
@@ -365,7 +371,7 @@ export default {
 }
 
 .task-center-hero-half-shell-dynamics {
-	padding: 10rpx 12rpx 8rpx;
+	padding: 6rpx 12rpx 4rpx;
 }
 
 .task-center-hero-panel-buttons {

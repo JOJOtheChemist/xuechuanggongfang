@@ -250,7 +250,7 @@ const STATIC_BUSINESS_ITEMS = [
             },
             businessItems: [], // 初始为空，减少传输量
             activeIndex: 0,
-            tags: ['热门推荐', '官方认证', '限时优惠', '新上线'],
+            tags: ['7天内热门', '官方认证', '限时优惠', '新上线'],
             // 业务板块 id 与文章分类 category_id 的映射
             articleCategories: {
                 1: 'cat_001', // 四六级 -> 志愿填报 (兼用，或独立)

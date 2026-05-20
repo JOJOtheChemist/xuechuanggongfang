@@ -114,7 +114,7 @@ function processFiles() {
                     title: item.fileName.replace('.pdf', ''),
                     category_id: getCategory(item.level1 || "", item.fileName),
                     summary: `${item.fileName} 完整资料。`,
-                    content: `<p>请点击下方按钮阅读 PDF 文档：${item.fileName.replace('.pdf', '')}</p>`,
+                    content: `<p>请点击上方按钮阅读 PDF 文档：${item.fileName.replace('.pdf', '')}</p>`,
                     price_points: 0,
                     author_name: "云创管家",
                     publish_time: Date.now() - (Math.floor(Math.random() * 1000000)),

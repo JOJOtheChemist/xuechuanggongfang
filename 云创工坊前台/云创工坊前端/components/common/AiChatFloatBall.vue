@@ -17,6 +17,7 @@ import {
 	AI_CHAT_FLOAT_CLOSE_ICON_URL,
 	AI_CHAT_FLOAT_IMAGE_URL
 } from '@/utils/ai-chat-float-config'
+import { getCachedImageSync, resolveCachedImage, resolveCachedImages } from '@/utils/remote-image-cache'
 
 export default {
 	name: 'AiChatFloatBall',
@@ -65,8 +66,8 @@ export default {
 	data() {
 		return {
 			visible: true,
-			resolvedImageUrl: this.imageUrl,
-			resolvedCloseIconUrl: this.closeIconUrl
+			resolvedImageUrl: getCachedImageSync(this.imageUrl) || this.imageUrl,
+			resolvedCloseIconUrl: getCachedImageSync(this.closeIconUrl) || this.closeIconUrl
 		}
 	},
 	computed: {
@@ -82,16 +83,48 @@ export default {
 	},
 	watch: {
 		imageUrl(nextUrl) {
-			this.resolvedImageUrl = nextUrl || ''
+			const source = nextUrl || ''
+			this.resolvedImageUrl = getCachedImageSync(source) || source
+			this.syncImage(source, 'resolvedImageUrl')
 		},
 		closeIconUrl(nextUrl) {
-			this.resolvedCloseIconUrl = nextUrl || ''
+			const source = nextUrl || ''
+			this.resolvedCloseIconUrl = getCachedImageSync(source) || source
+			this.syncImage(source, 'resolvedCloseIconUrl')
 		}
 	},
 	created() {
 		this.restoreVisibility()
+		this.preloadStaticImages()
 	},
 	methods: {
+		async preloadStaticImages() {
+			const urls = [this.imageUrl, this.closeIconUrl].filter(Boolean)
+			if (!urls.length) return
+			try {
+				const cachedUrls = await resolveCachedImages(urls)
+				if (urls[0]) {
+					this.resolvedImageUrl = cachedUrls[0] || urls[0]
+				}
+				if (urls[1]) {
+					this.resolvedCloseIconUrl = cachedUrls[1] || urls[1]
+				}
+			} catch (error) {
+				console.warn('[ai-chat-float-ball] cache images failed', error)
+			}
+		},
+		async syncImage(url, field) {
+			const source = String(url || '').trim()
+			if (!source) return
+			try {
+				const cached = await resolveCachedImage(source)
+				if (cached) {
+					this[field] = cached
+				}
+			} catch (error) {
+				console.warn('[ai-chat-float-ball] cache image failed', error)
+			}
+		},
 		restoreVisibility() {
 			if (!this.persistClose) {
 				this.clearVisibilityStorage()

@@ -5,7 +5,7 @@
 			:key="card.id"
 			class="school-card"
 			hover-class="school-card-hover"
-			@tap="$emit('tap', card)"
+			@tap="handleSelect(card)"
 		>
 			<view class="school-card-head">
 				<view class="school-card-brand">
@@ -62,6 +62,9 @@ export default {
 		}
 	},
 	methods: {
+		handleSelect(card) {
+			this.$emit('select', card)
+		},
 		resolveInitial(title) {
 			const text = normalizeText(title).replace(/[()（）]/g, '')
 			return text.slice(0, 2) || '学校'
@@ -76,7 +79,7 @@ export default {
 		},
 		resolveMetaTags(card) {
 			const tags = [
-				card.city,
+				card.area || card.location || card.city,
 				card.schoolLevel,
 				card.ownershipType,
 				card.schoolType,
@@ -94,7 +97,6 @@ export default {
 	display: flex;
 	flex-direction: column;
 	gap: 18rpx;
-	margin-top: 18rpx;
 }
 
 .school-card {

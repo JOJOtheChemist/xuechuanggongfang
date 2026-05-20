@@ -41,7 +41,7 @@
 				</view>
 				
 				<view v-if="loading" class="loading">加载中...</view>
-				<view v-else-if="!list.length" class="empty">暂无文章</view>
+				<view v-else-if="!list.length" class="empty">{{ emptyText }}</view>
 				<view v-else-if="list.length >= total" class="no-more">—— 到底了 ——</view>
 			</view>
 		</scroll-view>
@@ -86,6 +86,12 @@ export default {
 					renderKey: `article-${rawKey}`
 				})
 			})
+		},
+		emptyText() {
+			if (typeof this.currentCategoryId === 'string' && this.currentCategoryId.startsWith('cat_kb_')) {
+				return '这个创业资料库暂时还没有内容'
+			}
+			return '暂无文章'
 		}
 	},
 	onLoad(options) {

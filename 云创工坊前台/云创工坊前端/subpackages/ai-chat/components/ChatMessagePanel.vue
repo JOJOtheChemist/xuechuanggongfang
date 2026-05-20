@@ -7,6 +7,7 @@
 		:scroll-into-view="scrollIntoViewTarget"
 	>
 		<view class="message-list">
+			<slot name="top-content"></slot>
 			<view
 				v-for="message in messages"
 				:id="`msg-${message.id}`"
@@ -41,24 +42,30 @@
 				/>
 			</view>
 
-			<view v-if="isSending" class="message-row message-row-ai">
-				<view class="message-avatar-shell" :class="messageAvatarShellClass">
-					<image
-						v-if="resolvedAssistantAvatarUrl"
-						class="message-avatar-image"
-						:src="resolvedAssistantAvatarUrl"
-						mode="aspectFill"
-					/>
-					<view v-else class="message-avatar" :class="messageAvatarClass">AI</view>
-				</view>
-				<view class="typing-bubble" :class="typingBubbleClass">
-					<view class="typing-dot"></view>
-					<view class="typing-dot"></view>
-					<view class="typing-dot"></view>
+			<view v-if="showTypingIndicator" class="message-row message-row-ai">
+				<view class="typing-message">
+					<view class="message-avatar-shell" :class="messageAvatarShellClass">
+						<image
+							v-if="resolvedAssistantAvatarUrl"
+							class="message-avatar-image"
+							:src="resolvedAssistantAvatarUrl"
+							mode="aspectFill"
+							@error="handleAssistantAvatarError"
+						/>
+						<view v-else class="message-avatar" :class="messageAvatarClass">AI</view>
+					</view>
+					<view class="typing-bubble" :class="typingBubbleClass">
+						<text class="typing-text">{{ currentTypingMessage }}</text>
+						<view class="typing-dots">
+							<view class="typing-dot"></view>
+							<view class="typing-dot"></view>
+							<view class="typing-dot"></view>
+						</view>
+					</view>
 				</view>
 			</view>
 
-			<view id="chat-bottom" class="chat-bottom"></view>
+			<view id="chat-bottom" class="chat-bottom" :style="bottomAnchorStyle"></view>
 		</view>
 	</scroll-view>
 </template>
@@ -73,6 +80,13 @@ export default {
 	components: {
 		AssistantMessageBubble,
 		UserMessageBubble
+	},
+	data() {
+		return {
+			assistantAvatarLoadFailed: false,
+			typingMessageIndex: 0,
+			typingMessageTimer: null
+		}
 	},
 	props: {
 		assistantName: {
@@ -99,9 +113,17 @@ export default {
 			type: Boolean,
 			default: false
 		},
+		showTypingIndicator: {
+			type: Boolean,
+			default: false
+		},
 		scrollIntoViewTarget: {
 			type: String,
 			default: ''
+		},
+		bottomSpaceRpx: {
+			type: Number,
+			default: 50
 		},
 		displayMode: {
 			type: String,
@@ -114,6 +136,7 @@ export default {
 			return this.isVisualImageMode ? 'message-panel-xiaochunlu' : ''
 		},
 		resolvedAssistantAvatarUrl() {
+			if (this.assistantAvatarLoadFailed) return ''
 			return this.assistantAvatarUrl ? normalizeAvatarUrl(this.assistantAvatarUrl, '') : ''
 		},
 		isVisualImageMode() {
@@ -127,6 +150,74 @@ export default {
 		},
 		typingBubbleClass() {
 			return this.isVisualImageMode ? 'typing-bubble-xiaochunlu' : ''
+		},
+		typingMessages() {
+			if (this.displayMode === 'gaokao') {
+				return [
+					'正在结合你的分数、位次和偏好细化判断',
+					'正在补充云南院校与专业方向的相关资料',
+					'正在对比更适合你的志愿梯度与选择范围',
+					'正在整理一份更贴近你情况的建议'
+				]
+			}
+			if (this.displayMode === 'xiaochunlu') {
+				return [
+					'正在结合你的问题补充相关信息',
+					'正在整理和你当前需求更接近的资料',
+					'正在细化更适合你的回应方向',
+					'正在把建议整理得更清楚一些'
+				]
+			}
+			return [
+				'正在结合你的问题整理信息',
+				'正在补充相关资料与线索',
+				'正在整理更清楚的回复内容'
+			]
+		},
+		currentTypingMessage() {
+			if (!this.typingMessages.length) return '正在思考中'
+			return this.typingMessages[this.typingMessageIndex] || this.typingMessages[0]
+		},
+		bottomAnchorStyle() {
+			return `height:${Math.max(1, Number(this.bottomSpaceRpx) || 0)}rpx;`
+		}
+	},
+	watch: {
+		assistantAvatarUrl() {
+			this.assistantAvatarLoadFailed = false
+		},
+		showTypingIndicator: {
+			immediate: true,
+			handler(nextValue) {
+				if (nextValue) {
+					this.startTypingMessageRotation()
+					return
+				}
+				this.stopTypingMessageRotation()
+			}
+		}
+	},
+	beforeDestroy() {
+		this.stopTypingMessageRotation()
+	},
+	methods: {
+		handleAssistantAvatarError() {
+			this.assistantAvatarLoadFailed = true
+		},
+		startTypingMessageRotation() {
+			this.stopTypingMessageRotation()
+			this.typingMessageIndex = 0
+			if (this.typingMessages.length <= 1) return
+			this.typingMessageTimer = setInterval(() => {
+				this.typingMessageIndex = (this.typingMessageIndex + 1) % this.typingMessages.length
+			}, 1600)
+		},
+		stopTypingMessageRotation() {
+			if (this.typingMessageTimer) {
+				clearInterval(this.typingMessageTimer)
+				this.typingMessageTimer = null
+			}
+			this.typingMessageIndex = 0
 		}
 	}
 }
@@ -136,6 +227,9 @@ export default {
 .message-panel {
 	flex: 1;
 	min-height: 0;
+	width: 100%;
+	max-width: 100%;
+	overflow-x: hidden;
 	padding: 0 24rpx;
 	box-sizing: border-box;
 }
@@ -149,12 +243,17 @@ export default {
 	display: flex;
 	flex-direction: column;
 	gap: 18rpx;
+	width: 100%;
+	max-width: 100%;
 	box-sizing: border-box;
 }
 
 .message-row {
 	display: flex;
 	flex-direction: column;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
 }
 
 .message-row-ai {
@@ -163,6 +262,15 @@ export default {
 
 .message-row-user {
 	align-items: flex-end;
+}
+
+.typing-message {
+	display: flex;
+	align-items: flex-start;
+	gap: 20rpx;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
 }
 
 .message-avatar {
@@ -205,16 +313,36 @@ export default {
 
 .typing-bubble {
 	display: flex;
-	align-items: center;
-	gap: 8rpx;
-	padding: 22rpx 26rpx;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 10rpx;
+	width: auto;
+	max-width: calc(100% - 74rpx);
+	min-width: 0;
+	padding: 22rpx 26rpx 20rpx;
 	border-radius: 30rpx;
 	border-top-left-radius: 10rpx;
 	background: linear-gradient(135deg, #ffd700, #ffc247);
+	box-sizing: border-box;
 }
 
 .typing-bubble-xiaochunlu {
 	background: linear-gradient(135deg, #dff1ff, #b4d7ff);
+}
+
+.typing-text {
+	font-size: 24rpx;
+	line-height: 1.55;
+	font-weight: 600;
+	color: rgba(44, 27, 0, 0.82);
+	white-space: normal;
+	word-break: break-all;
+}
+
+.typing-dots {
+	display: flex;
+	align-items: center;
+	gap: 8rpx;
 }
 
 .typing-dot {
@@ -234,7 +362,8 @@ export default {
 }
 
 .chat-bottom {
-	height: 1rpx;
+	width: 100%;
+	flex-shrink: 0;
 }
 
 @keyframes typingPulse {

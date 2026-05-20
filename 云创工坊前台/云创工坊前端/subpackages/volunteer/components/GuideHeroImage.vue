@@ -44,7 +44,9 @@ export default {
 		buttonSrc: {
 			immediate: true,
 			handler(value) {
-				this.resolvedButtonSrc = getStaticAssetUrl(value || '')
+				const source = getStaticAssetUrl(value || '')
+				this.resolvedButtonSrc = getCachedImageSync(source) || source || ''
+				this.syncButtonImage(source)
 			}
 		}
 	},
@@ -59,6 +61,18 @@ export default {
 				}
 			} catch (error) {
 				console.warn('[GuideHeroImage] cache failed', error)
+			}
+		},
+		async syncButtonImage(value) {
+			const source = String(value || '').trim()
+			if (!source) return
+			try {
+				const cached = await resolveCachedImage(source)
+				if (cached) {
+					this.resolvedButtonSrc = cached
+				}
+			} catch (error) {
+				console.warn('[GuideHeroImage] button cache failed', error)
 			}
 		},
 		handleTap() {

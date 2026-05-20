@@ -17,7 +17,7 @@
     </view>
 
     <view wx:if="{{showCenterPublish}}" class="nav-side nav-side-right">
-      <view class="nav-item {{selected === 2 ? 'nav-item-active' : ''}}" data-path="/pages/volunteer/index" data-index="{{2}}" bindtap="switchTab">
+      <view class="nav-item {{selected === 2 ? 'nav-item-active' : ''}}" data-path="/subpackages/volunteer/guide-redirect" data-index="{{2}}" bindtap="switchTab">
         <image class="nav-icon-img {{selected === 2 ? 'nav-icon-active' : ''}}" src="{{list[2].iconPath}}" mode="aspectFit" />
         <text class="nav-text {{selected === 2 ? 'nav-text-active' : ''}}">志愿</text>
       </view>
@@ -44,7 +44,7 @@
         <text class="nav-text {{selected === 1 ? 'nav-text-active' : ''}}">学习</text>
       </view>
 
-      <view class="nav-item {{selected === 2 ? 'nav-item-active' : ''}}" data-path="/pages/volunteer/index" data-index="{{2}}" bindtap="switchTab">
+      <view class="nav-item {{selected === 2 ? 'nav-item-active' : ''}}" data-path="/subpackages/volunteer/guide-redirect" data-index="{{2}}" bindtap="switchTab">
         <image class="nav-icon-img {{selected === 2 ? 'nav-icon-active' : ''}}" src="{{list[2].iconPath}}" mode="aspectFit" />
         <text class="nav-text {{selected === 2 ? 'nav-text-active' : ''}}">志愿</text>
       </view>

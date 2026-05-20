@@ -117,7 +117,6 @@ export default {
 	display: flex;
 	flex-direction: column;
 	gap: 18rpx;
-	margin-top: 18rpx;
 	padding: 22rpx;
 	border-radius: 26rpx;
 	background: linear-gradient(180deg, rgba(242, 249, 255, 0.95), rgba(227, 240, 255, 0.88));

@@ -2,7 +2,15 @@ import { DEFAULT_AGENT_ID } from './chat-auth.js'
 
 const XIAOCHUNLU_PRIMARY_AGENT_ID = 'xiaochunlu-ai-v2'
 const AI_CHAT_AGENT_ID_ALIASES = {
-	'xiaochunlu-campus-startup-mentor': XIAOCHUNLU_PRIMARY_AGENT_ID
+	'xiaochunlu-campus-startup-mentor': XIAOCHUNLU_PRIMARY_AGENT_ID,
+	'yunnan-gaokao-volunteer-consultant': DEFAULT_AGENT_ID,
+	'yunnan-gaokao-volunteer-consultant-v2': DEFAULT_AGENT_ID,
+	'yunnan-gaokao-volunteer-consultant-v3-2': DEFAULT_AGENT_ID,
+	'yunnan-gaokao-volunteer-consultant-v4': DEFAULT_AGENT_ID,
+	'yunnan-gaokao-volunteer-consultant-v5': DEFAULT_AGENT_ID,
+	'yunnan-gaokao-volunteer-consultant-v6': DEFAULT_AGENT_ID,
+	'yunnan-gaokao-volunteer-consultant-v7': DEFAULT_AGENT_ID,
+	'yunnan-zhangxuefeng-volunteer-consultant-v3': DEFAULT_AGENT_ID
 }
 
 export const XIAOCHUNLU_CHAT_TOP_IMAGE_URL =
@@ -57,7 +65,7 @@ export function getAiChatVisualConfig(agentId) {
 		}
 	}
 
-	if (normalizedAgentId === DEFAULT_AGENT_ID) {
+	if (resolvedAgentId === DEFAULT_AGENT_ID) {
 		return {
 			mode: 'gaokao',
 			topImageUrl: GAOKAO_CHAT_TOP_IMAGE_URL,

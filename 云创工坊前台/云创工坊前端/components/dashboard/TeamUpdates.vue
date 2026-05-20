@@ -50,40 +50,64 @@
 
 <script>
 import { getHttpService } from '@/utils/http-services'
+import { loadCachedTeamDynamics, saveCachedTeamDynamics } from '@/utils/team-dynamics-cache'
 export default {
 	name: 'TeamUpdates',
 	data() {
 			return {
 				loggedIn: false,
 				loading: true,
-				list: []
+				list: [],
+				hasLoadedCache: false
 			}
 	},
 	mounted() {
 			this.loadData()
 	},
 	methods: {
-		async loadData() {
+		applyCachedList() {
+			const cached = loadCachedTeamDynamics({ minLimit: 4, allowPartial: true })
+			if (!cached || !Array.isArray(cached.list)) return false
+			this.list = cached.list.slice(0, 4)
+			this.hasLoadedCache = true
+			return true
+		},
+		async loadData(options = {}) {
+			const config = options && typeof options === 'object' ? options : {}
+			const forceRefresh = config.forceRefresh === true
 			const token = uni.getStorageSync('token')
 				if (!token) {
 					this.loggedIn = false
 					this.loading = false
 					this.list = []
+					this.hasLoadedCache = false
 					return
 				}
 			this.loggedIn = true
-			this.loading = true
+			if (!forceRefresh) {
+				const hitCache = this.applyCachedList()
+				if (hitCache) {
+					this.loading = false
+					return
+				}
+			}
+			this.loading = !this.list.length
 			try {
 				const dashboardService = getHttpService('dashboard-service')
 				const res = await dashboardService.getTeamDynamics({ _token: token, limit: 4 })
 				if (res && res.code === 0) {
 					this.list = res.data || []
+					saveCachedTeamDynamics(this.list, { fetchedLimit: 4 })
 				} else {
-					this.list = []
+					if (!this.hasLoadedCache) {
+						this.list = []
+					}
 				}
 			} catch (e) {
 				console.error('[TeamUpdates] 加载失败', e)
-				this.list = []
+				if (!this.hasLoadedCache) {
+					this.list = []
+				}
 			} finally {
 				this.loading = false
 			}

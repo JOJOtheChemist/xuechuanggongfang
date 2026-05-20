@@ -1,7 +1,7 @@
 <template>
   <view class="forum-page">
     <view class="forum-hero-shell">
-      <image class="forum-hero-image" :src="heroImageUrl" mode="widthFix" />
+      <image class="forum-hero-image" :src="heroImageUrl" mode="aspectFill" />
       <forum-header
         class="forum-hero-overlay"
         :active-tab="activeTab"
@@ -40,6 +40,7 @@
               v-for="item in leftColumnPosts"
               :key="item.id"
               :post="item"
+              @like="togglePostLike"
               @open="goDetail"
               @longpress="handlePostLongPress"
             />
@@ -49,6 +50,7 @@
               v-for="item in rightColumnPosts"
               :key="item.id"
               :post="item"
+              @like="togglePostLike"
               @open="goDetail"
               @longpress="handlePostLongPress"
             />
@@ -116,13 +118,20 @@
 </template>
 
 <script>
-import { getHttpService } from '@/utils/http-services'
+import { getCurrentUserToken, getHttpService } from '@/utils/http-services'
 import { getCachedImageSync, resolveCachedImage } from '@/utils/remote-image-cache'
 import {
   getForumPublishProfileStateFromCache,
   saveForumPublishProfile,
   syncForumPublishProfileState
 } from '@/utils/forum-publish-profile'
+import {
+  DEFAULT_HOME_SCHOOL,
+  getForumSchoolOptions,
+  MYSTERY_SCHOOL,
+  normalizeForumSchoolName,
+  sanitizeForumSchoolSelection
+} from '@/utils/forum-school-options'
 import ForumHeader from './components/ForumHeader.vue'
 import ForumPostCard from './components/ForumPostCard.vue'
 import ForumPublishProfileDialog from './components/ForumPublishProfileDialog.vue'
@@ -130,23 +139,16 @@ import ForumSchoolPopup from './components/ForumSchoolPopup.vue'
 import AdminPasswordDialog from '@/components/common/AdminPasswordDialog.vue'
 import { verifyAdminPassword } from '@/common/admin-auth'
 
-const DEFAULT_HOME_SCHOOL = '云南大学'
-const MYSTERY_SCHOOL = '神秘学校'
 const PUBLISH_BUTTON_IMAGE_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/forum/publish-button/publish-dynamic-button-v1.webp'
 const FORUM_HERO_IMAGE_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/forum/hero/campus-square-hero-v1.jpg'
 
 function buildForumSchoolOptions(rawOptions = [], currentSchool = '') {
-  const mapped = []
-  const set = new Set()
-
-  ;[currentSchool, ...rawOptions, DEFAULT_HOME_SCHOOL, MYSTERY_SCHOOL].forEach((item) => {
-    const school = String(item || '').trim()
-    if (!school || set.has(school)) return
-    set.add(school)
-    mapped.push(school)
-  })
-
-  return mapped
+  const baseOptions = getForumSchoolOptions()
+  const current = sanitizeForumSchoolSelection(currentSchool)
+  if (!current || current === DEFAULT_HOME_SCHOOL) {
+    return baseOptions
+  }
+  return [current, ...baseOptions.filter((item) => item !== current)]
 }
 
 export default {
@@ -177,6 +179,7 @@ export default {
       showPublishProfileDialog: false,
       savingPublishProfile: false,
       pendingPublishAfterProfileSave: false,
+      likingPostIds: {},
       publishProfileForm: {
         school: '',
         phone: '',
@@ -260,13 +263,29 @@ export default {
       }
     },
     normalizeSchoolDisplay(name) {
-      const safe = String(name || '').trim()
-      if (!safe) return ''
-      if (safe.toLowerCase() === 'campus' || safe === '其他') return MYSTERY_SCHOOL
-      return safe
+      return normalizeForumSchoolName(name)
     },
     getToken() {
-      return uni.getStorageSync('token') || ''
+      return getCurrentUserToken()
+    },
+    ensureLogin(actionText) {
+      const token = this.getToken()
+      if (token) return token
+
+      uni.showModal({
+        title: '请先登录',
+        content: `${actionText}需要先登录。`,
+        confirmText: '去登录',
+        success: (res) => {
+          if (res.confirm) {
+            uni.navigateTo({
+              url: '/pages/auth/login/index'
+            })
+          }
+        }
+      })
+
+      return ''
     },
     registerEvents() {
       uni.$on('forum-post-created', this.handlePostCreated)
@@ -359,19 +378,18 @@ export default {
         if (token) params._token = token
 
         const applySchoolMeta = (payload = {}) => {
-          const rawOptions = Array.isArray(payload.school_options) ? payload.school_options : []
           const nextSchoolOptions = buildForumSchoolOptions(
-            rawOptions.map(item => this.normalizeSchoolDisplay(item)),
-            this.normalizeSchoolDisplay(payload.current_school || this.currentSchool)
+            [],
+            sanitizeForumSchoolSelection(payload.current_school || this.currentSchool, DEFAULT_HOME_SCHOOL)
           )
           this.schoolOptions = nextSchoolOptions
 
           if (this.activeTab === 'local') {
             if (!this.currentSchool && payload.current_school) {
-              this.currentSchool = this.normalizeSchoolDisplay(payload.current_school)
+              this.currentSchool = sanitizeForumSchoolSelection(payload.current_school, DEFAULT_HOME_SCHOOL)
             }
             if (!this.currentSchool && this.schoolOptions.length > 0) {
-              this.currentSchool = this.normalizeSchoolDisplay(this.schoolOptions[0])
+              this.currentSchool = sanitizeForumSchoolSelection(this.schoolOptions[0], DEFAULT_HOME_SCHOOL)
             }
           }
         }
@@ -499,20 +517,7 @@ export default {
         }
 
         const addedSchool = this.normalizeSchoolDisplay((res.data && res.data.school) || schoolName)
-        const options = Array.isArray(res.data && res.data.school_options) ? res.data.school_options : []
-        if (options.length > 0) {
-          const mapped = []
-          const set = new Set()
-          options.forEach((item) => {
-            const school = this.normalizeSchoolDisplay(item)
-            if (!school || set.has(school)) return
-            set.add(school)
-            mapped.push(school)
-          })
-          this.schoolOptions = mapped
-        } else if (this.schoolOptions.indexOf(addedSchool) === -1) {
-          this.schoolOptions.unshift(addedSchool)
-        }
+        this.schoolOptions = buildForumSchoolOptions([], addedSchool)
 
         this.currentSchool = addedSchool
         this.activeTab = 'local'
@@ -559,7 +564,7 @@ export default {
           ? result.data.school_options
           : []
         if (options.length > 0) {
-          this.schoolOptions = options
+          this.schoolOptions = buildForumSchoolOptions([], this.currentSchool)
         }
 
         if (this.currentSchool === target) {
@@ -649,6 +654,53 @@ export default {
         this.deletingPost = false
       }
     },
+    async togglePostLike(post) {
+      if (!post || !post.id) return
+
+      const postId = String(post.id).trim()
+      if (!postId || this.likingPostIds[postId]) return
+
+      const token = this.ensureLogin('点赞')
+      if (!token) return
+
+      this.$set(this.likingPostIds, postId, true)
+      try {
+        const forumService = getHttpService('forum-service')
+        const res = await forumService.toggleLike({
+          _token: token,
+          postId
+        })
+
+        if (!res || res.code !== 0 || !res.data) {
+          throw new Error((res && res.message) || '点赞失败')
+        }
+
+        const liked = !!res.data.liked
+        const likeCount = Math.max(0, Number(res.data.like_count || 0))
+
+        this.posts = (Array.isArray(this.posts) ? this.posts : []).map((item) => {
+          if (!item || String(item.id || '') !== postId) return item
+          return Object.assign({}, item, {
+            is_liked: liked,
+            like_count: likeCount
+          })
+        })
+
+        uni.$emit('forum-post-liked', {
+          id: postId,
+          is_liked: liked,
+          like_count: likeCount
+        })
+      } catch (error) {
+        console.error('[forum] togglePostLike failed:', error)
+        uni.showToast({
+          title: error.message || '点赞失败',
+          icon: 'none'
+        })
+      } finally {
+        this.$delete(this.likingPostIds, postId)
+      }
+    },
     goDetail(post) {
       if (!post || !post.id) return
       uni.navigateTo({
@@ -714,7 +766,8 @@ export default {
         const result = await saveForumPublishProfile(payload)
         this.publishProfileForm = Object.assign({}, result.profile)
         this.currentSchool = this.normalizeSchoolDisplay(result.profile.school || this.currentSchool || DEFAULT_HOME_SCHOOL)
-        this.schoolOptions = buildForumSchoolOptions(this.schoolOptions, this.currentSchool)
+        this.currentSchool = sanitizeForumSchoolSelection(this.currentSchool, DEFAULT_HOME_SCHOOL)
+        this.schoolOptions = buildForumSchoolOptions([], this.currentSchool)
         this.showPublishProfileDialog = false
         uni.showToast({
           title: '信息已保存',
@@ -765,12 +818,14 @@ export default {
 .post-scroll {
   flex: 1;
   height: 0;
+  margin-top: 20rpx;
   overflow: hidden;
 }
 
 .forum-hero-image {
   display: block;
   width: 100%;
+  height: 400rpx;
   flex-shrink: 0;
 }
 
@@ -784,7 +839,7 @@ export default {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 42rpx;
+  bottom: 18rpx;
   z-index: 2;
 }
 
@@ -829,19 +884,20 @@ export default {
 }
 
 .feed-shell {
-  margin: 0rpx 24rpx 0;
-  padding: 18rpx 18rpx 24rpx;
+  margin: 0rpx 20rpx 0;
+  padding: 14rpx 14rpx 20rpx;
   background: #ffffff;
 }
 
 .waterfall {
   display: flex;
   justify-content: flex-start;
-  column-gap: 28rpx;
+  column-gap: 20rpx;
 }
 
 .column {
-  width: 318rpx;
+  flex: 1;
+  min-width: 0;
 }
 
 .loading-more {

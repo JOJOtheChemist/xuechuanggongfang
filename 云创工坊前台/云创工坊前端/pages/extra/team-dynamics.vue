@@ -15,7 +15,14 @@
 			<button class="guest-btn" @tap="goLogin">去登录</button>
 		</view>
 
-		<scroll-view v-else scroll-y class="content-scroll">
+		<scroll-view
+			v-else
+			scroll-y
+			class="content-scroll"
+			:refresher-enabled="true"
+			:refresher-triggered="refreshing"
+			@refresherrefresh="handleRefresh"
+		>
 			<view class="list-container">
 				<view v-if="loading && list.length === 0" class="loading-state">
 					<text>加载中...</text>
@@ -61,43 +68,80 @@
 
 <script>
 import { getHttpService } from '@/utils/http-services'
+import { loadCachedTeamDynamics, saveCachedTeamDynamics } from '@/utils/team-dynamics-cache'
 export default {
 	data() {
 		return {
 			loading: false,
 			list: [],
-			isGuest: false
+			isGuest: false,
+			refreshing: false,
+			hasLoadedCache: false
 		}
 	},
 	onLoad() {
 		this.loadData()
+	},
+	onPullDownRefresh() {
+		this.loadData({ forceRefresh: true }).finally(() => {
+			uni.stopPullDownRefresh()
+		})
 	},
 
 	methods: {
 		goBack() {
 			uni.navigateBack()
 		},
-		async loadData() {
+		applyCachedList() {
+			const cached = loadCachedTeamDynamics({ minLimit: 50, allowPartial: true })
+			if (!cached || !Array.isArray(cached.list)) return false
+			this.list = cached.list
+			this.hasLoadedCache = true
+			return true
+		},
+		async loadData(options = {}) {
+			const config = options && typeof options === 'object' ? options : {}
+			const forceRefresh = config.forceRefresh === true
 			if (this.loading) return
 			const token = uni.getStorageSync('token')
 			if (!token) {
 				this.isGuest = true
 				this.loading = false
 				this.list = []
+				this.hasLoadedCache = false
 				return
 			}
 			this.isGuest = false
-			this.loading = true
+			if (!forceRefresh) {
+				const hitCache = this.applyCachedList()
+				if (hitCache) return
+			}
+			this.loading = !this.list.length
 			try {
 				const dashboardService = getHttpService('dashboard-service')
 				const res = await dashboardService.getTeamDynamics({ _token: token, limit: 50 })
-				this.list = (res && res.code === 0 && res.data) ? res.data : []
+				if (res && res.code === 0 && Array.isArray(res.data)) {
+					this.list = res.data
+					saveCachedTeamDynamics(res.data, { fetchedLimit: 50 })
+				} else if (!this.hasLoadedCache) {
+					this.list = []
+				}
 			} catch (e) {
 				console.error('[TeamDynamics] Load failed', e)
-				uni.showToast({ title: '加载失败', icon: 'none' })
+				if (!this.hasLoadedCache) {
+					this.list = []
+					uni.showToast({ title: '加载失败', icon: 'none' })
+				}
 			} finally {
 				this.loading = false
 			}
+		},
+		handleRefresh() {
+			if (this.refreshing) return
+			this.refreshing = true
+			this.loadData({ forceRefresh: true }).finally(() => {
+				this.refreshing = false
+			})
 		},
 		formatRelativeTime(ts) {
 			if (!ts) return ''

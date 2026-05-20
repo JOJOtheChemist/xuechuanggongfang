@@ -1,6 +1,5 @@
 const DASHBOARD_ENTRY_PATH = '/pages/dashboard/index'
 const FORUM_SUBPACKAGE_PATH = '/subpackages/forum/index'
-const VOLUNTEER_PATH = '/pages/volunteer/index'
 const VOLUNTEER_ENTRY_PATH = '/subpackages/volunteer/guide-redirect'
 const NAV_PLUS_ICON_URL = '/static/icons/nav-plus.svg'
 const TABBAR_ICON_URLS = {
@@ -31,7 +30,7 @@ Component({
         iconPath: TABBAR_ICON_URLS.business
       },
       {
-        pagePath: VOLUNTEER_PATH,
+        pagePath: VOLUNTEER_ENTRY_PATH,
         text: '志愿',
         iconPath: TABBAR_ICON_URLS.volunteer
       },
@@ -60,7 +59,7 @@ Component({
         })
         return
       }
-      if (url === VOLUNTEER_PATH) {
+      if (url === VOLUNTEER_ENTRY_PATH) {
         wx.navigateTo({
           url: VOLUNTEER_ENTRY_PATH,
           fail: () => {

@@ -66,32 +66,47 @@
       </view>
 
       <view class="row-basic">
-        <volunteer-category-dropdown
-          class="basic-dropdown"
-          :options="cityOptions"
+        <picker
+          class="basic-picker"
+          mode="selector"
+          :range="cityOptions"
+          range-key="label"
           :value="selectedCityIndex"
-          label-key="label"
-          borderless
           @change="onCityChange"
-        />
+        >
+          <view class="basic-picker-trigger">
+            <text class="basic-picker-text">{{ selectedCityLabel }}</text>
+            <view class="basic-picker-arrow"></view>
+          </view>
+        </picker>
 
-        <volunteer-category-dropdown
-          class="basic-dropdown"
-          :options="levelOptions"
+        <picker
+          class="basic-picker"
+          mode="selector"
+          :range="levelOptions"
+          range-key="label"
           :value="selectedLevelIndex"
-          label-key="label"
-          borderless
           @change="onLevelChange"
-        />
+        >
+          <view class="basic-picker-trigger">
+            <text class="basic-picker-text">{{ selectedLevelLabel }}</text>
+            <view class="basic-picker-arrow"></view>
+          </view>
+        </picker>
 
-        <volunteer-category-dropdown
-          class="basic-dropdown"
-          :options="natureOptions"
+        <picker
+          class="basic-picker"
+          mode="selector"
+          :range="natureOptions"
+          range-key="label"
           :value="selectedNatureIndex"
-          label-key="label"
-          borderless
           @change="onNatureChange"
-        />
+        >
+          <view class="basic-picker-trigger">
+            <text class="basic-picker-text">{{ selectedNatureLabel }}</text>
+            <view class="basic-picker-arrow"></view>
+          </view>
+        </picker>
       </view>
 
       <view class="row-risk">
@@ -165,17 +180,6 @@
       />
     </view>
 
-    <view
-      v-if="userLoggedIn && ((selectedTopFilterOption && selectedTopFilterOption.examType) || '') !== 'spring'"
-      class="result-top-banner"
-    >
-      <image
-        class="result-top-banner-image"
-        :src="generalSchoolRetentionBannerUrl"
-        mode="widthFix"
-      />
-    </view>
-
     <view v-if="!hasFullInstitutionAccess" class="guest-preview-notice">
       <view class="guest-preview-copy">
         <text class="guest-preview-title">
@@ -201,7 +205,7 @@
 
       <view v-if="loading || guestPreviewLoading" class="state-box">
         <text>{{ institutionLoadingText }}</text>
-        <text class="state-desc">如果长时间停在这里，可以点下面按钮直接切换普通加载。</text>
+        <text class="state-desc">{{ institutionLoadingHintText }}</text>
         <view class="state-action" @tap="handleForceInstitutionReload">
           <text>主动刷新</text>
         </view>
@@ -301,6 +305,10 @@
 </template>
 
 <script>
+import VolunteerAccessStatusUpsellBanners from '../../components/volunteer/AccessStatusUpsellBanners.vue'
+import VolunteerCategoryDropdown from '../../components/volunteer/CategoryDropdown.vue'
+import VolunteerDirectScoreResults from '../../components/volunteer/DirectScoreSchoolResults.vue'
+import VolunteerSupportPhoneCard from '../../components/volunteer/SupportPhoneCard.vue'
 import { getStaticAssetUrl } from '../../utils/cloud-static-assets'
 import { getCachedImageSync, resolveCachedImages } from '../../utils/remote-image-cache'
 import { createVolunteerPageOptions } from '../../utils/volunteer-page-options'
@@ -310,7 +318,6 @@ const DIRECT_SCORE_RESET_BUTTON_URL = getStaticAssetUrl('/static/volunteer-guide
 const DIRECT_SCORE_REFRESH_BUTTON_URL = getStaticAssetUrl('/static/volunteer-guide/direct-score-refresh-button.webp')
 const REMAINING_QUERY_BANNER_URL = getStaticAssetUrl('/static/volunteer-guide/remaining-query-banner.webp')
 const VIP_BANNER_URL = getStaticAssetUrl('/static/volunteer-guide/vip-banner-large.webp')
-const GENERAL_SCHOOL_RETENTION_BANNER_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/volunteer/banner/yunnan-general-school-retention-rate-v1.jpg'
 const VOLUNTEER_HOME_PATH = '/subpackages/volunteer/guide-redirect'
 const RISK_PILL_BACKGROUND_URLS = Object.freeze({
   hard: getStaticAssetUrl('/static/volunteer-guide/risk-hard-card.webp'),
@@ -329,8 +336,7 @@ const DIRECT_SCORE_STATIC_IMAGE_FIELDS = Object.freeze({
   directScoreResetButtonUrl: DIRECT_SCORE_RESET_BUTTON_URL,
   directScoreRefreshButtonUrl: DIRECT_SCORE_REFRESH_BUTTON_URL,
   remainingQueryBannerUrl: REMAINING_QUERY_BANNER_URL,
-  vipBannerUrl: VIP_BANNER_URL,
-  generalSchoolRetentionBannerUrl: GENERAL_SCHOOL_RETENTION_BANNER_URL
+  vipBannerUrl: VIP_BANNER_URL
 })
 
 function getCachedStaticImage(url) {
@@ -348,22 +354,25 @@ function buildRiskFilterOptions(options = [], resolver = (url) => url) {
   })
 }
 
-const volunteerPageOptions = createVolunteerPageOptions()
-const originalData = typeof volunteerPageOptions.data === 'function'
-  ? volunteerPageOptions.data
+const baseVolunteerPageOptions = createVolunteerPageOptions()
+const originalData = typeof baseVolunteerPageOptions.data === 'function'
+  ? baseVolunteerPageOptions.data
   : () => ({})
-const originalOnLoad = volunteerPageOptions.onLoad
-const originalOnShow = volunteerPageOptions.onShow
-const originalOnPullDownRefresh = volunteerPageOptions.onPullDownRefresh
+const originalOnLoad = baseVolunteerPageOptions.onLoad
+const originalOnShow = baseVolunteerPageOptions.onShow
+const originalOnPullDownRefresh = baseVolunteerPageOptions.onPullDownRefresh
+const originalOnReachBottom = baseVolunteerPageOptions.onReachBottom
+const originalOnShareAppMessage = baseVolunteerPageOptions.onShareAppMessage
+const originalOnUnload = baseVolunteerPageOptions.onUnload
+const baseComputed = baseVolunteerPageOptions.computed || {}
 
-volunteerPageOptions.data = function data() {
+const data = function data() {
   const baseData = Object.assign({}, originalData.call(this), {
     directScoreTopHeroUrl: getCachedStaticImage(DIRECT_SCORE_TOP_HERO_URL),
     directScoreResetButtonUrl: getCachedStaticImage(DIRECT_SCORE_RESET_BUTTON_URL),
     directScoreRefreshButtonUrl: getCachedStaticImage(DIRECT_SCORE_REFRESH_BUTTON_URL),
     remainingQueryBannerUrl: getCachedStaticImage(REMAINING_QUERY_BANNER_URL),
-    vipBannerUrl: getCachedStaticImage(VIP_BANNER_URL),
-    generalSchoolRetentionBannerUrl: getCachedStaticImage(GENERAL_SCHOOL_RETENTION_BANNER_URL)
+    vipBannerUrl: getCachedStaticImage(VIP_BANNER_URL)
   })
 
   return Object.assign(baseData, {
@@ -371,9 +380,9 @@ volunteerPageOptions.data = function data() {
   })
 }
 
-const originalMethods = volunteerPageOptions.methods || {}
+const originalMethods = baseVolunteerPageOptions.methods || {}
 
-volunteerPageOptions.methods = Object.assign({}, originalMethods, {
+const methods = Object.assign({}, originalMethods, {
   async cacheDirectScoreStaticImages() {
     const fieldEntries = Object.entries(DIRECT_SCORE_STATIC_IMAGE_FIELDS)
     const riskImageUrls = Object.values(RISK_PILL_BACKGROUND_URLS)
@@ -415,7 +424,6 @@ volunteerPageOptions.methods = Object.assign({}, originalMethods, {
     const previousPage = pages.length > 1 ? pages[pages.length - 2] : null
     const previousRoute = String(previousPage && previousPage.route || '').trim()
     const canNavigateBackToVolunteer =
-      previousRoute === 'pages/volunteer/index' ||
       previousRoute === 'subpackages/volunteer/guide-redirect'
 
     if (canNavigateBackToVolunteer) {
@@ -435,7 +443,7 @@ volunteerPageOptions.methods = Object.assign({}, originalMethods, {
   }
 })
 
-volunteerPageOptions.onLoad = function onLoad(...args) {
+const onLoad = function onLoad(...args) {
   if (typeof this.cacheDirectScoreStaticImages === 'function') {
     this.cacheDirectScoreStaticImages()
   }
@@ -445,7 +453,7 @@ volunteerPageOptions.onLoad = function onLoad(...args) {
   }
 }
 
-volunteerPageOptions.onShow = function onShow(...args) {
+const onShow = function onShow(...args) {
   if (typeof this.cacheDirectScoreStaticImages === 'function') {
     this.cacheDirectScoreStaticImages()
   }
@@ -455,7 +463,7 @@ volunteerPageOptions.onShow = function onShow(...args) {
   }
 }
 
-volunteerPageOptions.onPullDownRefresh = function onPullDownRefresh(...args) {
+const onPullDownRefresh = function onPullDownRefresh(...args) {
   if (typeof this.cacheDirectScoreStaticImages === 'function') {
     this.cacheDirectScoreStaticImages()
   }
@@ -465,7 +473,36 @@ volunteerPageOptions.onPullDownRefresh = function onPullDownRefresh(...args) {
   }
 }
 
-export default volunteerPageOptions
+export default {
+  components: {
+    VolunteerAccessStatusUpsellBanners,
+    VolunteerCategoryDropdown,
+    VolunteerDirectScoreResults,
+    VolunteerSupportPhoneCard
+  },
+  data,
+  computed: baseComputed,
+  methods,
+  onLoad,
+  onShow,
+  onPullDownRefresh,
+  onReachBottom(...args) {
+    if (typeof originalOnReachBottom === 'function') {
+      return originalOnReachBottom.apply(this, args)
+    }
+  },
+  onShareAppMessage(...args) {
+    if (typeof originalOnShareAppMessage === 'function') {
+      return originalOnShareAppMessage.apply(this, args)
+    }
+    return {}
+  },
+  onUnload(...args) {
+    if (typeof originalOnUnload === 'function') {
+      return originalOnUnload.apply(this, args)
+    }
+  }
+}
 </script>
 
 <style scoped src="../../styles/volunteer-index.css"></style>

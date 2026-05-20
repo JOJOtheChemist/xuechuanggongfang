@@ -7,6 +7,7 @@
 					class="avatar-image"
 					:src="resolvedAvatarUrl"
 					mode="aspectFill"
+					@error="handleAvatarError"
 				/>
 				<view v-else class="avatar-fallback" :class="avatarFallbackClass">
 					<text class="avatar-fallback-text">{{ resolvedInitial }}</text>
@@ -19,27 +20,58 @@
 
 		<view class="message-content">
 			<text class="message-name">{{ name }}</text>
-			<view class="message-card">
+			<view v-if="shouldRenderMessageCard" class="message-card">
 				<slot>
 					<ChatRichText v-if="text" :text="text" tone="assistant" />
-					<ToolCallListCard :tools="toolCalls" />
-					<ChatBusinessCardList :cards="businessCards" />
-					<ChatGoalCardList :cards="goalCards" />
-					<ChatArticleCardList :cards="articleCards" />
-					<ChatSchoolCardList :cards="schoolCards" @tap="$emit('school-card-tap', $event)" />
-					<ChatInviteCardList :cards="inviteCards" />
-					<ChatMembershipCardList :cards="membershipCards" @tap="$emit('membership-action', $event)" />
-					<ChatChoiceCard
-						v-for="card in choiceCards"
-						:key="card.id"
-						:question="card.question"
-						:helper-text="card.helperText"
-						:options="card.options"
-						:disabled="cardDisabled"
-						@select="$emit('choice-select', $event)"
-					/>
 				</slot>
 			</view>
+			<ToolCallListCard
+				v-if="visibleToolCalls.length"
+				class="message-tool-calls"
+				:tools="visibleToolCalls"
+			/>
+			<ChatArticleCardList
+				v-if="articleCards.length"
+				class="message-article-cards"
+				:cards="articleCards"
+			/>
+			<ChatBusinessCardList
+				v-if="businessCards.length"
+				class="message-business-cards"
+				:cards="businessCards"
+			/>
+			<ChatGoalCardList
+				v-if="goalCards.length"
+				class="message-goal-cards"
+				:cards="goalCards"
+			/>
+				<ChatSchoolCardList
+					v-if="schoolCards.length"
+					class="message-school-cards"
+					:cards="schoolCards"
+					@select="$emit('school-card-tap', $event)"
+				/>
+			<ChatInviteCardList
+				v-if="inviteCards.length"
+				class="message-invite-cards"
+				:cards="inviteCards"
+			/>
+				<ChatMembershipCardList
+					v-if="membershipCards.length"
+					class="message-membership-cards"
+					:cards="membershipCards"
+					@select="$emit('membership-action', $event)"
+				/>
+			<ChatChoiceCard
+				v-for="card in choiceCards"
+				:key="card.id"
+				class="message-choice-card"
+				:question="card.question"
+				:helper-text="card.helperText"
+				:options="card.options"
+				:disabled="cardDisabled"
+				@select="$emit('choice-select', $event)"
+			/>
 		</view>
 	</view>
 </template>
@@ -123,8 +155,14 @@ export default {
 			default: 'default'
 		}
 	},
+	data() {
+		return {
+			avatarLoadFailed: false
+		}
+	},
 	computed: {
 		resolvedAvatarUrl() {
+			if (this.avatarLoadFailed) return ''
 			return this.avatarUrl ? normalizeAvatarUrl(this.avatarUrl, '') : ''
 		},
 		resolvedInitial() {
@@ -132,6 +170,9 @@ export default {
 		},
 		isVisualImageMode() {
 			return this.displayMode === 'xiaochunlu' || this.displayMode === 'gaokao'
+		},
+		visibleToolCalls() {
+			return this.displayMode === 'xiaochunlu' ? [] : this.toolCalls
 		},
 		avatarShellClass() {
 			return this.isVisualImageMode ? 'avatar-shell-xiaochunlu' : ''
@@ -141,6 +182,19 @@ export default {
 		},
 		aiBadgeClass() {
 			return this.isVisualImageMode ? 'ai-badge-xiaochunlu' : ''
+		},
+		shouldRenderMessageCard() {
+			return Boolean(this.text)
+		}
+	},
+	watch: {
+		avatarUrl() {
+			this.avatarLoadFailed = false
+		}
+	},
+	methods: {
+		handleAvatarError() {
+			this.avatarLoadFailed = true
 		}
 	}
 }
@@ -151,6 +205,10 @@ export default {
 	display: flex;
 	align-items: flex-start;
 	gap: 20rpx;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
 }
 
 .avatar-wrap {
@@ -168,12 +226,13 @@ export default {
 	overflow: hidden;
 	border: 2rpx solid rgba(255, 215, 0, 0.82);
 	box-shadow: 0 0 28rpx rgba(255, 215, 0, 0.28);
-	background: #151515;
+	background: linear-gradient(135deg, #fff7da, #ffd778);
 }
 
 .avatar-shell-xiaochunlu {
 	border-color: rgba(150, 210, 255, 0.96);
 	box-shadow: 0 0 30rpx rgba(150, 210, 255, 0.34);
+	background: linear-gradient(135deg, #eef8ff, #c6e4ff);
 }
 
 .avatar-image {
@@ -245,6 +304,9 @@ export default {
 }
 
 .message-card {
+	width: 100%;
+	max-width: 100%;
+	box-sizing: border-box;
 	padding: 26rpx;
 	border-radius: 30rpx;
 	border-top-left-radius: 10rpx;
@@ -252,5 +314,19 @@ export default {
 	border: 1rpx solid rgba(166, 183, 227, 0.3);
 	box-shadow: 0 18rpx 34rpx rgba(81, 103, 151, 0.08);
 	backdrop-filter: blur(12px);
+}
+
+.message-tool-calls,
+.message-article-cards,
+.message-business-cards,
+.message-goal-cards,
+.message-school-cards,
+.message-invite-cards,
+.message-membership-cards,
+.message-choice-card {
+	margin-top: 8rpx;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
 }
 </style>

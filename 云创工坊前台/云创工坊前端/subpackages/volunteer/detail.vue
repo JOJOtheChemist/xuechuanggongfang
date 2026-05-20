@@ -442,7 +442,7 @@ export default {
             showCancel: false,
             success: () => {
               uni.reLaunch({
-                url: '/pages/volunteer/index'
+                url: '/subpackages/volunteer/guide-redirect'
               })
             }
           })
@@ -459,7 +459,7 @@ export default {
       }
 
       uni.reLaunch({
-        url: '/pages/volunteer/index'
+        url: '/subpackages/volunteer/guide-redirect'
       })
     },
     contactCustomerService() {}

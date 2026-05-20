@@ -24,18 +24,23 @@
 <script>
 import { getHttpService } from '@/utils/http-services'
 import { extractArticleId } from '@/utils/article-navigation'
-import { resolveCachedImages } from '@/utils/remote-image-cache'
+import { getCachedImageSync, resolveCachedImages } from '@/utils/remote-image-cache'
 import { getStaticAssetUrl } from '@/utils/cloud-static-assets'
 import GuideHeroImage from './components/GuideHeroImage.vue'
 import GuideActionButton from './components/GuideActionButton.vue'
 import GuideArticleSection from './components/GuideArticleSection.vue'
 
 const GUIDE_IMAGE_URL = getStaticAssetUrl('/static/volunteer-guide/guide-hero-service.jpg')
-const GUIDE_HERO_BUTTON_URL = '/static/volunteer-guide/free-consult-button.png'
-const GUIDE_SCORE_BUTTON_URL = '/static/volunteer-guide/score-entry-button.png'
+const GUIDE_HERO_BUTTON_URL = getStaticAssetUrl('/static/volunteer-guide/free-consult-button.png')
+const GUIDE_SCORE_BUTTON_URL = getStaticAssetUrl('/static/volunteer-guide/score-entry-button.png')
 const GUIDE_CATEGORY_ID = 'cat_015'
 const GUIDE_ARTICLES_CACHE_KEY = 'gaokao_guide_articles_cache_v1'
 const GUIDE_ARTICLES_CACHE_TTL = 6 * 60 * 60 * 1000
+const GUIDE_STATIC_IMAGE_URLS = Object.freeze([
+	GUIDE_IMAGE_URL,
+	GUIDE_HERO_BUTTON_URL,
+	GUIDE_SCORE_BUTTON_URL
+].filter(Boolean))
 
 function isTooEarlyStorageError(error) {
 	const message = String(
@@ -114,15 +119,17 @@ export default {
 	},
 	data() {
 		return {
-			guideImageUrl: GUIDE_IMAGE_URL,
-			guideButtonImageUrl: GUIDE_HERO_BUTTON_URL,
-			scoreButtonImageUrl: GUIDE_SCORE_BUTTON_URL,
+			guideImageUrl: getCachedImageSync(GUIDE_IMAGE_URL) || GUIDE_IMAGE_URL,
+			guideButtonImageUrl: getCachedImageSync(GUIDE_HERO_BUTTON_URL) || GUIDE_HERO_BUTTON_URL,
+			scoreButtonImageUrl: getCachedImageSync(GUIDE_SCORE_BUTTON_URL) || GUIDE_SCORE_BUTTON_URL,
 			articles: buildFallbackArticles(GUIDE_IMAGE_URL),
 			articlesLoaded: false,
-			articleImageSyncToken: 0
+			articleImageSyncToken: 0,
+			staticImageSyncToken: 0
 		}
 	},
 	onLoad() {
+		this.preloadGuideStaticImages()
 		this.loadArticles()
 	},
 	onReady() {
@@ -130,8 +137,26 @@ export default {
 	},
 	onUnload() {
 		this.articleImageSyncToken += 1
+		this.staticImageSyncToken += 1
 	},
 	methods: {
+		async preloadGuideStaticImages() {
+			if (!GUIDE_STATIC_IMAGE_URLS.length) return
+
+			const token = this.staticImageSyncToken + 1
+			this.staticImageSyncToken = token
+
+			try {
+				const cachedUrls = await resolveCachedImages(GUIDE_STATIC_IMAGE_URLS)
+				if (token !== this.staticImageSyncToken) return
+
+				this.guideImageUrl = cachedUrls[0] || GUIDE_IMAGE_URL
+				this.guideButtonImageUrl = cachedUrls[1] || GUIDE_HERO_BUTTON_URL
+				this.scoreButtonImageUrl = cachedUrls[2] || GUIDE_SCORE_BUTTON_URL
+			} catch (error) {
+				console.warn('[guide-redirect] 预加载首屏图片失败', error)
+			}
+		},
 		restoreCachedArticles() {
 			if (this.articlesLoaded) return
 
@@ -243,7 +268,7 @@ export default {
 		},
 		goToAiChat() {
 			uni.navigateTo({
-				url: '/subpackages/ai-chat/index?agentId=yunnan-gaokao-volunteer-consultant-v2'
+				url: '/subpackages/ai-chat/index?agentId=yunnan-gaokao-volunteer-consultant'
 			})
 		},
 		goToScorePage() {

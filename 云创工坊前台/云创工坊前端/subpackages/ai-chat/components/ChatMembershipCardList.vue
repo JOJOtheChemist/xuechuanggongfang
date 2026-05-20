@@ -5,7 +5,7 @@
 			:key="card.id"
 			class="membership-card"
 			hover-class="membership-card-hover"
-			@tap="$emit('tap', card)"
+			@tap="handleSelect(card)"
 		>
 			<view class="membership-card-head">
 				<view class="membership-card-copy">
@@ -45,6 +45,11 @@ export default {
 			type: Array,
 			default: () => []
 		}
+	},
+	methods: {
+		handleSelect(card) {
+			this.$emit('select', card)
+		}
 	}
 }
 </script>
@@ -54,7 +59,6 @@ export default {
 	display: flex;
 	flex-direction: column;
 	gap: 16rpx;
-	margin-top: 18rpx;
 }
 
 .membership-card {

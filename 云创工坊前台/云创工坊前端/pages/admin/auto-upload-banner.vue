@@ -82,7 +82,7 @@ export default {
 					content: '已自动上传并配置 banner',
 					showCancel: false,
 					success: () => {
-						uni.reLaunch({ url: '/pages/volunteer/index' })
+						uni.reLaunch({ url: '/subpackages/volunteer/guide-redirect' })
 					}
 				})
 			} catch (e) {

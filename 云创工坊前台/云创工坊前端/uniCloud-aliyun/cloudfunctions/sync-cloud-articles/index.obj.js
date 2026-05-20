@@ -248,7 +248,7 @@ module.exports = {
                 title: filename,
                 category_id: categoryId,
                 summary: filename + " 完整资料。",
-                content: `<p>请点击下方按钮阅读 PDF 文档：${filename}</p>`,
+                content: `<p>请点击上方按钮阅读 PDF 文档：${filename}</p>`,
                 price_points: 0, // 用户要求免费 (0积分)
                 author_name: "云创管家",
                 publish_time: now,

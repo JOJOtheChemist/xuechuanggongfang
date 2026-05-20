@@ -57,7 +57,6 @@ export default {
 	display: flex;
 	flex-direction: column;
 	gap: 16rpx;
-	margin-top: 18rpx;
 }
 
 .goal-card {

@@ -54,10 +54,13 @@ async function getHotArticles({
     }
 
     try {
-        // 查询该板块下浏览量最高的文章（热门文章）
+        const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
+
+        // 查询该板块下近 7 天浏览量最高的文章
         const res = await db.collection('articles')
             .where({
-                category_id
+                category_id,
+                publish_time: dbCmd.gte(sevenDaysAgo)
             })
             .orderBy('stats.views', 'desc') // 按浏览量降序
             .limit(limit)

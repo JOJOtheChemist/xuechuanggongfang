@@ -10,7 +10,11 @@
           <image class="avatar" :src="post.user_avatar || avatarUrl" mode="aspectFill" />
           <text class="username">{{ post.user_name || '同学' }}</text>
         </view>
-        <view class="like-row" :class="{ active: !!post.is_liked }">
+        <view
+          class="like-row"
+          :class="{ active: !!post.is_liked }"
+          @tap.stop="handleLikeTap"
+        >
           <image
             class="like-icon"
             :src="post.is_liked ? likeActiveIcon : likeIcon"
@@ -106,6 +110,9 @@ export default {
       }, 450)
       this.$emit('longpress', this.post)
     },
+    handleLikeTap() {
+      this.$emit('like', this.post)
+    },
     formatCount(value) {
       const num = Number(value || 0)
       if (num >= 10000) {
@@ -138,25 +145,25 @@ export default {
   border-radius: 18rpx;
   overflow: hidden;
   background: #ffffff;
-  margin-bottom: 18rpx;
+  margin-bottom: 14rpx;
   box-shadow: 0 8rpx 30rpx rgba(15, 23, 42, 0.06);
 }
 
 .cover {
   width: 100%;
-  height: 430rpx;
+  height: 240rpx;
   background: #e2e8f0;
 }
 
 .post-body {
-  padding: 10rpx 16rpx 14rpx;
+  padding: 10rpx 14rpx 12rpx;
 }
 
 .post-title {
-  font-size: 30rpx;
+  font-size: 28rpx;
   font-weight: 700;
   color: #0f172a;
-  line-height: 1.4;
+  line-height: 1.35;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -165,7 +172,7 @@ export default {
 }
 
 .meta-row {
-  margin-top: 14rpx;
+  margin-top: 10rpx;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -178,31 +185,35 @@ export default {
 }
 
 .avatar {
-  width: 38rpx;
-  height: 38rpx;
+  width: 34rpx;
+  height: 34rpx;
   border-radius: 50%;
   background: #e2e8f0;
 }
 
 .username {
-  margin-left: 10rpx;
-  font-size: 22rpx;
+  margin-left: 8rpx;
+  font-size: 20rpx;
   color: #334155;
-  max-width: 170rpx;
+  max-width: 150rpx;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .like-row {
+  min-height: 48rpx;
   display: flex;
   align-items: center;
   column-gap: 6rpx;
+  padding: 6rpx 8rpx;
+  margin: -6rpx -8rpx -6rpx 0;
+  border-radius: 999rpx;
 }
 
 .like-icon {
-  width: 24rpx;
-  height: 24rpx;
+  width: 30rpx;
+  height: 30rpx;
   flex-shrink: 0;
 }
 
@@ -216,19 +227,19 @@ export default {
 }
 
 .extra-row {
-  margin-top: 10rpx;
+  margin-top: 8rpx;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
 .school {
-  font-size: 20rpx;
+  font-size: 18rpx;
   color: #6366f1;
 }
 
 .time {
-  font-size: 20rpx;
+  font-size: 18rpx;
   color: #94a3b8;
 }
 </style>

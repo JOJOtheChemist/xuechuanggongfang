@@ -1,6 +1,6 @@
 <template>
 	<view class="ai-chat-page">
-		<view class="chat-shell">
+		<view id="chat-page-shell" class="chat-shell" :style="shellStyle">
 			<slot name="hero"></slot>
 			<slot name="intro-visual"></slot>
 			<slot name="prompt"></slot>
@@ -12,7 +12,19 @@
 
 <script>
 export default {
-	name: 'ChatPageShell'
+	name: 'ChatPageShell',
+	props: {
+		bottomReserveRpx: {
+			type: Number,
+			default: 184
+		}
+	},
+	computed: {
+		shellStyle() {
+			const reserve = Math.max(0, Number(this.bottomReserveRpx) || 0)
+			return `padding: 0 0 calc(${reserve}rpx + env(safe-area-inset-bottom, 0px));`
+		}
+	}
 }
 </script>
 
@@ -27,7 +39,6 @@ export default {
 	position: relative;
 	min-height: 100vh;
 	background: #ffffff;
-	padding: 0 0 calc(184rpx + env(safe-area-inset-bottom, 0px));
 	box-sizing: border-box;
 	display: flex;
 	flex-direction: column;

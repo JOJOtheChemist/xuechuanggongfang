@@ -304,8 +304,9 @@ export default {
 }
 
 .message-card {
-	width: 100%;
-	max-width: 100%;
+	width: 560rpx;
+	max-width: calc(100vw - 190rpx);
+	min-width: 560rpx;
 	box-sizing: border-box;
 	padding: 26rpx;
 	border-radius: 30rpx;
@@ -325,8 +326,23 @@ export default {
 .message-membership-cards,
 .message-choice-card {
 	margin-top: 8rpx;
-	width: 100%;
-	max-width: 100%;
+	width: 560rpx;
+	max-width: calc(100vw - 190rpx);
 	min-width: 0;
+}
+
+@media (max-width: 750rpx) {
+	.message-card,
+	.message-tool-calls,
+	.message-article-cards,
+	.message-business-cards,
+	.message-goal-cards,
+	.message-school-cards,
+	.message-invite-cards,
+	.message-membership-cards,
+	.message-choice-card {
+		width: calc(100vw - 190rpx);
+		min-width: 0;
+	}
 }
 </style>

@@ -8,17 +8,17 @@
 			@error="handleBackgroundImageError"
 		/>
 		<view class="composer-content" :class="contentClassName">
-		<textarea
+		<input
 			ref="composerInput"
 			class="composer-input"
 			:class="inputClassName"
 			:value="value"
 			:disabled="inputDisabled"
 			:maxlength="500"
+			type="text"
 			:placeholder="placeholder"
 			:placeholder-style="resolvedPlaceholderStyle"
 			confirm-type="send"
-			auto-height
 			cursor-spacing="28"
 			@input="handleInput"
 			@confirm="handleConfirm"
@@ -26,7 +26,7 @@
 			@blur="handleBlur"
 			@compositionstart="handleCompositionStart"
 			@compositionend="handleCompositionEnd"
-		></textarea>
+		/>
 		<view
 			class="composer-send"
 			:class="[{ 'composer-send-disabled': inputDisabled || !trimmedValue }, sendClassName]"
@@ -280,7 +280,7 @@ export default {
 
 .composer-content {
 	display: flex;
-	align-items: flex-end;
+	align-items: center;
 	gap: 18rpx;
 	width: 100%;
 	min-height: 104rpx;
@@ -304,26 +304,31 @@ export default {
 }
 
 .composer-input {
-	flex: 1;
+	flex: 0 1 470rpx;
+	width: 470rpx;
+	max-width: 100%;
 	font-size: 30rpx;
-	line-height: 1.5;
+	line-height: 72rpx;
+	height: 72rpx;
 	color: #24365f;
 	background: transparent;
 	border: none;
 	outline: none;
-	min-height: 44rpx;
 	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
 }
 
 .composer-input-gaokao {
-	padding-top: 10rpx;
 	font-size: 30rpx;
-	line-height: 1.5;
+	line-height: 62rpx;
+	height: 62rpx;
 	color: #3e537f;
 }
 
 .composer-input-gaokao-fallback {
-	padding-top: 0;
+	line-height: 72rpx;
+	height: 72rpx;
 	color: #24365f;
 }
 

@@ -21,28 +21,34 @@ function withOptionKeys(items, prefix) {
 
 const cityOptions = [
   { label: '全部地区', value: '' },
-  { label: '昆明市', value: '昆明市' },
-  { label: '曲靖市', value: '曲靖市' },
-  { label: '玉溪市', value: '玉溪市' },
-  { label: '保山市', value: '保山市' },
-  { label: '昭通市', value: '昭通市' },
-  { label: '普洱市', value: '普洱市' },
-  { label: '临沧市', value: '临沧市' },
-  { label: '丽江市', value: '丽江市' },
-  { label: '大理州', value: '大理白族自治州' },
-  { label: '楚雄州', value: '楚雄彝族自治州' },
-  { label: '红河州', value: '红河哈尼族彝族自治州' },
-  { label: '文山州', value: '文山壮族苗族自治州' },
-  { label: '德宏州', value: '德宏傣族景颇族自治州' },
-  { label: '西双版纳州', value: '西双版纳傣族自治州' },
-  { label: '迪庆州', value: '迪庆藏族自治州' },
-  { label: '怒江州', value: '怒江傈僳族自治州' },
-  { label: '上海市', value: '上海市' },
-  { label: '重庆市', value: '重庆市' },
-  { label: '长沙市', value: '长沙市' },
-  { label: '乌鲁木齐市', value: '乌鲁木齐市' },
-  { label: '阿拉尔市', value: '阿拉尔市' },
-  { label: '铁门关市', value: '铁门关市' }
+  { label: '云南省', value: '云南省' },
+  { label: '河北省', value: '河北省' },
+  { label: '山西省', value: '山西省' },
+  { label: '辽宁省', value: '辽宁省' },
+  { label: '吉林省', value: '吉林省' },
+  { label: '黑龙江省', value: '黑龙江省' },
+  { label: '江苏省', value: '江苏省' },
+  { label: '浙江省', value: '浙江省' },
+  { label: '安徽省', value: '安徽省' },
+  { label: '福建省', value: '福建省' },
+  { label: '江西省', value: '江西省' },
+  { label: '山东省', value: '山东省' },
+  { label: '河南省', value: '河南省' },
+  { label: '湖北省', value: '湖北省' },
+  { label: '湖南省', value: '湖南省' },
+  { label: '广东省', value: '广东省' },
+  { label: '海南省', value: '海南省' },
+  { label: '四川省', value: '四川省' },
+  { label: '贵州省', value: '贵州省' },
+  { label: '陕西省', value: '陕西省' },
+  { label: '甘肃省', value: '甘肃省' },
+  { label: '青海省', value: '青海省' },
+  { label: '台湾省', value: '台湾省' },
+  { label: '内蒙古自治区', value: '内蒙古自治区' },
+  { label: '广西壮族自治区', value: '广西壮族自治区' },
+  { label: '西藏自治区', value: '西藏自治区' },
+  { label: '宁夏回族自治区', value: '宁夏回族自治区' },
+  { label: '新疆维吾尔自治区', value: '新疆维吾尔自治区' }
 ]
 
 const levelOptions = [
@@ -81,7 +87,6 @@ const riskFilterOptions = [
 ]
 
 const topFilterOptions = withOptionKeys(VOLUNTEER_TOP_FILTER_OPTIONS, 'top')
-const keyedCityOptions = withOptionKeys(cityOptions, 'city')
 const keyedLevelOptions = withOptionKeys(levelOptions, 'level')
 const keyedNatureOptions = withOptionKeys(natureOptions, 'nature')
 const keyedSchoolTypeOptions = withOptionKeys(schoolTypeOptions, 'school-type')
@@ -144,7 +149,7 @@ export function createVolunteerPageData() {
     localRemainingQueryCount: null,
     localQueryUnlimited: false,
     topFilterOptions,
-    cityOptions: keyedCityOptions,
+    cityOptions: withOptionKeys(cityOptions, 'city'),
     levelOptions: keyedLevelOptions,
     natureOptions: keyedNatureOptions,
     schoolTypeOptions: keyedSchoolTypeOptions,

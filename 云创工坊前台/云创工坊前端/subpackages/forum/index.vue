@@ -14,6 +14,12 @@
     <scroll-view
       class="post-scroll"
       scroll-y
+      :lower-threshold="120"
+      :refresher-enabled="true"
+      :refresher-triggered="refreshing"
+      refresher-default-style="black"
+      refresher-background="#f8fafc"
+      @refresherrefresh="handleRefresh"
       @scrolltolower="handleReachBottom"
     >
       <view v-if="loading && posts.length === 0" class="state-card">
@@ -132,11 +138,12 @@ import {
   normalizeForumSchoolName,
   sanitizeForumSchoolSelection
 } from '@/utils/forum-school-options'
+import AdminPasswordDialog from './components/AdminPasswordDialog.vue'
+import BottomNav from './components/BottomNav.vue'
 import ForumHeader from './components/ForumHeader.vue'
 import ForumPostCard from './components/ForumPostCard.vue'
 import ForumPublishProfileDialog from './components/ForumPublishProfileDialog.vue'
 import ForumSchoolPopup from './components/ForumSchoolPopup.vue'
-import AdminPasswordDialog from '@/components/common/AdminPasswordDialog.vue'
 import { verifyAdminPassword } from '@/common/admin-auth'
 
 const PUBLISH_BUTTON_IMAGE_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/forum/publish-button/publish-dynamic-button-v1.webp'
@@ -153,6 +160,7 @@ function buildForumSchoolOptions(rawOptions = [], currentSchool = '') {
 
 export default {
   components: {
+    BottomNav,
     ForumHeader,
     ForumPostCard,
     ForumPublishProfileDialog,
@@ -175,6 +183,7 @@ export default {
       hasMore: true,
       loading: false,
       loadingMore: false,
+      refreshing: false,
       refreshingFromEvent: false,
       showPublishProfileDialog: false,
       savingPublishProfile: false,
@@ -299,6 +308,13 @@ export default {
     },
     handlePostCreated() {
       this.refreshingFromEvent = true
+    },
+    handleRefresh() {
+      if (this.refreshing) return
+      this.refreshing = true
+      this.refreshList().finally(() => {
+        this.refreshing = false
+      })
     },
     handlePostLiked(payload = {}) {
       const targetId = String(payload.id || '').trim()

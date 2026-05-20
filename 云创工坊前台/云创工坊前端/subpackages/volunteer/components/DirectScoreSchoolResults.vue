@@ -151,7 +151,7 @@
 </template>
 
 <script>
-import { getCachedImageSync, resolveCachedImages } from '../../utils/remote-image-cache'
+import { getCachedImageSync, resolveCachedImages } from '../../../utils/remote-image-cache'
 
 function normalizeNature(value) {
   if (value === 'public') return '公办'

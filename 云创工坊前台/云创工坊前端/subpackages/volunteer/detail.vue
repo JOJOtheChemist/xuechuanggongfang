@@ -74,7 +74,7 @@ import {
   buildVolunteerSupportNotice,
   buildVolunteerSupportRules
 } from '../../utils/volunteer-support-rules'
-import VolunteerSupportPhoneCard from '../../components/volunteer/SupportPhoneCard.vue'
+import VolunteerSupportPhoneCard from './components/SupportPhoneCard.vue'
 import DetailBaseInfoSection from './components/DetailBaseInfoSection.vue'
 import DetailContentSection from './components/DetailContentSection.vue'
 import DetailGallerySection from './components/DetailGallerySection.vue'

@@ -26,6 +26,7 @@ import { getHttpService } from '@/utils/http-services'
 import { extractArticleId } from '@/utils/article-navigation'
 import { getCachedImageSync, resolveCachedImages } from '@/utils/remote-image-cache'
 import { getStaticAssetUrl } from '@/utils/cloud-static-assets'
+import BottomNav from './components/BottomNav.vue'
 import GuideHeroImage from './components/GuideHeroImage.vue'
 import GuideActionButton from './components/GuideActionButton.vue'
 import GuideArticleSection from './components/GuideArticleSection.vue'
@@ -113,6 +114,7 @@ function buildFallbackArticles(imageUrl) {
 
 export default {
 	components: {
+		BottomNav,
 		GuideHeroImage,
 		GuideActionButton,
 		GuideArticleSection

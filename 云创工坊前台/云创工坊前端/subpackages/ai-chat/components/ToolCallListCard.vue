@@ -14,6 +14,7 @@
 				<view
 					class="tool-call-card-head"
 					:class="{ 'tool-call-card-head-expanded': isToolExpanded(tool.id) }"
+					@tap="handleToolHeadTap(tool)"
 				>
 					<view
 						class="tool-call-card-main"
@@ -31,9 +32,12 @@
 						<text
 							v-if="resolveCollapsedPreview(tool)"
 							class="tool-call-summary"
-							:class="{ 'tool-call-summary-inline': !isToolExpanded(tool.id) }"
+							:class="{
+								'tool-call-summary-inline': !isToolExpanded(tool.id),
+								'tool-call-summary-animated': shouldAnimatePreview(tool)
+							}"
 						>
-							{{ resolveCollapsedPreview(tool) }}
+							{{ resolvePreviewText(tool) }}
 						</text>
 					</view>
 
@@ -43,11 +47,11 @@
 					>
 						<text v-if="tool.durationText" class="tool-call-duration">{{ tool.durationText }}</text>
 						<text
-							v-if="tool.hasParams"
+							v-if="canExpandTool(tool)"
 							class="tool-call-inline-toggle"
 							@tap.stop="toggleToolParams(tool)"
 						>
-							{{ isToolExpanded(tool.id) ? '收起 JSON' : '展开 JSON' }}
+							{{ resolveToggleLabel(tool) }}
 						</text>
 					</view>
 				</view>
@@ -75,9 +79,9 @@
 					</view>
 				</view>
 
-				<view v-if="tool.summary && isToolExpanded(tool.id)" class="tool-call-section">
-					<text class="tool-call-section-title">执行结果</text>
-					<text class="tool-call-section-text">{{ tool.summary }}</text>
+				<view v-if="resolveExpandedSummary(tool) && isToolExpanded(tool.id)" class="tool-call-section">
+					<text class="tool-call-section-title">{{ tool.isWebResearchSummary ? '正文内容' : '执行结果' }}</text>
+					<text class="tool-call-section-text">{{ resolveExpandedSummary(tool) }}</text>
 				</view>
 
 				<view v-if="isToolExpanded(tool.id) && !resolveCollapsedPreview(tool)" class="tool-call-empty">
@@ -111,6 +115,13 @@ function compactToolText(value) {
 		.trim()
 }
 
+function normalizeMultilineToolText(value) {
+	return String(value || '')
+		.replace(/\r\n/g, '\n')
+		.replace(/\n{3,}/g, '\n\n')
+		trim()
+}
+
 function hasToolParams(value) {
 	if (value === null || value === undefined) {
 		return false
@@ -141,7 +152,9 @@ export default {
 	},
 	data() {
 		return {
-			expandedToolIds: {}
+			expandedToolIds: {},
+			previewTick: 0,
+			previewTimer: null
 		}
 	},
 	computed: {
@@ -163,6 +176,11 @@ export default {
 						hasParams: typeof (tool && tool.hasParams) === 'boolean' ? tool.hasParams : hasToolParams(params),
 						paramText,
 						compactParamText: compactToolText(paramText),
+						fullSummary: String((tool && tool.fullSummary) || (tool && tool.summary) || '').trim(),
+						previewSegments: Array.isArray(tool && tool.previewSegments)
+							? tool.previewSegments.map((item) => compactToolText(item)).filter(Boolean)
+							: [],
+						isWebResearchSummary: !!(tool && tool.isWebResearchSummary),
 						paramLineItems: paramLines.map((line, lineIndex) => ({
 							key: `${id}-line-${lineIndex}`,
 							text: line
@@ -182,9 +200,34 @@ export default {
 			return labels.slice(0, 3).join('、')
 		}
 	},
+	mounted() {
+		this.startPreviewTicker()
+	},
+	beforeDestroy() {
+		this.stopPreviewTicker()
+	},
 	methods: {
+		startPreviewTicker() {
+			this.stopPreviewTicker()
+			this.previewTimer = setInterval(() => {
+				this.previewTick += 1
+			}, 2200)
+		},
+		stopPreviewTicker() {
+			if (this.previewTimer) {
+				clearInterval(this.previewTimer)
+				this.previewTimer = null
+			}
+		},
 		isToolExpanded(toolId = '') {
 			return !!this.expandedToolIds[String(toolId || '')]
+		},
+		canExpandTool(tool = {}) {
+			return !!(tool.hasParams || this.resolveExpandedSummary(tool))
+		},
+		handleToolHeadTap(tool = {}) {
+			if (!this.canExpandTool(tool)) return
+			this.toggleToolParams(tool)
 		},
 		toggleToolParams(tool = {}) {
 			const toolId = String(tool.id || '').trim()
@@ -222,8 +265,30 @@ export default {
 			if (normalized === 'executing' || normalized === 'running' || normalized === 'pending') return 'pending'
 			return 'neutral'
 		},
+		resolveToggleLabel(tool = {}) {
+			if (this.isToolExpanded(tool.id)) return '收起详情'
+			if (tool.isWebResearchSummary) return '展开正文'
+			return '展开详情'
+		},
+		shouldAnimatePreview(tool = {}) {
+			return !this.isToolExpanded(tool.id) && Array.isArray(tool.previewSegments) && tool.previewSegments.length > 1
+		},
+		resolvePreviewText(tool = {}) {
+			if (this.shouldAnimatePreview(tool)) {
+				const segments = tool.previewSegments || []
+				return segments[this.previewTick % segments.length] || ''
+			}
+			if (Array.isArray(tool.previewSegments) && tool.previewSegments.length) {
+				return tool.previewSegments[0]
+			}
+			return this.resolveCollapsedPreview(tool)
+		},
+		resolveExpandedSummary(tool = {}) {
+			return normalizeMultilineToolText(tool.fullSummary || tool.summary || '')
+		},
 		resolveCollapsedPreview(tool = {}) {
 			return compactToolText(
+				tool.fullSummary ||
 				tool.summary ||
 				tool.inputPreview ||
 				tool.compactParamText
@@ -383,13 +448,21 @@ export default {
 }
 
 .tool-call-summary,
-.tool-call-section-text,
 .tool-call-empty-text {
 	font-size: 22rpx;
 	line-height: 1.6;
 	color: rgba(36, 49, 79, 0.78);
 	word-break: break-all;
 	overflow-wrap: anywhere;
+}
+
+.tool-call-section-text {
+	font-size: 22rpx;
+	line-height: 1.68;
+	color: rgba(36, 49, 79, 0.82);
+	word-break: break-all;
+	overflow-wrap: anywhere;
+	white-space: pre-wrap;
 }
 
 .tool-call-summary {
@@ -401,6 +474,10 @@ export default {
 
 .tool-call-summary-inline {
 	display: block;
+}
+
+.tool-call-summary-animated {
+	animation: toolPreviewFade 2.2s ease-in-out infinite;
 }
 
 .tool-call-duration {
@@ -493,5 +570,21 @@ export default {
 
 .tool-call-empty {
 	margin-top: 16rpx;
+}
+
+@keyframes toolPreviewFade {
+	0% {
+		opacity: 0.28;
+		transform: translateY(6rpx);
+	}
+	18%,
+	78% {
+		opacity: 1;
+		transform: translateY(0);
+	}
+	100% {
+		opacity: 0.28;
+		transform: translateY(-4rpx);
+	}
 }
 </style>

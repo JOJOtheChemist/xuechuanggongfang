@@ -4,8 +4,18 @@ export const VOLUNTEER_UNLOCK_REQUIRED_INVITE_COUNT = 6
 export const VOLUNTEER_UNLOCK_PAYMENT_AMOUNT = 19.9
 export const VOLUNTEER_CUSTOMER_SERVICE_PHONE = '15087599770'
 export const VOLUNTEER_TOP_FILTER_OPTIONS = [
-  { label: '历史组', examType: 'gaokao', subjectTrack: '历史组', majorCategory: '' },
-  { label: '物理组', examType: 'gaokao', subjectTrack: '物理组', majorCategory: '' }
+  { label: '物理+化学+生物', examType: 'gaokao', subjectTrack: '物理组', majorCategory: '' },
+  { label: '物理+化学+地理', examType: 'gaokao', subjectTrack: '物理组', majorCategory: '' },
+  { label: '物理+化学+政治', examType: 'gaokao', subjectTrack: '物理组', majorCategory: '' },
+  { label: '物理+生物+地理', examType: 'gaokao', subjectTrack: '物理组', majorCategory: '' },
+  { label: '物理+生物+政治', examType: 'gaokao', subjectTrack: '物理组', majorCategory: '' },
+  { label: '物理+地理+政治', examType: 'gaokao', subjectTrack: '物理组', majorCategory: '' },
+  { label: '历史+政治+地理', examType: 'gaokao', subjectTrack: '历史组', majorCategory: '' },
+  { label: '历史+政治+化学', examType: 'gaokao', subjectTrack: '历史组', majorCategory: '' },
+  { label: '历史+政治+生物', examType: 'gaokao', subjectTrack: '历史组', majorCategory: '' },
+  { label: '历史+地理+化学', examType: 'gaokao', subjectTrack: '历史组', majorCategory: '' },
+  { label: '历史+地理+生物', examType: 'gaokao', subjectTrack: '历史组', majorCategory: '' },
+  { label: '历史+化学+生物', examType: 'gaokao', subjectTrack: '历史组', majorCategory: '' }
 ]
 
 const LOCAL_INSTITUTION_CACHE_VERSION = '20260516-gaokao-subject-track-v1'
@@ -256,6 +266,78 @@ function normalizeOwnershipType(value) {
   return text
 }
 
+function normalizeRegionText(value) {
+  const text = String(value || '').trim()
+  if (!text) return ''
+
+  if (text === '昆明市') return '云南省'
+  if (text === '丽江市') return '云南省'
+  if (text === '长沙市') return '湖南省'
+  if (text === '铁门关市') return '新疆维吾尔自治区'
+  if (text === '乌鲁木齐市') return '新疆维吾尔自治区'
+  if (text === '阿拉尔市') return '新疆维吾尔自治区'
+  if (text === '内蒙古') return '内蒙古自治区'
+  if (text === '广西') return '广西壮族自治区'
+  if (text === '西藏') return '西藏自治区'
+  if (text === '宁夏') return '宁夏回族自治区'
+  if (text === '新疆') return '新疆维吾尔自治区'
+  if (text === '香港') return '香港特别行政区'
+  if (text === '澳门') return '澳门特别行政区'
+  if (text === '北京') return '北京市'
+  if (text === '天津') return '天津市'
+  if (text === '上海') return '上海市'
+  if (text === '重庆') return '重庆市'
+  if (text === '云南') return '云南省'
+  if (text === '河北') return '河北省'
+  if (text === '山西') return '山西省'
+  if (text === '辽宁') return '辽宁省'
+  if (text === '吉林') return '吉林省'
+  if (text === '黑龙江') return '黑龙江省'
+  if (text === '江苏') return '江苏省'
+  if (text === '浙江') return '浙江省'
+  if (text === '安徽') return '安徽省'
+  if (text === '福建') return '福建省'
+  if (text === '江西') return '江西省'
+  if (text === '山东') return '山东省'
+  if (text === '河南') return '河南省'
+  if (text === '湖北') return '湖北省'
+  if (text === '湖南') return '湖南省'
+  if (text === '广东') return '广东省'
+  if (text === '海南') return '海南省'
+  if (text === '四川') return '四川省'
+  if (text === '贵州') return '贵州省'
+  if (text === '陕西') return '陕西省'
+  if (text === '甘肃') return '甘肃省'
+  if (text === '青海') return '青海省'
+  if (text === '台湾') return '台湾省'
+
+  return text
+}
+
+function matchesRegionFilter(item, expectedRegion) {
+  const normalizedExpected = normalizeRegionText(expectedRegion)
+  if (!normalizedExpected) return true
+
+  const candidates = [
+    item && item.institutionRegion,
+    item && item.institution_region,
+    item && item.city,
+    item && item.city_name,
+    item && item.province,
+    item && item.province_name
+  ]
+    .map((value) => normalizeRegionText(value))
+    .filter(Boolean)
+
+  return candidates.some((candidate) => {
+    return (
+      candidate === normalizedExpected ||
+      candidate.includes(normalizedExpected) ||
+      normalizedExpected.includes(candidate)
+    )
+  })
+}
+
 function safeGetStorage(key) {
   try {
     return uni.getStorageSync(key)
@@ -425,7 +507,7 @@ function matchesMajorKeyword(item, keyword) {
 export function institutionMatchesLocalFilters(item, filters = {}) {
   if (!item) return false
 
-  if (filters.city && String(item.city || '').trim() !== filters.city) {
+  if (filters.city && !matchesRegionFilter(item, filters.city)) {
     return false
   }
 
@@ -642,6 +724,8 @@ export function sortInstitutionsForScore(items, score) {
     const rightReferenceScore = resolveReferenceScore(right) ?? Number.POSITIVE_INFINITY
     if (leftReferenceScore !== rightReferenceScore) return leftReferenceScore - rightReferenceScore
 
+    // 同分同档位时，不再沿用后端顺序，避免出现“某地区院校整体靠前”的感知偏差。
+    // 统一按院校名做稳定排序，保证前端排序可解释、可复现。
     return String(left && left.name || '').localeCompare(String(right && right.name || ''), 'zh-Hans-CN')
   })
 }

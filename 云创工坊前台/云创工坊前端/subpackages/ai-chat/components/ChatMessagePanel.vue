@@ -339,14 +339,14 @@ export default {
 .typing-text {
 	font-size: 24rpx;
 	line-height: 1.55;
-	font-weight: 600;
-	color: rgba(44, 27, 0, 0.82);
+	font-weight: 400;
+	color: #000000;
 	white-space: normal;
 	word-break: break-all;
 }
 
 .typing-text-soft {
-	color: rgba(107, 114, 128, 0.92);
+	color: #000000;
 }
 
 .typing-dots {

@@ -141,15 +141,19 @@
       </view>
 
       <view class="query-action-row">
-        <view
-          class="query-action-card"
-          :class="{ 'query-action-card-disabled': searchActionDisabled }"
-          @tap="handleSearchAction"
-        >
-          <view class="query-action-head">
-            <text class="query-action-title">{{ queryActionTitle }}</text>
-            <text class="query-action-badge">{{ queryActionBadgeText }}</text>
+        <view class="query-action-stack">
+          <view
+            class="query-action-card"
+            :class="{ 'query-action-card-disabled': searchActionDisabled }"
+            @tap="handleSearchAction"
+          >
+            <view class="query-action-head">
+              <text class="query-action-title">{{ queryActionTitle }}</text>
+              <text class="query-action-badge">{{ queryActionBadgeText }}</text>
+            </view>
           </view>
+          <text class="query-action-subtitle">云南本地数据 更懂当地录取规则</text>
+          <text class="query-action-subtitle query-action-subtitle-secondary">首次使用需要加载，二次使用会更顺畅</text>
         </view>
 
         <view
@@ -306,9 +310,10 @@
 
 <script>
 import VolunteerAccessStatusUpsellBanners from '../../components/volunteer/AccessStatusUpsellBanners.vue'
-import VolunteerCategoryDropdown from '../../components/volunteer/CategoryDropdown.vue'
-import VolunteerDirectScoreResults from '../../components/volunteer/DirectScoreSchoolResults.vue'
-import VolunteerSupportPhoneCard from '../../components/volunteer/SupportPhoneCard.vue'
+import BottomNav from './components/BottomNav.vue'
+import VolunteerCategoryDropdown from './components/CategoryDropdown.vue'
+import VolunteerDirectScoreResults from './components/DirectScoreSchoolResults.vue'
+import VolunteerSupportPhoneCard from './components/SupportPhoneCard.vue'
 import { getStaticAssetUrl } from '../../utils/cloud-static-assets'
 import { getCachedImageSync, resolveCachedImages } from '../../utils/remote-image-cache'
 import { createVolunteerPageOptions } from '../../utils/volunteer-page-options'
@@ -475,10 +480,11 @@ const onPullDownRefresh = function onPullDownRefresh(...args) {
 
 export default {
   components: {
-    VolunteerAccessStatusUpsellBanners,
-    VolunteerCategoryDropdown,
-    VolunteerDirectScoreResults,
-    VolunteerSupportPhoneCard
+		VolunteerAccessStatusUpsellBanners,
+		BottomNav,
+		VolunteerCategoryDropdown,
+		VolunteerDirectScoreResults,
+		VolunteerSupportPhoneCard
   },
   data,
   computed: baseComputed,

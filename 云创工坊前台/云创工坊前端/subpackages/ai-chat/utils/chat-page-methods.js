@@ -37,6 +37,92 @@ function clipInlineText(value, limit = 120) {
 	return text.length > limit ? `${text.slice(0, Math.max(0, limit - 1)).trim()}…` : text
 }
 
+function parseJsonLikeToolPayload(value) {
+	if (typeof value !== 'string') return null
+	const text = String(value || '').trim()
+	if (!text) return null
+	if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
+		try {
+			return JSON.parse(text)
+		} catch (error) {
+			return null
+		}
+	}
+	return null
+}
+
+function extractToolDisplayText(value, limit = 0) {
+	const text = normalizeText(value, '')
+	if (!text) return ''
+	return limit > 0 ? clipInlineText(text, limit) : text
+}
+
+function splitToolPreviewSegments(value, limit = 36, maxItems = 4) {
+	const text = normalizeText(value, '')
+	if (!text) return []
+
+	const segments = text
+		.split(/[\n。！？；;]+/g)
+		.map((item) => clipInlineText(item, limit))
+		.map((item) => normalizeText(item, ''))
+		.filter(Boolean)
+
+	if (segments.length) {
+		return Array.from(new Set(segments)).slice(0, maxItems)
+	}
+
+	return [clipInlineText(text, limit)]
+}
+
+function buildWebResearchPresentation(tool = {}, fallbackParams = '') {
+	const name = normalizeText(tool && tool.name, '').toLowerCase()
+	const label = normalizeText(tool && tool.label, '').toLowerCase()
+	const isWebResearch =
+		name === 'web_search' ||
+		name === 'web_fetch' ||
+		label === 'web research summary' ||
+		label === '网页正文抓取'
+
+	if (!isWebResearch) {
+		return null
+	}
+
+	const parsedSummary = parseJsonLikeToolPayload(tool && tool.summary)
+	const parsedParams = parseJsonLikeToolPayload(fallbackParams)
+	const summaryBody = parsedSummary && typeof parsedSummary === 'object'
+		? (
+			parsedSummary.summary ||
+			parsedSummary.content ||
+			parsedSummary.body ||
+			parsedSummary.text ||
+			parsedSummary.message
+		)
+		: ''
+	const paramsBody = parsedParams && typeof parsedParams === 'object'
+		? (
+			parsedParams.summary ||
+			parsedParams.content ||
+			parsedParams.body ||
+			parsedParams.text ||
+			parsedParams.message
+		)
+		: ''
+	const resultText = extractToolDisplayText(
+		summaryBody ||
+		(tool && tool.summary) ||
+		paramsBody ||
+		'',
+		0
+	)
+	const previewSource = resultText || tool.inputPreview || fallbackParams || ''
+
+	return {
+		isWebResearch: true,
+		resultText,
+		previewSegments: splitToolPreviewSegments(previewSource, 34, 5),
+	}
+}
+
 function syncCurrentUserProfile(ctx) {
 	const userInfo = extractDisplayUserInfo()
 	ctx.currentUserId = userInfo.userId || ''
@@ -354,6 +440,11 @@ function createStreamRequest({ url, data, token = '', onEvent }) {
 					sawCompleteEvent &&
 					!sawErrorEvent &&
 					(chunkCount > 0 || /network error|ERR_INCOMPLETE_CHUNKED_ENCODING|abort|fail/i.test(errMsg))
+				const isRecoverableMidStreamFailure =
+					!sawCompleteEvent &&
+					!sawErrorEvent &&
+					(eventCount > 0 || chunkCount > 0) &&
+					/network error|ERR_INCOMPLETE_CHUNKED_ENCODING|abort|fail|timeout/i.test(errMsg)
 
 				console.warn(`[ai-chat][stream][${traceId}] request fail`, {
 					errMsg,
@@ -373,6 +464,21 @@ function createStreamRequest({ url, data, token = '', onEvent }) {
 							data: '',
 							errMsg
 						},
+						recoveredFromFail: true
+					})
+					return
+				}
+
+				if (isRecoverableMidStreamFailure) {
+					console.warn('[ai-chat] mid-stream failure will enter recovery mode:', errMsg || error)
+					finish(resolve, {
+						unsupported: false,
+						response: {
+							statusCode: 200,
+							data: '',
+							errMsg
+						},
+						interrupted: true,
 						recoveredFromFail: true
 					})
 					return
@@ -603,7 +709,6 @@ function normalizeToolCall(tool, index = 0) {
 			? tool.input
 			: params
 	const inputPreview = clipInlineText(inputSource, 120)
-	const summary = clipInlineText(tool && tool.summary, 160)
 	const rawDurationMs = tool && Object.prototype.hasOwnProperty.call(tool, 'durationMs')
 		? tool.durationMs
 		: tool && Object.prototype.hasOwnProperty.call(tool, 'duration')
@@ -619,15 +724,25 @@ function normalizeToolCall(tool, index = 0) {
 					? params.length > 0
 					: !!(params && typeof params === 'object' && Object.keys(params).length > 0)
 		)
+	const webResearchPresentation = buildWebResearchPresentation(tool, typeof params === 'string' ? params : '')
+	const shouldHideParams = !!(webResearchPresentation && webResearchPresentation.resultText)
+	const summary = webResearchPresentation && webResearchPresentation.resultText
+		? webResearchPresentation.resultText
+		: clipInlineText(tool && tool.summary, 160)
 
 	return {
 		id: normalizeText(tool && tool.id, `${name || 'tool'}-${index}-${Date.now()}`),
 		name,
 		label,
 		params,
-		hasParams,
+		hasParams: shouldHideParams ? false : hasParams,
 		inputPreview,
 		summary,
+		fullSummary: webResearchPresentation && webResearchPresentation.resultText
+			? webResearchPresentation.resultText
+			: normalizeText(tool && tool.summary, ''),
+		previewSegments: webResearchPresentation ? webResearchPresentation.previewSegments : [],
+		isWebResearchSummary: !!webResearchPresentation,
 		state: normalizeText(tool && tool.state, ''),
 		durationText: Number.isFinite(durationMs) && durationMs >= 0 ? `${durationMs}ms` : ''
 	}
@@ -728,12 +843,224 @@ function normalizeArticleCards(articleCards = []) {
 		.slice(0, MAX_VISIBLE_ARTICLE_CARDS)
 }
 
+function safeJsonStringify(value, fallback = '') {
+	try {
+		return JSON.stringify(value, null, 2)
+	} catch (error) {
+		return fallback || String(value || '')
+	}
+}
+
+function summarizeStreamEventPayload(eventData = {}) {
+	if (!isRecord(eventData)) return ''
+	if (eventData.delta) return clipInlineText(eventData.delta, 80)
+	if (eventData.summary) return clipInlineText(eventData.summary, 80)
+	if (eventData.reply) return clipInlineText(eventData.reply, 80)
+	if (eventData.message) return clipInlineText(eventData.message, 80)
+	if (eventData.name) return clipInlineText(eventData.name, 80)
+	return clipInlineText(safeJsonStringify(eventData), 80)
+}
+
+function sleep(ms = 0) {
+	return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)))
+}
+
+function createMessageId(ctx, rolePrefix = 'm') {
+	const nextSeed = Number(ctx && ctx.messageIdSeed) + 1
+	ctx.messageIdSeed = Number.isFinite(nextSeed) ? nextSeed : 1
+	return `${rolePrefix}-${Date.now()}-${ctx.messageIdSeed}`
+}
+
+function markRequestDebug(ctx, {
+	url = '',
+	method = 'POST',
+	transportMode = '',
+	startedAt = Date.now()
+} = {}) {
+	ctx.runtimeDebugData = {
+		...ctx.runtimeDebugData,
+		requestApi: String(url || ''),
+		requestMethod: String(method || 'POST').toUpperCase(),
+		requestTransportMode: String(transportMode || ''),
+		requestStartedAt: new Date(startedAt).toISOString(),
+		firstReplyAt: '',
+		firstReplyMs: 0,
+		firstReplyEventType: '',
+		requestCompletedAt: '',
+		requestTotalMs: 0,
+		lastStatusCode: 0
+	}
+}
+
+function markFirstReplyDebug(ctx, eventType = '', at = Date.now()) {
+	const runtime = ctx.runtimeDebugData || {}
+	if (runtime.firstReplyAt) return
+	const startedAtMs = Date.parse(runtime.requestStartedAt || '')
+	ctx.runtimeDebugData = {
+		...runtime,
+		firstReplyAt: new Date(at).toISOString(),
+		firstReplyMs: Number.isFinite(startedAtMs) ? Math.max(0, at - startedAtMs) : 0,
+		firstReplyEventType: String(eventType || '')
+	}
+}
+
+function markRequestCompletedDebug(ctx, {
+	at = Date.now(),
+	statusCode = 0
+} = {}) {
+	const runtime = ctx.runtimeDebugData || {}
+	const startedAtMs = Date.parse(runtime.requestStartedAt || '')
+	ctx.runtimeDebugData = {
+		...runtime,
+		requestCompletedAt: new Date(at).toISOString(),
+		requestTotalMs: Number.isFinite(startedAtMs) ? Math.max(0, at - startedAtMs) : 0,
+		lastStatusCode: Number(statusCode) || 0
+	}
+}
+
+function setActiveAssistantSegment(ctx, kind = '', messageId = '') {
+	ctx.activeAssistantSegmentKind = String(kind || '')
+	ctx.activeAssistantMessageId = String(messageId || '')
+	if (ctx.activeAssistantSegmentKind !== 'text') {
+		ctx.activeAssistantSegmentText = ''
+	}
+}
+
+function ensureAssistantStreamSegment(ctx, kind = 'text', initialContent = '') {
+	const normalizedKind = kind === 'tool' ? 'tool' : 'text'
+	if (
+		ctx.activeAssistantMessageId &&
+		ctx.activeAssistantSegmentKind === normalizedKind
+	) {
+		return ctx.activeAssistantMessageId
+	}
+
+	const messageId = ctx.beginAssistantStreamMessage(initialContent, normalizedKind)
+	setActiveAssistantSegment(ctx, normalizedKind, messageId)
+	return messageId
+}
+
+function hasToolMessageAfterLastUser(messages = []) {
+	if (!Array.isArray(messages) || !messages.length) return false
+	let seenUser = false
+	for (let index = messages.length - 1; index >= 0; index -= 1) {
+		const item = messages[index]
+		if (!item) continue
+		if (item.role === 'user') {
+			seenUser = true
+			break
+		}
+		if (item.role === 'assistant' && Array.isArray(item.toolCalls) && item.toolCalls.length) {
+			return true
+		}
+	}
+	return !seenUser
+		? messages.some((item) => item && item.role === 'assistant' && Array.isArray(item.toolCalls) && item.toolCalls.length)
+		: false
+}
+
+function collectAssistantTextAfterLastUser(messages = []) {
+	if (!Array.isArray(messages) || !messages.length) return ''
+	const collected = []
+	for (let index = messages.length - 1; index >= 0; index -= 1) {
+		const item = messages[index]
+		if (!item) continue
+		if (item.role === 'user') break
+		if (item.role !== 'assistant') continue
+		const text = normalizeText(item.content, '')
+		if (text) {
+			collected.unshift(text)
+		}
+	}
+	return collected.join('')
+}
+
+function resolveAppendedAssistantText(fullText = '', messages = []) {
+	const normalizedFullText = normalizeText(fullText, '')
+	if (!normalizedFullText) return ''
+	const existingText = collectAssistantTextAfterLastUser(messages)
+	if (!existingText) return normalizedFullText
+	if (normalizedFullText.startsWith(existingText)) {
+		return normalizeText(normalizedFullText.slice(existingText.length), '')
+	}
+	return normalizedFullText
+}
+
+function extractRecoveredAssistantPayload(formattedMessages = []) {
+	if (!Array.isArray(formattedMessages) || !formattedMessages.length) return null
+	const messages = formattedMessages.filter(Boolean)
+	const lastUserIndex = (() => {
+		for (let index = messages.length - 1; index >= 0; index -= 1) {
+			if (messages[index] && messages[index].role === 'user') return index
+		}
+		return -1
+	})()
+	for (let index = messages.length - 1; index > lastUserIndex; index -= 1) {
+		const item = messages[index]
+		if (!item || item.role !== 'assistant') continue
+		const content = normalizeText(item.content, '')
+		const toolCalls = Array.isArray(item.toolCalls) ? item.toolCalls : []
+		if (!content && !toolCalls.length) continue
+		return {
+			content,
+			toolCalls,
+			timestamp: item.timestamp || ''
+		}
+	}
+	return null
+}
+
+function resolveGaokaoStatusTextByTool(toolName = '', phase = '') {
+	const name = normalizeText(toolName, '').toLowerCase()
+	const currentPhase = normalizeText(phase, '').toLowerCase()
+
+	if (
+		name.includes('search_yunnan_admission_school_detail') ||
+		name.includes('school_detail')
+	) {
+		return 'AI 正在比对院校'
+	}
+
+	if (
+		name.includes('search_yunnan_admission') ||
+		name.includes('web_search') ||
+		name.includes('web_fetch')
+	) {
+		return 'AI 正在联网检索'
+	}
+
+	if (
+		name.includes('get_current_gaokao_consultation_state') ||
+		name.includes('update_current_gaokao_consultation_state') ||
+		name.includes('update_current_user_intelligence')
+	) {
+		return 'AI 正在整理你的情况'
+	}
+
+	if (currentPhase === 'tool_running') {
+		return 'AI 正在调用工具'
+	}
+
+	if (currentPhase === 'responding') {
+		return 'AI 正在整理建议'
+	}
+
+	return 'AI 正在思考'
+}
+
+function isDebugToolsEnabled(ctx) {
+	return !!(ctx && ctx.enableDebugTools)
+}
+
 export const chatPageMethods = {
 	async bootstrapPage() {
 		syncCurrentUserProfile(this)
 		await this.syncAccessState()
 		await this.loadAgentMeta()
-		await this.refreshProfileDebugData()
+		if (isDebugToolsEnabled(this)) {
+			await this.refreshProfileDebugData()
+			await this.refreshRuntimeDebugData()
+		}
 	},
 	async syncAccessState() {
 		syncCurrentUserProfile(this)
@@ -929,7 +1256,11 @@ export const chatPageMethods = {
 	appendAssistantMessage(content) {
 		const text = normalizeText(content, '')
 		if (!text) return
-		this.messages = this.messages.concat([{ id: `a-${Date.now()}`, role: 'assistant', content: text }])
+		this.messages = this.messages.concat([{
+			id: createMessageId(this, 'a'),
+			role: 'assistant',
+			content: text
+		}])
 		this.scrollToBottom()
 	},
 	buildAssistantPayloadMessage(payload = {}, fixedId = '') {
@@ -960,7 +1291,7 @@ export const chatPageMethods = {
 		) return null
 
 		return {
-			id: fixedId || `a-${Date.now()}`,
+			id: fixedId || createMessageId(this, 'a'),
 			role: 'assistant',
 			content: text,
 			toolCalls,
@@ -980,6 +1311,9 @@ export const chatPageMethods = {
 		if (!message) return
 		this.skillDebug = normalizeSkillDebug(payload.skillDebug)
 		this.messages = this.messages.concat([message])
+		if (payload && Object.prototype.hasOwnProperty.call(payload, 'runtimeDebug')) {
+			this.runtimeDebugData.lastCompletedPayload = payload.runtimeDebug || null
+		}
 		this.scrollToBottom()
 	},
 	upsertAssistantPayloadMessage(payload = {}, messageId = '') {
@@ -1037,13 +1371,38 @@ export const chatPageMethods = {
 		if (targetId) {
 			this.activeAssistantMessageId = targetId
 		}
+		if (payload && Object.prototype.hasOwnProperty.call(payload, 'runtimeDebug')) {
+			this.runtimeDebugData.lastCompletedPayload = payload.runtimeDebug || null
+		}
 		this.scrollToBottom()
+	},
+	pushStreamDebugEvent(eventType = '', eventData = {}) {
+		const type = normalizeText(eventType, '')
+		if (!type) return
+		const seq = Number(this.runtimeDebugData.streamEventSeq || 0) + 1
+		const nextEvent = {
+			id: `stream-${Date.now()}-${seq}`,
+			seq,
+			type,
+			summary: summarizeStreamEventPayload(eventData),
+			payload: isRecord(eventData) ? eventData : { value: eventData },
+			payloadText: safeJsonStringify(isRecord(eventData) ? eventData : { value: eventData }, ''),
+			at: new Date().toISOString()
+		}
+		const currentEvents = Array.isArray(this.runtimeDebugData.streamEvents)
+			? this.runtimeDebugData.streamEvents
+			: []
+		this.runtimeDebugData = {
+			...this.runtimeDebugData,
+			streamEventSeq: seq,
+			streamEvents: currentEvents.concat([nextEvent]).slice(-120)
+		}
 	},
 	upsertAssistantStreamToolCall(toolPayload = {}) {
 		const normalizedTool = normalizeToolCall(toolPayload, 0)
 		if (!normalizedTool || !normalizedTool.id) return
 
-		const messageId = this.activeAssistantMessageId || this.beginAssistantStreamMessage('')
+		const messageId = ensureAssistantStreamSegment(this, 'tool', '')
 		const nextMessages = this.messages.map((item) => {
 			if (!item || item.id !== messageId) return item
 
@@ -1080,12 +1439,17 @@ export const chatPageMethods = {
 		})
 
 		this.messages = nextMessages
+		this.runtimeDebugData = {
+			...this.runtimeDebugData,
+			liveRenderedText: String(this.messages.find((item) => item && item.id === messageId)?.content || '')
+		}
 		this.streamReplyStarted = true
 		this.scrollToBottom()
 	},
-	beginAssistantStreamMessage(initialContent = '') {
-		const messageId = `a-${Date.now()}`
-		this.activeAssistantMessageId = messageId
+	beginAssistantStreamMessage(initialContent = '', segmentKind = 'text') {
+		const messageId = createMessageId(this, 'a')
+		setActiveAssistantSegment(this, segmentKind, messageId)
+		this.activeAssistantSegmentText = segmentKind === 'text' ? String(initialContent || '') : ''
 		this.streamReplyStarted = !!String(initialContent || '')
 		this.messages = this.messages.concat([{
 			id: messageId,
@@ -1107,7 +1471,7 @@ export const chatPageMethods = {
 	},
 	updateAssistantStreamText(content = '') {
 		const nextContent = String(content || '')
-		const messageId = this.activeAssistantMessageId || this.beginAssistantStreamMessage(nextContent)
+		const messageId = ensureAssistantStreamSegment(this, 'text', nextContent)
 		const nextMessages = this.messages.map((item) => {
 			if (!item || item.id !== messageId) return item
 			return {
@@ -1116,11 +1480,23 @@ export const chatPageMethods = {
 			}
 		})
 		this.messages = nextMessages
+		this.runtimeDebugData = {
+			...this.runtimeDebugData,
+			liveRenderedText: nextContent
+		}
+		this.activeAssistantSegmentKind = 'text'
+		this.activeAssistantSegmentText = nextContent
 		this.streamReplyStarted = !!nextContent
 		this.scrollToBottom()
 	},
 	async sendMessageSyncRequest(content, token) {
 		const url = `${getApiBaseUrl()}/chat/sync`
+		markRequestDebug(this, {
+			url,
+			method: 'POST',
+			transportMode: 'sync',
+			startedAt: Date.now()
+		})
 		const { response, payload, statusCode } = await requestJsonWithRefresh({
 			url,
 			method: 'POST',
@@ -1129,6 +1505,10 @@ export const chatPageMethods = {
 		})
 
 		if (statusCode !== 200 || !isSuccessPayload(payload, response)) {
+			markRequestCompletedDebug(this, {
+				at: Date.now(),
+				statusCode
+			})
 			const error = buildRequestError(
 				payload.error || payload.message || '回复失败',
 				statusCode,
@@ -1142,6 +1522,12 @@ export const chatPageMethods = {
 		}
 
 		const data = unwrapPayloadData(payload)
+		const syncCompletedAt = Date.now()
+		markFirstReplyDebug(this, 'sync_response', syncCompletedAt)
+		markRequestCompletedDebug(this, {
+			at: syncCompletedAt,
+			statusCode
+		})
 		if (data && data.sessionId) this.sessionId = normalizeText(data.sessionId, this.sessionId)
 		if (data) {
 			this.resolvedAgentId = normalizeText(
@@ -1162,13 +1548,21 @@ export const chatPageMethods = {
 			inviteCards: data && data.inviteCards,
 			choiceCards: data && data.choiceCards,
 			membershipCards: data && data.membershipCards,
-			skillDebug: data && data.skillDebug
+			skillDebug: data && data.skillDebug,
+			runtimeDebug: data || null
 		})
 	},
 	async sendMessageStreamRequest(content, token) {
 		const url = `${getApiBaseUrl()}/chat`
+		markRequestDebug(this, {
+			url,
+			method: 'POST',
+			transportMode: 'stream',
+			startedAt: Date.now()
+		})
 		let streamedText = ''
 		let completedPayload = null
+		let currentTextSegment = ''
 
 		const result = await createStreamRequest({
 			url,
@@ -1177,25 +1571,77 @@ export const chatPageMethods = {
 			onEvent: (event) => {
 				const eventData = isRecord(event && event.data) ? event.data : {}
 				const eventType = normalizeText(event && event.type, '')
+				this.pushStreamDebugEvent(eventType, eventData)
 
 				if (eventData.sessionId) {
 					this.sessionId = normalizeText(eventData.sessionId, this.sessionId)
 				}
 
 				if (eventType === 'start') {
-					this.connectionText = '流式回复中'
+					this.connectionText = this.visualMode === 'gaokao' ? 'AI 正在思考' : '流式回复中'
+					return
+				}
+
+				if (eventType === 'think_start') {
+					markFirstReplyDebug(this, 'think_start', Date.now())
+					this.connectionText = this.visualMode === 'gaokao' ? 'AI 正在思考' : '思考中'
+					return
+				}
+
+				if (eventType === 'thinking') {
+					markFirstReplyDebug(this, 'thinking', Date.now())
+					const nextThinkingText = `${String(this.runtimeDebugData.liveThinkingText || '')}${String(eventData.delta || '')}`
+					this.runtimeDebugData = {
+						...this.runtimeDebugData,
+						liveThinkingText: nextThinkingText
+					}
+					if (!streamedText) {
+						this.updateAssistantStreamText(nextThinkingText)
+					}
+					this.connectionText = this.visualMode === 'gaokao' ? 'AI 正在思考' : '思考中'
+					return
+				}
+
+				if (eventType === 'think_end') {
+					this.connectionText = this.visualMode === 'gaokao' ? 'AI 正在调用工具' : '调用工具中'
+					return
+				}
+
+				if (eventType === 'heartbeat') {
+					const phase = normalizeText(eventData.phase, '')
+					if (phase === 'responding') {
+						markFirstReplyDebug(this, 'heartbeat:responding', Date.now())
+					}
+					if (!streamedText) {
+						this.connectionText = this.visualMode === 'gaokao'
+							? resolveGaokaoStatusTextByTool('', phase)
+							: phase === 'tool_running'
+								? '调用工具中'
+								: phase === 'responding'
+									? '生成中'
+									: '思考中'
+					}
 					return
 				}
 
 				if (eventType === 'text') {
+					markFirstReplyDebug(this, 'text', Date.now())
 					streamedText += String(eventData.delta || '')
-					this.updateAssistantStreamText(streamedText)
-					this.connectionText = '生成中'
+					if (this.activeAssistantSegmentKind !== 'text') {
+						currentTextSegment = ''
+					}
+					currentTextSegment += String(eventData.delta || '')
+					this.updateAssistantStreamText(currentTextSegment)
+					this.connectionText = this.visualMode === 'gaokao' ? 'AI 正在整理建议' : '生成中'
 					return
 				}
 
 				if (eventType === 'tool_start') {
-					this.connectionText = '调用工具中'
+					markFirstReplyDebug(this, 'tool_start', Date.now())
+					currentTextSegment = ''
+					this.connectionText = this.visualMode === 'gaokao'
+						? resolveGaokaoStatusTextByTool(eventData.name, 'tool_running')
+						: '调用工具中'
 					this.upsertAssistantStreamToolCall({
 						id: eventData.id,
 						name: eventData.name,
@@ -1212,7 +1658,9 @@ export const chatPageMethods = {
 				}
 
 				if (eventType === 'tool_end') {
-					this.connectionText = '生成中'
+					this.connectionText = this.visualMode === 'gaokao'
+						? 'AI 正在整理建议'
+						: '生成中'
 					this.upsertAssistantStreamToolCall({
 						id: eventData.id,
 						name: eventData.name,
@@ -1225,7 +1673,11 @@ export const chatPageMethods = {
 				}
 
 				if (eventType === 'tool') {
-					this.connectionText = '生成中'
+					markFirstReplyDebug(this, 'tool', Date.now())
+					currentTextSegment = ''
+					this.connectionText = this.visualMode === 'gaokao'
+						? resolveGaokaoStatusTextByTool(eventData.name, 'responding')
+						: '生成中'
 					this.upsertAssistantStreamToolCall({
 						id: eventData.id,
 						name: eventData.name,
@@ -1245,6 +1697,7 @@ export const chatPageMethods = {
 
 				if (eventType === 'complete') {
 					completedPayload = eventData
+					this.runtimeDebugData.lastCompletedPayload = eventData
 				}
 
 				if (eventType === 'error') {
@@ -1264,8 +1717,23 @@ export const chatPageMethods = {
 			return 'unsupported'
 		}
 
+		if (result && result.interrupted) {
+			const recovered = await this.recoverInterruptedStream(token)
+			if (recovered) {
+				return true
+			}
+			if (streamedText) {
+				this.updateAssistantStreamText(streamedText)
+			}
+			throw buildRequestError('流式连接中断，且未能自动恢复最终回复', 500, 'STREAM_INTERRUPTED')
+		}
+
 		const response = result && result.response
 		const statusCode = getResponseStatusCode(response)
+		markRequestCompletedDebug(this, {
+			at: Date.now(),
+			statusCode
+		})
 		if (statusCode !== 200) {
 			const payload = parseStreamResponsePayload(response)
 			const error = buildRequestError(
@@ -1288,23 +1756,76 @@ export const chatPageMethods = {
 		}
 
 		if (completedPayload) {
-			this.upsertAssistantPayloadMessage({
-				content: normalizeText(
-					completedPayload.reply,
-					streamedText || '收到，我继续帮你整理。'
-				),
-				toolCalls: completedPayload.toolCalls,
-				businessCards: completedPayload.businessCards,
-				goalCards: completedPayload.goalCards,
-				articleCards: completedPayload.articleCards,
-				projectCards: completedPayload.projectCards,
-				activityCards: completedPayload.activityCards,
-				schoolCards: completedPayload.schoolCards,
-				inviteCards: completedPayload.inviteCards,
-				choiceCards: completedPayload.choiceCards,
-				membershipCards: completedPayload.membershipCards,
-				skillDebug: completedPayload.skillDebug
-			})
+			const completedText = normalizeText(
+				completedPayload.reply,
+				streamedText || '收到，我继续帮你整理。'
+			)
+			const hasExistingToolSegment = hasToolMessageAfterLastUser(this.messages)
+			const completedToolCalls = hasExistingToolSegment ? [] : completedPayload.toolCalls
+			const shouldSplitFinalAssistantFromTool =
+				this.activeAssistantSegmentKind === 'tool' && !!completedText
+			const currentAssistantText = this.activeAssistantMessageId
+				? normalizeText(
+					((this.messages.find((item) => item && item.id === this.activeAssistantMessageId) || {}).content),
+					''
+				)
+				: ''
+			const appendedAssistantText = resolveAppendedAssistantText(completedText, this.messages)
+
+			if (shouldSplitFinalAssistantFromTool) {
+				const toolCalls = normalizeToolCalls(completedPayload.toolCalls)
+				if (toolCalls.length && this.activeAssistantMessageId) {
+					this.upsertAssistantPayloadMessage({
+						toolCalls,
+						runtimeDebug: completedPayload
+					}, this.activeAssistantMessageId)
+				}
+				if (
+					appendedAssistantText ||
+					(Array.isArray(completedPayload.businessCards) && completedPayload.businessCards.length) ||
+					(Array.isArray(completedPayload.goalCards) && completedPayload.goalCards.length) ||
+					(Array.isArray(completedPayload.articleCards) && completedPayload.articleCards.length) ||
+					(Array.isArray(completedPayload.projectCards) && completedPayload.projectCards.length) ||
+					(Array.isArray(completedPayload.activityCards) && completedPayload.activityCards.length) ||
+					(Array.isArray(completedPayload.schoolCards) && completedPayload.schoolCards.length) ||
+					(Array.isArray(completedPayload.inviteCards) && completedPayload.inviteCards.length) ||
+					(Array.isArray(completedPayload.choiceCards) && completedPayload.choiceCards.length) ||
+					(Array.isArray(completedPayload.membershipCards) && completedPayload.membershipCards.length)
+				) {
+					this.appendAssistantPayloadMessage({
+						content: appendedAssistantText,
+						businessCards: completedPayload.businessCards,
+						goalCards: completedPayload.goalCards,
+						articleCards: completedPayload.articleCards,
+						projectCards: completedPayload.projectCards,
+						activityCards: completedPayload.activityCards,
+						schoolCards: completedPayload.schoolCards,
+						inviteCards: completedPayload.inviteCards,
+						choiceCards: completedPayload.choiceCards,
+						membershipCards: completedPayload.membershipCards,
+						skillDebug: completedPayload.skillDebug,
+						runtimeDebug: completedPayload
+					})
+				}
+			} else {
+				this.upsertAssistantPayloadMessage({
+					content: hasExistingToolSegment && currentAssistantText
+						? currentAssistantText
+						: completedText,
+					toolCalls: completedToolCalls,
+					businessCards: completedPayload.businessCards,
+					goalCards: completedPayload.goalCards,
+					articleCards: completedPayload.articleCards,
+					projectCards: completedPayload.projectCards,
+					activityCards: completedPayload.activityCards,
+					schoolCards: completedPayload.schoolCards,
+					inviteCards: completedPayload.inviteCards,
+					choiceCards: completedPayload.choiceCards,
+					membershipCards: completedPayload.membershipCards,
+					skillDebug: completedPayload.skillDebug,
+					runtimeDebug: completedPayload
+				})
+			}
 			return true
 		}
 
@@ -1586,6 +2107,9 @@ export const chatPageMethods = {
 		this.messages = []
 		this.resolvedAgentId = this.agentId
 		this.resolvedAgentName = this.assistantName
+		this.activeAssistantMessageId = ''
+		this.activeAssistantSegmentKind = ''
+		this.activeAssistantSegmentText = ''
 		this.skillDebug = {
 			activatedSkills: [],
 			loadedSkillFiles: [],
@@ -1603,6 +2127,35 @@ export const chatPageMethods = {
 			profileSnapshot: null,
 			gaokaoSnapshot: null,
 			recentUserMessages: []
+		}
+		this.runtimeDebugData = {
+			sessionId: '',
+			fetchedAt: '',
+			error: '',
+			provider: '',
+			model: '',
+			baseUrl: '',
+			requestApi: '',
+			requestMethod: '',
+			requestTransportMode: '',
+			requestStartedAt: '',
+			firstReplyAt: '',
+			firstReplyMs: 0,
+			firstReplyEventType: '',
+			requestCompletedAt: '',
+			requestTotalMs: 0,
+			lastStatusCode: 0,
+			runtimeMessagesPath: '',
+			fileExists: false,
+			parseError: '',
+			rawFileText: '',
+			rawMessages: [],
+			formattedMessages: [],
+			streamEvents: [],
+			streamEventSeq: 0,
+			liveThinkingText: '',
+			liveRenderedText: '',
+			lastCompletedPayload: null
 		}
 		this.connectionText = '连接中'
 		this.clearAccessPrompt()
@@ -1623,6 +2176,7 @@ export const chatPageMethods = {
 		})
 	},
 	async refreshProfileDebugData() {
+		if (!isDebugToolsEnabled(this)) return
 		const token = await resolveActiveToken()
 		if (!token) return
 
@@ -1743,6 +2297,109 @@ export const chatPageMethods = {
 			recentUserMessages
 		}
 	},
+	async refreshRuntimeDebugData() {
+		if (!isDebugToolsEnabled(this)) return
+		const token = await resolveActiveToken()
+		if (!token) return
+		if (!this.messages.some((item) => item && item.role === 'user')) {
+			this.runtimeDebugData = {
+				...this.runtimeDebugData,
+				sessionId: this.sessionId,
+				fetchedAt: '',
+				error: '',
+				provider: '',
+				model: '',
+				baseUrl: '',
+				runtimeMessagesPath: '',
+				fileExists: false,
+				parseError: '',
+				rawFileText: '',
+				rawMessages: [],
+				formattedMessages: []
+			}
+			return
+		}
+
+		try {
+			const url = `${getApiBaseUrl()}/chat/agents/${encodeURIComponent(this.agentId)}/debug-runtime?sessionId=${encodeURIComponent(this.sessionId)}`
+			const { response, payload, statusCode } = await requestJsonWithRefresh({
+				url,
+				method: 'GET',
+				token
+			})
+
+			if (statusCode !== 200 || !isSuccessPayload(payload, response)) {
+				this.runtimeDebugData = {
+					...this.runtimeDebugData,
+					sessionId: this.sessionId,
+					fetchedAt: '',
+					error: normalizeText(
+						payload && (payload.error || payload.message || payload.errMsg || payload.errorCode || payload.code),
+						`runtime debug 请求失败: ${statusCode || 'unknown'}`
+					)
+				}
+				return
+			}
+
+			const data = unwrapPayloadData(payload)
+			this.runtimeDebugData = {
+				...this.runtimeDebugData,
+				sessionId: normalizeText(data && data.sessionId, this.sessionId),
+				fetchedAt: normalizeText(data && data.fetchedAt, ''),
+				error: '',
+				provider: normalizeText(data && data.provider, ''),
+				model: normalizeText(data && data.model, ''),
+				baseUrl: normalizeText(data && data.baseUrl, ''),
+				runtimeMessagesPath: normalizeText(data && data.runtimeMessagesPath, ''),
+				fileExists: !!(data && data.fileExists),
+				parseError: normalizeText(data && data.parseError, ''),
+				rawFileText: normalizeText(data && data.rawFileText, ''),
+				rawMessages: Array.isArray(data && data.rawMessages) ? data.rawMessages : [],
+				formattedMessages: Array.isArray(data && data.formattedMessages) ? data.formattedMessages : []
+			}
+		} catch (error) {
+			console.warn('[ai-chat] refresh runtime debug failed:', error)
+			const payload = isRecord(error && error.payload) ? error.payload : {}
+			this.runtimeDebugData = {
+				...this.runtimeDebugData,
+				sessionId: this.sessionId,
+				fetchedAt: '',
+				error: normalizeText(
+					(payload && (payload.error || payload.message)) ||
+					error?.message ||
+					'runtime debug 拉取失败',
+					'runtime debug 拉取失败'
+				)
+			}
+		}
+	},
+	async recoverInterruptedStream(token) {
+		const maxAttempts = 12
+		for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+			this.connectionText = `AI 正在补发结果 ${attempt}/${maxAttempts}`
+			await this.refreshRuntimeDebugData()
+
+			const recovered = extractRecoveredAssistantPayload(this.runtimeDebugData.formattedMessages)
+			if (recovered) {
+				this.upsertAssistantPayloadMessage({
+					content: recovered.content,
+					toolCalls: recovered.toolCalls,
+					runtimeDebug: this.runtimeDebugData.lastCompletedPayload || {
+						reply: recovered.content,
+						toolCalls: recovered.toolCalls
+					}
+				})
+				this.connectionText = '已恢复'
+				return true
+			}
+
+			if (attempt < maxAttempts) {
+				await sleep(2000)
+			}
+		}
+
+		return false
+	},
 	async sendMessage(overrideText = '') {
 		const content = normalizeText(overrideText || this.draftText, '')
 		if (!content || this.isSending) return
@@ -1765,12 +2422,51 @@ export const chatPageMethods = {
 			return
 		}
 
-		this.messages = this.messages.concat([{ id: `u-${Date.now()}`, role: 'user', content }])
+		this.messages = this.messages.concat([{
+			id: createMessageId(this, 'u'),
+			role: 'user',
+			content
+		}])
 		this.draftText = ''
 		this.isSending = true
 		this.streamReplyStarted = false
 		this.activeAssistantMessageId = ''
+		this.activeAssistantSegmentKind = ''
+		this.activeAssistantSegmentText = ''
 		this.connectionText = '响应中'
+		this.runtimeDebugData = {
+			...this.runtimeDebugData,
+			sessionId: this.sessionId,
+			fetchedAt: '',
+			error: '',
+			provider: '',
+			model: '',
+			baseUrl: '',
+			requestApi: '',
+			requestMethod: '',
+			requestTransportMode: '',
+			requestStartedAt: '',
+			firstReplyAt: '',
+			firstReplyMs: 0,
+			firstReplyEventType: '',
+			requestCompletedAt: '',
+			requestTotalMs: 0,
+			lastStatusCode: 0,
+			parseError: '',
+			rawFileText: '',
+			rawMessages: [],
+			formattedMessages: [],
+			streamEvents: [],
+			streamEventSeq: 0,
+			liveThinkingText: '',
+			liveRenderedText: '',
+			lastCompletedPayload: null
+		}
+		this.pushStreamDebugEvent('request', {
+			agentId: this.agentId,
+			sessionId: this.sessionId,
+			content
+		})
 		this.scrollToBottom()
 
 		try {
@@ -1792,6 +2488,12 @@ export const chatPageMethods = {
 		} catch (error) {
 			console.error('[ai-chat] send failed', error)
 			const errorPayload = isRecord(error && error.payload) ? error.payload : error
+			if (!(this.runtimeDebugData && this.runtimeDebugData.requestCompletedAt)) {
+				markRequestCompletedDebug(this, {
+					at: Date.now(),
+					statusCode: error && error.statusCode
+				})
+			}
 			const hasPartialAssistantReply =
 				!!this.activeAssistantMessageId ||
 				this.messages.some((item) => item && item.role === 'assistant' && normalizeText(item.content, ''))
@@ -1827,7 +2529,12 @@ export const chatPageMethods = {
 			this.isSending = false
 			this.streamReplyStarted = false
 			this.activeAssistantMessageId = ''
-			await this.refreshProfileDebugData()
+			this.activeAssistantSegmentKind = ''
+			this.activeAssistantSegmentText = ''
+			if (isDebugToolsEnabled(this)) {
+				await this.refreshProfileDebugData()
+				await this.refreshRuntimeDebugData()
+			}
 			this.scrollToBottom()
 		}
 	}

@@ -205,6 +205,21 @@
 			</view>
 			</template>
 		</ChatPageShell>
+		<ChatDebugPanel
+			v-if="showChatDebugPanel"
+			:visible="showChatDebugPanel"
+			:open="debugPanelOpen"
+			:agent-id="agentId"
+			:resolved-agent-id="resolvedAgentId"
+			:resolved-agent-name="resolvedAgentName"
+			:assistant-name="assistantName"
+			:session-id="sessionId"
+			:transport-mode="transportMode"
+			:runtime-debug-summary="runtimeDebugSummary"
+			:debug-summary="debugSummary"
+			@toggle="toggleDebugPanel"
+			@copy="copyDebugSummary"
+		/>
 		<view
 			v-if="shareInviteSheetVisible"
 			class="share-invite-sheet-mask"
@@ -226,77 +241,6 @@
 				</view>
 			</view>
 		</view>
-		<view
-			v-if="showMainDebugPanel"
-			class="chat-debug-overlay"
-			:class="{ 'chat-debug-overlay-open': debugPanelOpen }"
-		>
-			<view class="chat-debug-panel" :class="{ 'chat-debug-panel-open': debugPanelOpen }">
-				<view class="chat-debug-header" @tap="debugPanelOpen = !debugPanelOpen">
-					<text class="chat-debug-title">Debug</text>
-					<view class="chat-debug-actions">
-						<text class="chat-debug-copy" @tap.stop="copyDebugSummary">一键复制</text>
-						<text class="chat-debug-toggle">{{ debugPanelOpen ? '收起' : '展开' }}</text>
-					</view>
-				</view>
-				<view v-if="debugPanelOpen" class="chat-debug-body">
-					<text class="chat-debug-line">requestedAgentId: {{ agentId }}</text>
-					<text class="chat-debug-line">resolvedAgentId: {{ resolvedAgentId || '[]' }}</text>
-					<text class="chat-debug-line">resolvedAgentName: {{ resolvedAgentName || assistantName || '[]' }}</text>
-					<text class="chat-debug-line">sessionId: {{ sessionId }}</text>
-					<text class="chat-debug-line">本轮触发 skill: {{ debugSummary.skillAttached }}</text>
-					<text class="chat-debug-line">已触发 skills: {{ debugSummary.activatedSkills }}</text>
-					<text class="chat-debug-line">已加载 skill 文件: {{ debugSummary.loadedSkillFiles }}</text>
-					<text class="chat-debug-line">skill 注入字符数: {{ debugSummary.skillPromptChars }}</text>
-					<text class="chat-debug-line">skill 触发原因: {{ debugSummary.skillMatchReason }}</text>
-				</view>
-			</view>
-		</view>
-		<view
-			v-if="showProfileDebugPanel"
-			class="chat-profile-debug-overlay"
-			:class="{ 'chat-profile-debug-overlay-open': profileDebugPanelOpen }"
-		>
-			<view class="chat-profile-debug-panel" :class="{ 'chat-profile-debug-panel-open': profileDebugPanelOpen }">
-				<view class="chat-profile-debug-header" @tap="profileDebugPanelOpen = !profileDebugPanelOpen">
-					<text class="chat-profile-debug-title">用户画像 Debug</text>
-					<view class="chat-profile-debug-actions">
-						<text class="chat-profile-debug-copy" @tap.stop="copyProfileDebugSummary">一键复制</text>
-						<text class="chat-profile-debug-toggle">{{ profileDebugPanelOpen ? '收起' : '展开' }}</text>
-					</view>
-				</view>
-				<view v-if="profileDebugPanelOpen" class="chat-profile-debug-body">
-					<text class="chat-profile-debug-line">sessionId: {{ profileDebugSummary.sessionId }}</text>
-					<text class="chat-profile-debug-line">最近刷新: {{ profileDebugSummary.fetchedAt }}</text>
-					<text class="chat-profile-debug-line">debugError: {{ profileDebugSummary.error }}</text>
-					<text class="chat-profile-debug-line">分数: {{ profileDebugSummary.score }}</text>
-					<text class="chat-profile-debug-line">位次: {{ profileDebugSummary.rank }}</text>
-					<text class="chat-profile-debug-line">科类/模式: {{ profileDebugSummary.subjectMode }}</text>
-					<text class="chat-profile-debug-line">选科: {{ profileDebugSummary.selectedSubjects }}</text>
-					<text class="chat-profile-debug-line">专业偏好: {{ profileDebugSummary.majorPreferences }}</text>
-					<text class="chat-profile-debug-line">专业避坑: {{ profileDebugSummary.majorAvoidances }}</text>
-					<text class="chat-profile-debug-line">城市偏好: {{ profileDebugSummary.preferredCities }}</text>
-					<text class="chat-profile-debug-line">省份偏好: {{ profileDebugSummary.preferredProvinces }}</text>
-					<text class="chat-profile-debug-line">省内优先: {{ profileDebugSummary.inProvincePriority }}</text>
-					<text class="chat-profile-debug-line">学校层次: {{ profileDebugSummary.targetSchoolLevels }}</text>
-					<text class="chat-profile-debug-line">公办民办偏好: {{ profileDebugSummary.ownershipPreference }}</text>
-					<text class="chat-profile-debug-line">风险偏好: {{ profileDebugSummary.riskPreference }}</text>
-					<text class="chat-profile-debug-line">就业/升学目标: {{ profileDebugSummary.careerGoals }}</text>
-					<text class="chat-profile-debug-line">预算备注: {{ profileDebugSummary.budgetNote }}</text>
-					<text class="chat-profile-debug-line">家庭约束: {{ profileDebugSummary.familyConstraints }}</text>
-					<text class="chat-profile-debug-line">距离偏好: {{ profileDebugSummary.distancePreference }}</text>
-					<text class="chat-profile-debug-line">必须避开: {{ profileDebugSummary.mustAvoidFactors }}</text>
-					<text class="chat-profile-debug-line">当前阶段: {{ profileDebugSummary.currentStage }}</text>
-					<text class="chat-profile-debug-line">主要顾虑: {{ profileDebugSummary.mainConcerns }}</text>
-					<text class="chat-profile-debug-line">待补字段: {{ profileDebugSummary.missingKeyFields }}</text>
-					<text class="chat-profile-debug-line">推荐下一问: {{ profileDebugSummary.recommendedNextQuestion }}</text>
-					<text class="chat-profile-debug-line">最近问题摘要: {{ profileDebugSummary.recentQuestionSummaries }}</text>
-					<text class="chat-profile-debug-line">会话用户原话: {{ profileDebugSummary.recentUserMessages }}</text>
-					<text class="chat-profile-debug-line">用户结构化画像: {{ profileDebugSummary.profileJson }}</text>
-					<text class="chat-profile-debug-line">高考结构化状态: {{ profileDebugSummary.gaokaoJson }}</text>
-				</view>
-			</view>
-		</view>
 	</view>
 </template>
 
@@ -305,6 +249,7 @@ import ChatAccessStatePanel from './components/ChatAccessStatePanel.vue'
 import ChatComposerBar from './components/ChatComposerBar.vue'
 import ChatHeroCard from './components/ChatHeroCard.vue'
 import ChatIntroVisualPanel from './components/ChatIntroVisualPanel.vue'
+import ChatDebugPanel from './components/ChatDebugPanel.vue'
 import ChatMessagePanel from './components/ChatMessagePanel.vue'
 import ChatMessageScrollContainer from './components/ChatMessageScrollContainer.vue'
 import ChatPageShell from './components/ChatPageShell.vue'
@@ -339,11 +284,61 @@ const REMAINING_QUERY_BANNER_URL = getStaticAssetUrl('/static/volunteer-guide/re
 const VIP_BANNER_URL = getStaticAssetUrl('/static/volunteer-guide/vip-banner-large.webp')
 const GAOKAO_DISPLAY_ASSISTANT_NAME = '云南志愿填报老师 雪峰哥'
 
+function isRecord(value) {
+	return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function safeJsonStringify(value, fallback = '[]') {
+	try {
+		return JSON.stringify(value, null, 2)
+	} catch (error) {
+		return fallback
+	}
+}
+
+function formatDebugValue(value) {
+	if (value === null || typeof value === 'undefined' || value === '') return '[]'
+	if (Array.isArray(value)) return value.length ? value.map((item) => formatDebugValue(item)).join(', ') : '[]'
+	if (isRecord(value)) return safeJsonStringify(value, '[]')
+	return String(value)
+}
+
+function buildStructuredDebugMessages(messages = []) {
+	if (!Array.isArray(messages)) return []
+	return messages.map((item, index) => {
+		const role = normalizeText(item && item.role, 'unknown')
+		const type = normalizeText(item && item.type, 'message')
+		const provider = normalizeText(item && (item.provider || item.providerName), '[]')
+		const model = normalizeText(item && item.model, '[]')
+		const text = normalizeText(
+			item && (
+				item.content ||
+				item.text ||
+				item.message ||
+				(item.delta && item.delta.text)
+			),
+			''
+		)
+		const summary = normalizeText(item && item.summary, '') || (text ? `${text.slice(0, 88)}${text.length > 88 ? '…' : ''}` : '[]')
+		return {
+			key: `${role}-${type}-${index}`,
+			level: 1,
+			role,
+			type,
+			provider,
+			model,
+			summary,
+			text: text || safeJsonStringify(item, '[]')
+		}
+	})
+}
+
 export default {
 	name: 'ai-chat-page',
 	components: {
 		ChatAccessStatePanel,
 		ChatComposerBar,
+		ChatDebugPanel,
 		ChatHeroCard,
 		ChatIntroVisualPanel,
 		ChatMessagePanel,
@@ -373,6 +368,9 @@ export default {
 			isSending: false,
 			streamReplyStarted: false,
 			activeAssistantMessageId: '',
+			activeAssistantSegmentKind: '',
+			activeAssistantSegmentText: '',
+			messageIdSeed: 0,
 			scrollIntoViewTarget: 'chat-bottom',
 			aiPowerRemaining: 0,
 			aiPowerLoading: false,
@@ -395,11 +393,8 @@ export default {
 			cachedVisualComposerBackgroundImageUrl: getCachedImageSync(visualConfig.composerBackgroundImageUrl),
 			cachedVisualComposerSendButtonImageUrl: getCachedImageSync(visualConfig.composerSendButtonImageUrl),
 			hideWelcomeMessage: visualConfig.hideWelcomeMessage,
-			showDebugPanels: false,
-			showMainDebugPanel: true,
-			showProfileDebugPanel: false,
+			enableDebugTools: false,
 			debugPanelOpen: true,
-			profileDebugPanelOpen: false,
 			admissionUnlockStatus: createDefaultUnlockStatus(),
 			unlockStatusLoading: false,
 			unlockPaymentProcessing: false,
@@ -423,6 +418,35 @@ export default {
 				profileSnapshot: null,
 				gaokaoSnapshot: null,
 				recentUserMessages: []
+			},
+			runtimeDebugData: {
+				sessionId: '',
+				fetchedAt: '',
+				error: '',
+				provider: '',
+				model: '',
+				baseUrl: '',
+				requestApi: '',
+				requestMethod: '',
+				requestTransportMode: '',
+				requestStartedAt: '',
+				firstReplyAt: '',
+				firstReplyMs: 0,
+				firstReplyEventType: '',
+				requestCompletedAt: '',
+				requestTotalMs: 0,
+				lastStatusCode: 0,
+				runtimeMessagesPath: '',
+				fileExists: false,
+				parseError: '',
+				rawFileText: '',
+				rawMessages: [],
+				formattedMessages: [],
+				streamEvents: [],
+				streamEventSeq: 0,
+				liveThinkingText: '',
+				liveRenderedText: '',
+				lastCompletedPayload: null
 			}
 		}
 	},
@@ -561,14 +585,17 @@ export default {
 			return true
 		},
 		composerPlaceholder() {
-			if (this.showLoginPrompt) return '请先登录后再发送'
-			if (this.showVolunteerUnlockPrompt) return '请先邀请好友或付费解锁后再发送'
-			if (this.showPowerPrompt) return '算力不足，先补充后再继续'
+			if (this.showLoginPrompt) return '登录后发送'
+			if (this.showVolunteerUnlockPrompt) return '解锁后发送'
+			if (this.showPowerPrompt) return '算力不足，暂不可发送'
 			const placeholder = normalizeText(this.composerPlaceholderOverride, '')
 			if (this.isXiaochunluAgent && /(分数|位次|科类|城市|专业方向)/.test(placeholder)) {
-				return '问我文章、业务或 19.9 校园大使'
+				return '问我文章、业务或校园大使'
 			}
-			return placeholder || '直接把你现在最想解决的问题发给我'
+			return placeholder || '直接提问'
+		},
+		showChatDebugPanel() {
+			return this.visualMode === 'gaokao' && this.enableDebugTools
 		},
 		debugSummary() {
 			const debug = this.skillDebug || {}
@@ -586,80 +613,44 @@ export default {
 					: '[]'
 			}
 		},
-		profileDebugSummary() {
-			const payload = this.profileDebugData || {}
-			const profile = payload.profileSnapshot && typeof payload.profileSnapshot === 'object'
-				? payload.profileSnapshot
-				: {}
-			const gaokao = payload.gaokaoSnapshot && typeof payload.gaokaoSnapshot === 'object'
-				? payload.gaokaoSnapshot
-				: {}
-			const gaokaoProfile = gaokao.gaokaoProfile && typeof gaokao.gaokaoProfile === 'object'
-				? gaokao.gaokaoProfile
-				: {}
-			const progress = gaokao.consultationProgress && typeof gaokao.consultationProgress === 'object'
-				? gaokao.consultationProgress
-				: {}
-			const recentNotes = Array.isArray(gaokao.recentQuestionSummaries) ? gaokao.recentQuestionSummaries : []
-			const recentMessages = Array.isArray(payload.recentUserMessages) ? payload.recentUserMessages : []
+		runtimeDebugSummary() {
+			const runtime = this.runtimeDebugData || {}
+			const streamEvents = Array.isArray(runtime.streamEvents) ? runtime.streamEvents : []
+			const rawMessages = Array.isArray(runtime.rawMessages) ? runtime.rawMessages : []
+			const formattedMessages = Array.isArray(runtime.formattedMessages) ? runtime.formattedMessages : []
+			const frontendMessages = Array.isArray(this.messages) ? this.messages : []
 			return {
-				sessionId: String(payload.sessionId || this.sessionId || '').trim() || '[]',
-				fetchedAt: String(payload.fetchedAt || '').trim() || '[]',
-				error: String(payload.error || '').trim() || '[]',
-				score: gaokaoProfile.score ?? '[]',
-				rank: gaokaoProfile.rank ?? '[]',
-				subjectMode: String(gaokaoProfile.subjectMode || gaokaoProfile.examType || '').trim() || '[]',
-				selectedSubjects: Array.isArray(gaokaoProfile.selectedSubjects) && gaokaoProfile.selectedSubjects.length
-					? gaokaoProfile.selectedSubjects.join(', ')
+				provider: normalizeText(runtime.provider, '[]'),
+				model: normalizeText(runtime.model, '[]'),
+				providerBaseUrl: normalizeText(runtime.baseUrl, '[]'),
+				requestApi: normalizeText(runtime.requestApi, '[]'),
+				requestMethod: normalizeText(runtime.requestMethod, '[]'),
+				requestStartedAt: normalizeText(runtime.requestStartedAt, '[]'),
+				firstReplyEvent: normalizeText(runtime.firstReplyEventType, '[]'),
+				firstReplyAt: normalizeText(runtime.firstReplyAt, '[]'),
+				firstReplyMs: Number(runtime.firstReplyMs) || 0,
+				requestCompletedAt: normalizeText(runtime.requestCompletedAt, '[]'),
+				requestTotalMs: Number(runtime.requestTotalMs) || 0,
+				lastStatusCode: Number(runtime.lastStatusCode) || 0,
+				streamEventCount: streamEvents.length,
+				rawMessageCount: rawMessages.length,
+				formattedMessageCount: formattedMessages.length,
+				runtimeMessagesPath: normalizeText(runtime.runtimeMessagesPath, '[]'),
+				error: normalizeText(runtime.error, '[]'),
+				parseError: normalizeText(runtime.parseError, '[]'),
+				lastStreamEvent: streamEvents.length
+					? `${normalizeText(streamEvents[streamEvents.length - 1].type, '')}#${Number(streamEvents[streamEvents.length - 1].seq) || streamEvents.length}`
 					: '[]',
-				majorPreferences: Array.isArray(gaokaoProfile.majorPreferences) && gaokaoProfile.majorPreferences.length
-					? gaokaoProfile.majorPreferences.join(', ')
-					: '[]',
-				majorAvoidances: Array.isArray(gaokaoProfile.majorAvoidances) && gaokaoProfile.majorAvoidances.length
-					? gaokaoProfile.majorAvoidances.join(', ')
-					: '[]',
-				preferredCities: Array.isArray(gaokaoProfile.preferredCities) && gaokaoProfile.preferredCities.length
-					? gaokaoProfile.preferredCities.join(', ')
-					: '[]',
-				preferredProvinces: Array.isArray(gaokaoProfile.preferredProvinces) && gaokaoProfile.preferredProvinces.length
-					? gaokaoProfile.preferredProvinces.join(', ')
-					: '[]',
-				inProvincePriority: typeof gaokaoProfile.inProvincePriority === 'boolean'
-					? String(gaokaoProfile.inProvincePriority)
-					: '[]',
-				targetSchoolLevels: Array.isArray(gaokaoProfile.targetSchoolLevels) && gaokaoProfile.targetSchoolLevels.length
-					? gaokaoProfile.targetSchoolLevels.join(', ')
-					: '[]',
-				ownershipPreference: String(gaokaoProfile.ownershipPreference || '').trim() || '[]',
-				riskPreference: String(gaokaoProfile.riskPreference || '').trim() || '[]',
-				careerGoals: Array.isArray(gaokaoProfile.careerGoals) && gaokaoProfile.careerGoals.length
-					? gaokaoProfile.careerGoals.join(', ')
-					: '[]',
-				budgetNote: String(gaokaoProfile.budgetNote || '').trim() || '[]',
-				familyConstraints: String(gaokaoProfile.familyConstraints || '').trim() || '[]',
-				distancePreference: String(gaokaoProfile.distancePreference || '').trim() || '[]',
-				mustAvoidFactors: Array.isArray(gaokaoProfile.mustAvoidFactors) && gaokaoProfile.mustAvoidFactors.length
-					? gaokaoProfile.mustAvoidFactors.join(', ')
-					: '[]',
-				currentStage: String(progress.currentStage || '').trim() || '[]',
-				mainConcerns: Array.isArray(progress.mainConcerns) && progress.mainConcerns.length
-					? progress.mainConcerns.join(', ')
-					: '[]',
-				missingKeyFields: Array.isArray(gaokao.missingKeyFields) && gaokao.missingKeyFields.length
-					? gaokao.missingKeyFields.join(', ')
-					: '[]',
-				recommendedNextQuestion: String(gaokao.recommendedNextQuestion || '').trim() || '[]',
-				recentQuestionSummaries: recentNotes.length
-					? recentNotes.map((item) => ({
-						...item,
-						answerSummary: ''
-					})).map((item) => String((item && (item.sourceMessageSummary || item.questionSummary)) || '').trim()).filter(Boolean).join(' || ')
-					: '[]',
-				recentUserMessages: recentMessages.length
-					? recentMessages.map((item) => String(item && item.content || '').trim()).filter(Boolean).join(' || ')
-					: '[]',
-				profileJson: JSON.stringify(profile),
-				gaokaoJson: JSON.stringify(gaokao)
+				lastCompletedReply: formatDebugValue(runtime.lastCompletedPayload && (runtime.lastCompletedPayload.reply || runtime.lastCompletedPayload.message)),
+				liveThinkingText: normalizeText(runtime.liveThinkingText, '[]'),
+				liveRenderedText: normalizeText(runtime.liveRenderedText, '[]'),
+				structuredRawMessages: buildStructuredDebugMessages(rawMessages),
+				structuredFrontendMessages: buildStructuredDebugMessages(frontendMessages),
+				structuredFormattedMessages: buildStructuredDebugMessages(formattedMessages),
+				streamEventsJson: safeJsonStringify(streamEvents, '[]'),
+				rawMessagesJson: safeJsonStringify(rawMessages, '[]'),
+				frontendMessagesJson: safeJsonStringify(frontendMessages, '[]'),
+				formattedMessagesJson: safeJsonStringify(formattedMessages, '[]')
 			}
 		},
 		customerServicePhone() {
@@ -673,8 +664,6 @@ export default {
 	onLoad(options = {}) {
 		this.agentId = normalizeText(options.agentId || DEFAULT_AGENT_ID, DEFAULT_AGENT_ID)
 		this.sessionId = normalizeText(options.sessionId || createSessionId(), createSessionId())
-		this.showProfileDebugPanel = false
-		this.profileDebugPanelOpen = false
 		const agentUi = getAgentUiConfig(this.agentId)
 		const visualConfig = getAiChatVisualConfig(this.agentId)
 		this.assistantName = agentUi.assistantName
@@ -689,6 +678,7 @@ export default {
 		this.composerPlaceholderOverride = agentUi.composerPlaceholder || this.composerPlaceholderOverride
 		this.transportMode = agentUi.transportMode || this.transportMode || 'stream'
 		this.visualMode = visualConfig.mode
+		this.enableDebugTools = this.visualMode === 'gaokao'
 		this.visualTopImageUrl = visualConfig.topImageUrl
 		this.visualIntroSectionImageUrls = normalizeVisualIntroSectionImageUrls(visualConfig.introSectionImageUrls)
 		this.visualComposerBackgroundImageUrl = visualConfig.composerBackgroundImageUrl || ''
@@ -706,9 +696,32 @@ export default {
 		this.syncVolunteerUnlockAssets()
 		this.syncAccessState()
 	},
-	methods: {
-		...chatPageMethods,
-		async syncVolunteerUnlockAssets() {
+		methods: {
+			...chatPageMethods,
+			toggleDebugPanel() {
+				this.debugPanelOpen = !this.debugPanelOpen
+			},
+			copyDebugSummary() {
+				const lines = [
+					`requestedAgentId: ${this.agentId}`,
+					`resolvedAgentId: ${this.resolvedAgentId || '[]'}`,
+					`resolvedAgentName: ${this.resolvedAgentName || this.assistantName || '[]'}`,
+					`sessionId: ${this.sessionId}`,
+					`transportMode: ${this.transportMode || '[]'}`,
+					`provider: ${this.runtimeDebugSummary.provider}`,
+					`model: ${this.runtimeDebugSummary.model}`,
+					`requestApi: ${this.runtimeDebugSummary.requestApi}`,
+					`requestTotalMs: ${this.runtimeDebugSummary.requestTotalMs}`,
+					`lastStatusCode: ${this.runtimeDebugSummary.lastStatusCode}`,
+					`本轮触发 skill: ${this.debugSummary.skillAttached}`,
+					`已触发 skills: ${this.debugSummary.activatedSkills}`,
+					`已加载 skill 文件: ${this.debugSummary.loadedSkillFiles}`,
+					`skill 注入字符数: ${this.debugSummary.skillPromptChars}`,
+					`skill 触发原因: ${this.debugSummary.skillMatchReason}`
+				]
+				this.copyText(lines.join('\n'))
+			},
+			async syncVolunteerUnlockAssets() {
 			try {
 				const [remainingQueryBannerUrl, vipBannerUrl] = await resolveCachedImages([
 					REMAINING_QUERY_BANNER_URL,
@@ -721,42 +734,6 @@ export default {
 				this.remainingQueryBannerUrl = REMAINING_QUERY_BANNER_URL
 				this.vipBannerUrl = VIP_BANNER_URL
 			}
-		},
-		copyDebugSummary() {
-			const lines = [
-				`requestedAgentId: ${this.agentId}`,
-				`resolvedAgentId: ${this.resolvedAgentId || '[]'}`,
-				`resolvedAgentName: ${this.resolvedAgentName || this.assistantName || '[]'}`,
-				`sessionId: ${this.sessionId}`,
-				`本轮触发 skill: ${this.debugSummary.skillAttached}`,
-				`已触发 skills: ${this.debugSummary.activatedSkills}`,
-				`已加载 skill 文件: ${this.debugSummary.loadedSkillFiles}`,
-				`skill 注入字符数: ${this.debugSummary.skillPromptChars}`,
-				`skill 触发原因: ${this.debugSummary.skillMatchReason}`
-			]
-			this.copyText(lines.join('\n'))
-		},
-		copyProfileDebugSummary() {
-			const lines = [
-				`sessionId: ${this.profileDebugSummary.sessionId}`,
-				`最近刷新: ${this.profileDebugSummary.fetchedAt}`,
-				`debugError: ${this.profileDebugSummary.error}`,
-				`分数: ${this.profileDebugSummary.score}`,
-				`位次: ${this.profileDebugSummary.rank}`,
-				`科类/模式: ${this.profileDebugSummary.subjectMode}`,
-				`选科: ${this.profileDebugSummary.selectedSubjects}`,
-				`专业偏好: ${this.profileDebugSummary.majorPreferences}`,
-				`城市偏好: ${this.profileDebugSummary.preferredCities}`,
-				`当前阶段: ${this.profileDebugSummary.currentStage}`,
-				`主要顾虑: ${this.profileDebugSummary.mainConcerns}`,
-				`待补字段: ${this.profileDebugSummary.missingKeyFields}`,
-				`推荐下一问: ${this.profileDebugSummary.recommendedNextQuestion}`,
-				`最近问题摘要: ${this.profileDebugSummary.recentQuestionSummaries}`,
-				`会话用户原话: ${this.profileDebugSummary.recentUserMessages}`,
-				`用户结构化画像: ${this.profileDebugSummary.profileJson}`,
-				`高考结构化状态: ${this.profileDebugSummary.gaokaoJson}`
-			]
-			this.copyText(lines.join('\n'))
 		},
 		handleIntroTopicSelect(item) {
 			const topicKey = normalizeText(item && item.topicKey, '')
@@ -814,165 +791,6 @@ export default {
 	}
 }
 </script>
-
-<style scoped>
-.chat-page-root {
-	position: relative;
-	min-height: 100vh;
-}
-
-.chat-debug-overlay {
-	position: fixed;
-	right: 24rpx;
-	top: calc(224rpx + env(safe-area-inset-top, 0px));
-	z-index: 120;
-	display: flex;
-	justify-content: flex-end;
-	pointer-events: none;
-}
-
-.chat-debug-overlay-open {
-	z-index: 130;
-}
-
-.chat-debug-panel {
-	width: min(560rpx, calc(100vw - 48rpx));
-	border-radius: 24rpx;
-	background: rgba(37, 99, 235, 0.92);
-	border: 1rpx solid rgba(191, 219, 254, 0.55);
-	overflow: hidden;
-	box-shadow: 0 18rpx 40rpx rgba(37, 99, 235, 0.24);
-	pointer-events: auto;
-}
-
-.chat-debug-panel-open {
-	background: rgba(15, 23, 42, 0.9);
-	border-color: rgba(255, 255, 255, 0.12);
-}
-
-.chat-debug-header {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 18rpx 22rpx;
-}
-
-.chat-debug-actions {
-	display: flex;
-	align-items: center;
-	gap: 18rpx;
-}
-
-.chat-debug-title {
-	font-size: 24rpx;
-	font-weight: 700;
-	color: #f8fafc;
-}
-
-.chat-debug-copy {
-	font-size: 22rpx;
-	line-height: 1;
-	color: #eff6ff;
-	padding: 10rpx 16rpx;
-	border-radius: 999rpx;
-	background: rgba(255, 255, 255, 0.18);
-}
-
-.chat-debug-toggle {
-	font-size: 22rpx;
-	color: rgba(248, 250, 252, 0.92);
-}
-
-.chat-debug-body {
-	display: flex;
-	flex-direction: column;
-	padding: 0 22rpx 20rpx;
-	gap: 10rpx;
-}
-
-.chat-debug-line {
-	font-size: 20rpx;
-	line-height: 1.55;
-	color: rgba(241, 245, 249, 0.92);
-	word-break: break-all;
-}
-
-.chat-profile-debug-overlay {
-	position: fixed;
-	left: 24rpx;
-	top: calc(264rpx + env(safe-area-inset-top, 0px));
-	z-index: 120;
-	display: flex;
-	justify-content: flex-start;
-	pointer-events: none;
-}
-
-.chat-profile-debug-overlay-open {
-	z-index: 130;
-}
-
-.chat-profile-debug-panel {
-	width: min(620rpx, calc(100vw - 48rpx));
-	border-radius: 24rpx;
-	background: rgba(12, 74, 110, 0.94);
-	border: 1rpx solid rgba(165, 243, 252, 0.35);
-	overflow: hidden;
-	box-shadow: 0 18rpx 40rpx rgba(8, 47, 73, 0.28);
-	pointer-events: auto;
-}
-
-.chat-profile-debug-panel-open {
-	background: rgba(8, 47, 73, 0.96);
-	border-color: rgba(165, 243, 252, 0.42);
-}
-
-.chat-profile-debug-header {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 18rpx 22rpx;
-}
-
-.chat-profile-debug-title {
-	font-size: 24rpx;
-	font-weight: 700;
-	color: #ecfeff;
-}
-
-.chat-profile-debug-actions {
-	display: flex;
-	align-items: center;
-	gap: 18rpx;
-}
-
-.chat-profile-debug-copy {
-	font-size: 22rpx;
-	line-height: 1;
-	color: #ecfeff;
-	padding: 10rpx 16rpx;
-	border-radius: 999rpx;
-	background: rgba(255, 255, 255, 0.12);
-}
-
-.chat-profile-debug-toggle {
-	font-size: 22rpx;
-	color: rgba(236, 254, 255, 0.92);
-}
-
-.chat-profile-debug-body {
-	display: flex;
-	flex-direction: column;
-	padding: 0 22rpx 20rpx;
-	gap: 10rpx;
-}
-
-.chat-profile-debug-line {
-	font-size: 20rpx;
-	line-height: 1.55;
-	color: rgba(236, 254, 255, 0.94);
-	word-break: break-all;
-}
-</style>
 
 <style scoped>
 .chat-intro-visual-wrap {

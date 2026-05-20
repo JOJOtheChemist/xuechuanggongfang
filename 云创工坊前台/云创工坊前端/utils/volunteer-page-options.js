@@ -82,6 +82,65 @@ function normalizeMajorCategory(value) {
   return String(value || '').trim()
 }
 
+function normalizeRegionOptionValue(value) {
+  const text = String(value || '').trim()
+  if (!text) return ''
+
+  if (text === '昆明市') return '云南省'
+  if (text === '丽江市') return '云南省'
+  if (text === '长沙市') return '湖南省'
+  if (text === '铁门关市') return '新疆维吾尔自治区'
+  if (text === '乌鲁木齐市') return '新疆维吾尔自治区'
+  if (text === '阿拉尔市') return '新疆维吾尔自治区'
+  if (text === '内蒙古') return '内蒙古自治区'
+  if (text === '广西') return '广西壮族自治区'
+  if (text === '西藏') return '西藏自治区'
+  if (text === '宁夏') return '宁夏回族自治区'
+  if (text === '新疆') return '新疆维吾尔自治区'
+  if (text === '香港') return '香港特别行政区'
+  if (text === '澳门') return '澳门特别行政区'
+  if (text === '北京') return '北京市'
+  if (text === '天津') return '天津市'
+  if (text === '上海') return '上海市'
+  if (text === '重庆') return '重庆市'
+  if (/^[^\s]+省$/.test(text) || /^[^\s]+市$/.test(text) || /^[^\s]+自治区$/.test(text) || /^[^\s]+特别行政区$/.test(text)) {
+    return text
+  }
+  return `${text}省`
+}
+
+function buildDynamicCityOptions(items = []) {
+  const values = new Set()
+
+  ;(Array.isArray(items) ? items : []).forEach((item) => {
+    const candidates = [
+      item && item.city,
+      item && item.city_name,
+      item && item.province,
+      item && item.province_name
+    ]
+
+    candidates.forEach((candidate) => {
+      const normalized = normalizeRegionOptionValue(candidate)
+      if (normalized) {
+        values.add(normalized)
+      }
+    })
+  })
+
+  const dynamicOptions = Array.from(values)
+    .sort((left, right) => left.localeCompare(right, 'zh-Hans-CN'))
+    .map((value) => ({
+      label: value,
+      value
+    }))
+
+  return [{
+    label: '全部地区',
+    value: ''
+  }, ...dynamicOptions]
+}
+
 const DIRECT_SCORE_HIDDEN_INSTITUTION_NAMES = new Set(['云南大学'])
 
 function normalizeInstitutionName(value) {
@@ -649,7 +708,7 @@ export function createVolunteerPageOptions() {
 	    selectedCityLabel() {
 	      return this.cityOptions[this.selectedCityIndex]?.label || '全部地区'
 	    },
-	    selectedCityValue() {
+      selectedCityValue() {
 	      return this.cityOptions[this.appliedCityIndex]?.value || ''
 	    },
 	    selectedLevelLabel() {

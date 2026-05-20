@@ -93,7 +93,7 @@ const AGENT_UI_CONFIGS = {
 		assistantName: '云南志愿填报老师 雪峰哥',
 		assistantRole: '高考志愿顾问',
 		assistantAvatarUrl: GAOKAO_CONSULTANT_AVATAR_URL,
-		transportMode: 'sync',
+		transportMode: 'stream',
 		introQuickPrompts: GAOKAO_GUESS_PROMPT_POOL,
 		introSuggestionPrompts: [
 			'520分冲稳保',

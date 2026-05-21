@@ -141,16 +141,12 @@ function buildDynamicCityOptions(items = []) {
   }, ...dynamicOptions]
 }
 
-const DIRECT_SCORE_HIDDEN_INSTITUTION_NAMES = new Set(['云南大学'])
-
 function normalizeInstitutionName(value) {
   return String(value || '').replace(/\s+/g, '').trim()
 }
 
 function shouldHideDirectScoreInstitution(item) {
-  const institutionName = normalizeInstitutionName(item && item.name)
-  if (!institutionName) return false
-  return DIRECT_SCORE_HIDDEN_INSTITUTION_NAMES.has(institutionName)
+  return false
 }
 
 function parseScoreNumber(value) {

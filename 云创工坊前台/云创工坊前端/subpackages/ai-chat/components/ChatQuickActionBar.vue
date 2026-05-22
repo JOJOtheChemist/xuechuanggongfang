@@ -7,6 +7,8 @@
 				:label="item.label"
 				:tone="item.tone"
 				:action="item.action"
+				:route-url="item.routeUrl"
+				:reply="item.reply"
 				:disabled="disabled"
 				@select="handleChipSelect"
 			/>
@@ -40,14 +42,18 @@ export default {
 						key: `quick-action-${index}`,
 						label: item,
 						tone: 'neutral',
-						action: item
+						action: item,
+						routeUrl: '',
+						reply: ''
 					}
 				}
 				return {
 					key: `quick-action-${index}`,
 					label: item.label || '',
 					tone: item.tone || 'neutral',
-					action: item.action || item.label || ''
+					action: item.action || item.label || '',
+					routeUrl: item.routeUrl || '',
+					reply: item.reply || item.fixedReply || ''
 				}
 			})
 		}

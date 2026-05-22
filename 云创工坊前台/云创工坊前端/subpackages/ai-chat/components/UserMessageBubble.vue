@@ -63,9 +63,9 @@ export default {
 }
 
 .message-content {
-	flex: 0 1 calc(100% - 170rpx);
-	width: calc(100% - 170rpx);
-	max-width: calc(100% - 170rpx);
+	flex: 0 1 auto;
+	width: 500rpx;
+	max-width: calc(100vw - 220rpx);
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
@@ -81,15 +81,15 @@ export default {
 	color: rgba(57, 77, 124, 0.72);
 	padding-right: 6rpx;
 	text-align: right;
-	word-break: break-word;
-	overflow-wrap: anywhere;
+	word-break: normal;
+	overflow-wrap: break-word;
 }
 
 .message-card {
 	align-self: flex-end;
-	width: auto;
+	width: 100%;
 	max-width: 100%;
-	min-width: 120rpx;
+	min-width: 0;
 	box-sizing: border-box;
 	padding: 24rpx 26rpx;
 	border-radius: 30rpx;
@@ -104,8 +104,8 @@ export default {
 	line-height: 1.5;
 	color: #f6fbff;
 	white-space: pre-wrap;
-	word-break: break-word;
-	overflow-wrap: anywhere;
+	word-break: normal;
+	overflow-wrap: break-word;
 	text-align: left;
 }
 
@@ -139,5 +139,11 @@ export default {
 	font-size: 30rpx;
 	font-weight: 800;
 	color: #ffffff;
+}
+
+@media (max-width: 750rpx) {
+	.message-content {
+		width: calc(100vw - 220rpx);
+	}
 }
 </style>

@@ -132,6 +132,12 @@ import {
   syncForumPublishProfileState
 } from '@/utils/forum-publish-profile'
 import {
+  loadCachedForumFeedState,
+  loadCachedForumPostList,
+  saveCachedForumFeedState,
+  saveCachedForumPostList
+} from '@/utils/forum-feed-cache'
+import {
   DEFAULT_HOME_SCHOOL,
   getForumSchoolOptions,
   MYSTERY_SCHOOL,
@@ -185,6 +191,8 @@ export default {
       loadingMore: false,
       refreshing: false,
       refreshingFromEvent: false,
+      feedRefreshingSilently: false,
+      feedCacheHydrated: false,
       showPublishProfileDialog: false,
       savingPublishProfile: false,
       pendingPublishAfterProfileSave: false,
@@ -225,9 +233,10 @@ export default {
   },
   onLoad() {
     this.registerEvents()
+    this.restoreCachedFeedState()
     this.syncHeroImage()
     this.syncPublishButtonImage()
-    this.refreshList()
+    this.bootstrapFeed()
   },
   onShow() {
     const page =
@@ -250,6 +259,68 @@ export default {
     this.unregisterEvents()
   },
   methods: {
+    restoreCachedFeedState() {
+      const cachedState = loadCachedForumFeedState()
+      if (!cachedState) return
+
+      this.activeTab = cachedState.activeTab || this.activeTab
+      if (this.activeTab === 'local' && cachedState.currentSchool) {
+        this.currentSchool = this.normalizeSchoolDisplay(cachedState.currentSchool)
+      }
+    },
+    applyCachedFeedList() {
+      const cached = loadCachedForumPostList({
+        activeTab: this.activeTab,
+        currentSchool: this.currentSchool,
+        pageSize: this.pageSize
+      })
+      if (!cached || !Array.isArray(cached.list)) return false
+
+      const cachedList = cached.list.map((item) => {
+        const nextItem = Object.assign({}, item)
+        nextItem.school = this.normalizeSchoolDisplay(item && item.school)
+        return nextItem
+      })
+
+      this.posts = cachedList
+      this.page = Math.max(1, Number(cached.page || 1) || 1)
+      this.hasMore = !!cached.hasMore
+      this.feedCacheHydrated = true
+      this.loadErrorMessage = ''
+      return true
+    },
+    async bootstrapFeed() {
+      const hitCache = this.applyCachedFeedList()
+      if (hitCache) {
+        this.loading = false
+        this.feedRefreshingSilently = true
+        this.refreshList({
+          silent: true,
+          preserveExisting: true
+        }).finally(() => {
+          this.feedRefreshingSilently = false
+        })
+        return
+      }
+
+      await this.refreshList()
+    },
+    mergeFreshPosts(previousPosts = [], freshPosts = []) {
+      const previousList = Array.isArray(previousPosts) ? previousPosts : []
+      const freshList = Array.isArray(freshPosts) ? freshPosts : []
+      if (previousList.length === 0) return freshList
+
+      const freshIdSet = new Set()
+      freshList.forEach((item) => {
+        if (item && item.id) {
+          freshIdSet.add(String(item.id))
+        }
+      })
+
+      return freshList.concat(previousList.filter((item) => {
+        return item && item.id && !freshIdSet.has(String(item.id))
+      }))
+    },
     async syncHeroImage() {
       try {
         const cachedUrl = await resolveCachedImage(FORUM_HERO_IMAGE_URL)
@@ -310,7 +381,7 @@ export default {
       this.refreshingFromEvent = true
     },
     handleRefresh() {
-      if (this.refreshing) return
+      if (this.refreshing || this.feedRefreshingSilently) return
       this.refreshing = true
       this.refreshList().finally(() => {
         this.refreshing = false
@@ -329,6 +400,13 @@ export default {
           like_count: nextLikeCount
         })
       })
+      saveCachedForumPostList(this.posts, {
+        activeTab: this.activeTab,
+        currentSchool: this.currentSchool,
+        page: this.page,
+        pageSize: this.pageSize,
+        hasMore: this.hasMore
+      })
     },
     handlePostCommented(payload = {}) {
       const targetId = String(payload.id || '').trim()
@@ -341,26 +419,49 @@ export default {
           comment_count: nextCommentCount
         })
       })
+      saveCachedForumPostList(this.posts, {
+        activeTab: this.activeTab,
+        currentSchool: this.currentSchool,
+        page: this.page,
+        pageSize: this.pageSize,
+        hasMore: this.hasMore
+      })
     },
-    async refreshList() {
+    async refreshList(options = {}) {
+      const config = options && typeof options === 'object' ? options : {}
+      const silent = config.silent === true
+      const preserveExisting = config.preserveExisting === true
       const previousPage = this.page
       const previousHasMore = this.hasMore
+      const previousPosts = Array.isArray(this.posts) ? this.posts.slice() : []
       this.page = 1
       this.hasMore = true
-      this.loading = true
+      if (!silent) {
+        this.loading = true
+      }
       try {
-        const succeeded = await this.fetchPosts(true)
+        const succeeded = await this.fetchPosts(true, {
+          silent,
+          preserveExisting,
+          previousPage,
+          previousPosts
+        })
         if (!succeeded) {
           this.page = previousPage
           this.hasMore = previousHasMore
+        } else if (preserveExisting) {
+          this.page = previousPage
+          this.hasMore = previousHasMore || this.hasMore
         }
         return succeeded
       } finally {
-        this.loading = false
+        if (!silent) {
+          this.loading = false
+        }
       }
     },
     async handleReachBottom() {
-      if (!this.hasMore || this.loadingMore || this.loading) return
+      if (!this.hasMore || this.loadingMore || this.loading || this.feedRefreshingSilently) return
       const nextPage = this.page + 1
       this.page = nextPage
       this.loadingMore = true
@@ -373,7 +474,8 @@ export default {
         this.loadingMore = false
       }
     },
-    async fetchPosts(reset) {
+    async fetchPosts(reset, options = {}) {
+      const config = options && typeof options === 'object' ? options : {}
       const previousPosts = Array.isArray(this.posts) ? this.posts.slice() : []
       const previousHasMore = !!this.hasMore
       const hadExistingPosts = previousPosts.length > 0
@@ -401,7 +503,7 @@ export default {
           this.schoolOptions = nextSchoolOptions
 
           if (this.activeTab === 'local') {
-            if (!this.currentSchool && payload.current_school) {
+            if (payload.current_school) {
               this.currentSchool = sanitizeForumSchoolSelection(payload.current_school, DEFAULT_HOME_SCHOOL)
             }
             if (!this.currentSchool && this.schoolOptions.length > 0) {
@@ -451,9 +553,26 @@ export default {
           })
         }
 
-        this.posts = reset ? nextList : this.posts.concat(nextList)
+        if (reset) {
+          this.posts = config.preserveExisting
+            ? this.mergeFreshPosts(config.previousPosts || previousPosts, nextList)
+            : nextList
+        } else {
+          this.posts = this.posts.concat(nextList)
+        }
         this.hasMore = !!data.has_more
         this.loadErrorMessage = ''
+        saveCachedForumFeedState({
+          activeTab: this.activeTab,
+          currentSchool: this.currentSchool
+        })
+        saveCachedForumPostList(this.posts, {
+          activeTab: this.activeTab,
+          currentSchool: this.currentSchool,
+          page: config.preserveExisting ? (config.previousPage || 1) : this.page,
+          pageSize: this.pageSize,
+          hasMore: this.hasMore
+        })
         return true
       } catch (error) {
         console.error('[forum] fetchPosts failed:', error)
@@ -465,15 +584,17 @@ export default {
           this.posts = previousPosts
           this.hasMore = previousHasMore
         }
-        uni.showToast({
-          title: error.message || '加载失败',
-          icon: 'none'
-        })
+        if (!config.silent) {
+          uni.showToast({
+            title: error.message || '加载失败',
+            icon: 'none'
+          })
+        }
         return false
       }
     },
     async handleTabChange(tab) {
-      if (this.activeTab === tab) return
+      if (this.activeTab === tab || this.feedRefreshingSilently) return
       const previousTab = this.activeTab
       this.activeTab = tab
       const succeeded = await this.refreshList()
@@ -482,6 +603,7 @@ export default {
       }
     },
     async handleSchoolChange(school) {
+      if (this.feedRefreshingSilently) return
       const targetSchool = this.normalizeSchoolDisplay(school)
       if (!targetSchool || this.currentSchool === targetSchool) return
       const previousSchool = this.currentSchool
@@ -701,6 +823,13 @@ export default {
             like_count: likeCount
           })
         })
+        saveCachedForumPostList(this.posts, {
+          activeTab: this.activeTab,
+          currentSchool: this.currentSchool,
+          page: this.page,
+          pageSize: this.pageSize,
+          hasMore: this.hasMore
+        })
 
         uni.$emit('forum-post-liked', {
           id: postId,
@@ -728,17 +857,8 @@ export default {
 
       const token = this.getToken()
       if (!token) {
-        uni.showModal({
-          title: '请先登录',
-          content: '发布动态需要先完成登录。',
-          confirmText: '去登录',
-          success: (res) => {
-            if (res.confirm) {
-              uni.navigateTo({
-                url: '/pages/auth/login/index'
-              })
-            }
-          }
+        this.navigateToPublish({
+          guestMode: 1
         })
         return
       }
@@ -813,9 +933,14 @@ export default {
         }
       })
     },
-    navigateToPublish() {
+    navigateToPublish(query = {}) {
+      const queryString = Object.keys(query).length
+        ? `?${Object.keys(query)
+            .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(query[key])}`)
+            .join('&')}`
+        : ''
       uni.navigateTo({
-        url: '/subpackages/forum/publish'
+        url: `/subpackages/forum/publish${queryString}`
       })
     }
   }

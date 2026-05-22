@@ -76,28 +76,12 @@ Component({
       })
     },
     openQuickPublish() {
-      const token = wx.getStorageSync('token') || ''
-      if (!token) {
-        wx.showModal({
-          title: '请先登录',
-          content: '发布动态需要先完成登录。',
-          confirmText: '去登录',
-          success: (res) => {
-            if (res.confirm) {
-              wx.navigateTo({
-                url: '/pages/auth/login/index'
-              })
-            }
-          }
-        })
-        return
-      }
-
-      wx.showActionSheet({
-        itemList: ['发布动态暂未开放'],
-        success: (res) => {
-          if (res.tapIndex !== 0) return
-          wx.showToast({ title: '暂未开放', icon: 'none' })
+      wx.navigateTo({
+        url: '/subpackages/forum/publish?guestMode=1',
+        fail: () => {
+          wx.reLaunch({
+            url: '/subpackages/forum/publish?guestMode=1'
+          })
         }
       })
     }

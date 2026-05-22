@@ -67,7 +67,10 @@ export default {
       }
 
       if (this.status.unlocked) {
-        return '分享解锁已生效'
+        const requiredCount = Number(this.status.requiredInviteCount)
+        return Number.isFinite(requiredCount) && requiredCount > 0
+          ? `分享${requiredCount}人解锁已生效`
+          : '分享3人解锁已生效'
       }
 
       return '暂未解锁'

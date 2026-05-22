@@ -10,6 +10,8 @@ module.exports = {
   "/static/volunteer-guide/vip-badge-icon.png": "https://xuechuang.xyz/oss/share-assets/admission/admin/images/0/2026/05/15/73d17e28-f044-42c1-8f97-9b71cba959e0.png",
   "/static/volunteer-guide/direct-score-refresh-button.webp": "https://xuechuang.xyz/oss/share-assets/admission/admin/images/0/2026/05/15/894695a1-202b-415f-a3f2-92b3f15d267c.webp",
   "/static/volunteer-guide/direct-score-reset-button.webp": "https://xuechuang.xyz/oss/share-assets/admission/admin/images/0/2026/05/15/973e1209-59b0-4f3a-80b3-0e8f1b6a7a2e.webp",
+  "/static/volunteer-guide/direct-score-loading-mascot.webp": "https://xuechuang.xyz/oss/share-assets/admission/admin/images/0/2026/05/22/direct-score-loading-mascot-v2.webp",
+  "/static/volunteer-guide/direct-score-loading-copy.webp": "https://xuechuang.xyz/oss/share-assets/admission/admin/images/0/2026/05/22/direct-score-loading-copy-v2.webp",
   "/static/volunteer-guide/direct-score-risk-guide.webp": "https://xuechuang.xyz/oss/share-assets/admission/admin/images/0/2026/05/15/605c155e-c19f-48db-b68a-bebd11e99c53.webp",
   "/static/volunteer-guide/free-consult-button.png": "https://xuechuang.xyz/oss/share-assets/admission/admin/images/0/2026/05/15/c68801e5-060f-40a6-b647-3054c3fef592.png",
   "/static/volunteer-guide/guide-hero-service.jpg": "https://xuechuang.xyz/oss/share-assets/admission/admin/images/0/2026/05/15/e09c4e84-56e2-4f65-8a4e-0ec0a8c843de.jpg",

@@ -1,8 +1,13 @@
 import { DEFAULT_AGENT_ID } from './chat-auth.js'
 
-const XIAOCHUNLU_PRIMARY_AGENT_ID = 'xiaochunlu-ai-v2'
+const XIAOCHUNLU_PRIMARY_AGENT_ID = 'xiaochunlu-ai-v5'
 const AI_CHAT_AGENT_ID_ALIASES = {
 	'xiaochunlu-campus-startup-mentor': XIAOCHUNLU_PRIMARY_AGENT_ID,
+	'xiaochunlu-ai-v2': XIAOCHUNLU_PRIMARY_AGENT_ID,
+	'xiaochunlu-ai-v3': XIAOCHUNLU_PRIMARY_AGENT_ID,
+	'xiaochunlu-ai-v4': XIAOCHUNLU_PRIMARY_AGENT_ID,
+	'xiaochunlu-ai-v5': XIAOCHUNLU_PRIMARY_AGENT_ID,
+	'gaokao-volunteer-consultant-sales-v13': DEFAULT_AGENT_ID,
 	'yunnan-gaokao-volunteer-consultant': DEFAULT_AGENT_ID,
 	'yunnan-gaokao-volunteer-consultant-v2': DEFAULT_AGENT_ID,
 	'yunnan-gaokao-volunteer-consultant-v3-2': DEFAULT_AGENT_ID,
@@ -10,6 +15,8 @@ const AI_CHAT_AGENT_ID_ALIASES = {
 	'yunnan-gaokao-volunteer-consultant-v5': DEFAULT_AGENT_ID,
 	'yunnan-gaokao-volunteer-consultant-v6': DEFAULT_AGENT_ID,
 	'yunnan-gaokao-volunteer-consultant-v7': DEFAULT_AGENT_ID,
+	'yunnan-gaokao-volunteer-consultant-v10': DEFAULT_AGENT_ID,
+	'yunnan-gaokao-volunteer-consultant-v12': DEFAULT_AGENT_ID,
 	'yunnan-zhangxuefeng-volunteer-consultant-v3': DEFAULT_AGENT_ID
 }
 

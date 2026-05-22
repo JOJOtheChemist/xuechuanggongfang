@@ -1,7 +1,7 @@
 <script setup>
 import ToolCallCard from './ToolCallCard.vue'
 import { computed } from 'vue'
-import { formatDebugValue, renderChatMarkdown } from '../utils/chat-format'
+import { extractVisibleReplyText, formatDebugValue, renderChatMarkdown } from '../utils/chat-format'
 
 const props = defineProps({
   panel: {
@@ -11,12 +11,17 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['reset', 'send'])
-const showDebugPanels = true
+const showDebugPanels = false
 
 const renderedMessages = computed(() => {
   return (Array.isArray(props.panel?.messages) ? props.panel.messages : []).map((message) => ({
     ...message,
-    renderedHtml: renderChatMarkdown(message.content || ''),
+    renderedHtml: renderChatMarkdown(
+      message.role === 'assistant'
+        ? extractVisibleReplyText(message.content || '') || message.content || ''
+        : message.content || '',
+    ),
+    thinkingHtml: renderChatMarkdown(message.thinkingText || ''),
   }))
 })
 
@@ -112,10 +117,11 @@ const profileDebugLines = computed(() => {
           </div>
           <div class="message-markdown" v-html="message.renderedHtml || '<p></p>'"></div>
           <div v-if="message.streaming" class="stream-tag">生成中...</div>
-          <div v-if="typeof message.toolCalls === 'number'" class="tool-call-note">
-            工具调用数：{{ message.toolCalls }}
-          </div>
           <ToolCallCard v-if="Array.isArray(message.tools) && message.tools.length" :tools="message.tools" />
+          <div v-if="message.thinkingText" class="thinking-block">
+            <div class="thinking-title">思考内容</div>
+            <div class="message-markdown thinking-markdown" v-html="message.thinkingHtml || '<p></p>'"></div>
+          </div>
         </div>
       </div>
     </div>

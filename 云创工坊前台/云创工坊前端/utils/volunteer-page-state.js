@@ -63,22 +63,6 @@ const natureOptions = [
   { label: '民办', value: '民办' }
 ]
 
-const schoolTypeOptions = [
-  { label: '全部院校类型', value: '' },
-  { label: '综合类', value: '综合类' },
-  { label: '理工类', value: '理工类' },
-  { label: '师范类', value: '师范类' },
-  { label: '医药类', value: '医药类' },
-  { label: '财经类', value: '财经类' },
-  { label: '农林类', value: '农林类' },
-  { label: '艺术类', value: '艺术类' },
-  { label: '体育类', value: '体育类' },
-  { label: '政法类', value: '政法类' },
-  { label: '语言类', value: '语言类' },
-  { label: '旅游类', value: '旅游类' },
-  { label: '民族类', value: '民族类' }
-]
-
 const riskFilterOptions = [
   { label: '较难', value: 'hard' },
   { label: '较稳', value: 'stable' },
@@ -89,7 +73,6 @@ const riskFilterOptions = [
 const topFilterOptions = withOptionKeys(VOLUNTEER_TOP_FILTER_OPTIONS, 'top')
 const keyedLevelOptions = withOptionKeys(levelOptions, 'level')
 const keyedNatureOptions = withOptionKeys(natureOptions, 'nature')
-const keyedSchoolTypeOptions = withOptionKeys(schoolTypeOptions, 'school-type')
 const keyedRiskFilterOptions = withOptionKeys(riskFilterOptions, 'risk')
 
 export function createVolunteerPageData() {
@@ -111,6 +94,7 @@ export function createVolunteerPageData() {
     unlockStatusLoading: false,
     scoreSaving: false,
     queryCountConsuming: false,
+    queryActionPressed: false,
     unlockPaymentProcessing: false,
     lastUnlockStatusLoadedAt: 0,
     institutions: [],
@@ -142,8 +126,6 @@ export function createVolunteerPageData() {
     appliedLevelIndex: 0,
     selectedNatureIndex: 0,
     appliedNatureIndex: 0,
-    selectedSchoolTypeIndex: 0,
-    appliedSchoolTypeIndex: 0,
     selectedRiskFilterKey: '',
     appliedRiskFilterKey: '',
     localRemainingQueryCount: null,
@@ -152,7 +134,6 @@ export function createVolunteerPageData() {
     cityOptions: withOptionKeys(cityOptions, 'city'),
     levelOptions: keyedLevelOptions,
     natureOptions: keyedNatureOptions,
-    schoolTypeOptions: keyedSchoolTypeOptions,
     riskFilterOptions: keyedRiskFilterOptions
   }
 }

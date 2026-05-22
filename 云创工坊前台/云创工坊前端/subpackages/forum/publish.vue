@@ -1,9 +1,16 @@
 <template>
   <view class="publish-page">
+    <view v-if="isGuestMode" class="guest-mode-card">
+      <text class="guest-mode-kicker">游客模式</text>
+      <text class="guest-mode-title">当前可以进入发布界面，但游客暂时不能发布动态</text>
+      <text class="guest-mode-desc">登录后即可选择学校、上传图片并正式发布内容。这里不会再弹出登录窗口，只保留页面内提示。</text>
+      <button class="guest-login-btn" @tap="goLogin">去登录后发布</button>
+    </view>
+
     <view class="form-card">
       <view class="school-row">
         <text class="label">选择学校</text>
-        <picker mode="selector" :range="schoolOptions" :value="selectedSchoolIndex" @change="handleSchoolChange">
+        <picker mode="selector" :range="schoolOptions" :value="selectedSchoolIndex" :disabled="isGuestMode" @change="handleSchoolChange">
           <view class="school-pill">
             <text class="school-text">{{ selectedSchool || '选择学校' }}</text>
             <text class="school-arrow">▾</text>
@@ -14,6 +21,7 @@
       <input
         class="title-input"
         v-model="title"
+        :disabled="isGuestMode"
         maxlength="50"
         placeholder="请输入动态标题（最多50字）"
         placeholder-class="input-placeholder"
@@ -23,6 +31,7 @@
       <textarea
         class="content-input"
         v-model="content"
+        :disabled="isGuestMode"
         maxlength="1000"
         placeholder="分享你在校园里的见闻、经验和想法..."
         placeholder-class="input-placeholder"
@@ -35,14 +44,19 @@
           <view class="delete-btn" @tap.stop="removeImage(index)">×</view>
         </view>
 
-        <view v-if="images.length < 9" class="img-uploader" @tap="chooseImages">
+        <view
+          v-if="images.length < 9"
+          class="img-uploader"
+          :class="{ disabled: isGuestMode }"
+          @tap="chooseImages"
+        >
           <text class="uploader-plus">+</text>
-          <text class="uploader-text">添加图片</text>
+          <text class="uploader-text">{{ isGuestMode ? '登录后添加' : '添加图片' }}</text>
         </view>
       </view>
     </view>
 
-    <button class="publish-btn" :disabled="submitting || uploading" @tap="submitPost">
+    <button class="publish-btn" :disabled="isGuestMode || submitting || uploading || savingPublishProfile" @tap="submitPost">
       {{ submitButtonText }}
     </button>
 
@@ -103,6 +117,7 @@ export default {
       title: '',
       content: '',
       images: [],
+      isGuestMode: false,
       schoolOptions: [],
       selectedSchool: '',
       submitting: false,
@@ -133,35 +148,49 @@ export default {
       })
     },
     submitButtonText() {
+      if (this.isGuestMode) return '游客模式暂不可发布'
       if (this.uploading) return '图片上传中...'
       if (this.submitting) return '发布中...'
       return '发布动态'
     }
   },
-  onLoad() {
-    this.ensureLoginOnEntry()
-    this.loadSchoolOptions()
-    this.ensurePublishProfileAccess()
+  onShow() {
+    this.syncAccessState()
   },
   methods: {
     getToken() {
       return uni.getStorageSync('token') || ''
     },
-    ensureLoginOnEntry() {
-      const token = this.getToken()
-      if (token) return true
+    async syncAccessState() {
+      this.isGuestMode = !this.getToken()
+      if (this.isGuestMode) {
+        this.showPublishProfileDialog = false
+      }
 
-      uni.showToast({
-        title: '未登录',
-        icon: 'none'
+      await this.loadSchoolOptions()
+
+      if (!this.isGuestMode) {
+        await this.ensurePublishProfileAccess({ silent: true })
+      }
+    },
+    goLogin() {
+      uni.navigateTo({
+        url: '/pages/auth/login/index'
       })
-      return false
     },
     async loadSchoolOptions() {
       const token = this.getToken()
-      if (!token) return
-
       const cachedProfile = getForumPublishProfileStateFromCache().profile || {}
+      const fallbackSchool = sanitizeForumSchoolSelection(
+        cachedProfile.school || this.selectedSchool,
+        DEFAULT_FORUM_SCHOOL
+      )
+
+      if (!token) {
+        this.schoolOptions = buildSchoolOptions([], fallbackSchool)
+        this.selectedSchool = fallbackSchool || this.schoolOptions[0] || DEFAULT_FORUM_SCHOOL
+        return
+      }
 
       try {
         const forumService = getHttpService('forum-service')
@@ -190,6 +219,10 @@ export default {
       }
     },
     async ensurePublishProfileAccess(options = {}) {
+      if (!this.getToken()) {
+        return false
+      }
+
       const cachedState = getForumPublishProfileStateFromCache()
       if (cachedState.complete) {
         this.applyProfileSchool(cachedState.profile.school)
@@ -415,6 +448,13 @@ export default {
     },
     async chooseImages() {
       if (this.uploading) return
+      if (this.isGuestMode) {
+        uni.showToast({
+          title: '游客模式请登录后添加图片',
+          icon: 'none'
+        })
+        return
+      }
 
       try {
         const chooseRes = await uni.chooseImage({
@@ -461,7 +501,10 @@ export default {
 
       const token = this.getToken()
       if (!token) {
-        this.ensureLoginOnEntry()
+        uni.showToast({
+          title: '游客模式请登录后发布',
+          icon: 'none'
+        })
         return
       }
 
@@ -533,6 +576,60 @@ export default {
   background: #f8fafc;
   padding: 24rpx;
   box-sizing: border-box;
+}
+
+.guest-mode-card {
+  margin-bottom: 20rpx;
+  padding: 24rpx;
+  border-radius: 22rpx;
+  background: linear-gradient(135deg, #fff7ed 0%, #fffbeb 100%);
+  border: 1rpx solid #fed7aa;
+  box-shadow: 0 10rpx 24rpx rgba(245, 158, 11, 0.12);
+}
+
+.guest-mode-kicker {
+  display: inline-flex;
+  align-items: center;
+  padding: 8rpx 16rpx;
+  border-radius: 999rpx;
+  background: rgba(249, 115, 22, 0.12);
+  color: #c2410c;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.guest-mode-title {
+  display: block;
+  margin-top: 18rpx;
+  font-size: 32rpx;
+  line-height: 1.5;
+  color: #7c2d12;
+  font-weight: 700;
+}
+
+.guest-mode-desc {
+  display: block;
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  line-height: 1.7;
+  color: #9a3412;
+}
+
+.guest-login-btn {
+  margin-top: 20rpx;
+  width: 100%;
+  height: 82rpx;
+  line-height: 82rpx;
+  border-radius: 14rpx;
+  border: none;
+  background: #ea580c;
+  color: #ffffff;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.guest-login-btn::after {
+  border: none;
 }
 
 .form-card {
@@ -664,6 +761,12 @@ export default {
   justify-content: center;
   color: #d8b4fe;
   background: #faf5ff;
+}
+
+.img-uploader.disabled {
+  border-color: #d6d3d1;
+  color: #a8a29e;
+  background: #f5f5f4;
 }
 
 .uploader-plus {

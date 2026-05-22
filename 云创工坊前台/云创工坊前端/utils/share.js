@@ -1,4 +1,5 @@
 import { getCurrentUserInfo } from './http-services'
+import { writeStorageSync } from './storage-bridge'
 
 const APP_NAME = '学创工坊'
 const DEFAULT_SHARE_PATH = '/pages/dashboard/index'
@@ -260,18 +261,18 @@ function inferInviteType(route, options) {
   return 'team'
 }
 
-export function cacheIncomingInvite(options = {}, route = '') {
+export async function cacheIncomingInvite(options = {}, route = '') {
   const inviterId = decodeParam(options.inviter_id || options.referrer)
   if (!inviterId) return ''
 
   const timestamp = Date.now()
   const inviteType = inferInviteType(route, options)
 
-  uni.setStorageSync('pending_inviter_id', inviterId)
+  await writeStorageSync('pending_inviter_id', inviterId)
 
   if (inviteType === 'business') {
     const businessId = normalizeText(options.businessId || options.id)
-    uni.setStorageSync('pending_business_invite', {
+    await writeStorageSync('pending_business_invite', {
       inviter: inviterId,
       businessId,
       type: 'business_invite',
@@ -279,7 +280,7 @@ export function cacheIncomingInvite(options = {}, route = '') {
       source: 'shared_page'
     })
   } else {
-    uni.setStorageSync('pending_team_invite', {
+    await writeStorageSync('pending_team_invite', {
       inviter: inviterId,
       type: 'team_invite',
       timestamp,

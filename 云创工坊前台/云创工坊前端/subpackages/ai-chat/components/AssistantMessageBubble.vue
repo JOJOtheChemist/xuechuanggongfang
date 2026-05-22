@@ -20,6 +20,27 @@
 
 		<view class="message-content">
 			<text class="message-name">{{ name }}</text>
+			<view v-if="hasThinkingText" class="thinking-card" :class="{ 'thinking-card-open': thinkingExpanded }">
+				<view class="thinking-card-head" @tap="toggleThinking">
+					<view class="thinking-title-row">
+						<text class="thinking-title">思考</text>
+						<view class="thinking-state-chip">
+							<text class="thinking-state-chip-text">{{ thinkingExpanded ? '收起' : '展开' }}</text>
+						</view>
+					</view>
+					<text class="thinking-preview" :class="{ 'thinking-preview-animated': shouldAnimateThinkingPreview }">
+						{{ currentThinkingPreview }}
+					</text>
+				</view>
+				<scroll-view
+					v-if="thinkingExpanded"
+					class="thinking-body"
+					scroll-y="true"
+					:show-scrollbar="false"
+				>
+					<text class="thinking-body-text">{{ normalizedThinkingText }}</text>
+				</scroll-view>
+			</view>
 			<view v-if="shouldRenderMessageCard" class="message-card">
 				<slot>
 					<ChatRichText v-if="text" :text="text" tone="assistant" />
@@ -50,16 +71,18 @@
 					class="message-school-cards"
 					:cards="schoolCards"
 					@select="$emit('school-card-tap', $event)"
+					@copy-url="$emit('school-card-copy', $event)"
 				/>
 			<ChatInviteCardList
 				v-if="inviteCards.length"
 				class="message-invite-cards"
 				:cards="inviteCards"
 			/>
-				<ChatMembershipCardList
-					v-if="membershipCards.length"
+			<ChatMembershipCardList
+					v-if="visibleMembershipCards.length"
 					class="message-membership-cards"
-					:cards="membershipCards"
+					:cards="visibleMembershipCards"
+					:hidden="currentUserIsCampusPartner"
 					@select="$emit('membership-action', $event)"
 				/>
 			<ChatChoiceCard
@@ -114,6 +137,10 @@ export default {
 			type: String,
 			default: ''
 		},
+		thinkingText: {
+			type: String,
+			default: ''
+		},
 		toolCalls: {
 			type: Array,
 			default: () => []
@@ -142,6 +169,10 @@ export default {
 			type: Array,
 			default: () => []
 		},
+		currentUserIsCampusPartner: {
+			type: Boolean,
+			default: false
+		},
 		choiceCards: {
 			type: Array,
 			default: () => []
@@ -157,7 +188,10 @@ export default {
 	},
 	data() {
 		return {
-			avatarLoadFailed: false
+			avatarLoadFailed: false,
+			thinkingExpanded: false,
+			thinkingPreviewTick: 0,
+			thinkingPreviewTimer: null
 		}
 	},
 	computed: {
@@ -172,7 +206,14 @@ export default {
 			return this.displayMode === 'xiaochunlu' || this.displayMode === 'gaokao'
 		},
 		visibleToolCalls() {
-			return this.displayMode === 'xiaochunlu' ? [] : this.toolCalls
+			return Array.isArray(this.toolCalls) ? this.toolCalls : []
+		},
+		visibleMembershipCards() {
+			const cards = Array.isArray(this.membershipCards) ? this.membershipCards : []
+			if (this.currentUserIsCampusPartner) {
+				return []
+			}
+			return cards
 		},
 		avatarShellClass() {
 			return this.isVisualImageMode ? 'avatar-shell-xiaochunlu' : ''
@@ -183,6 +224,27 @@ export default {
 		aiBadgeClass() {
 			return this.isVisualImageMode ? 'ai-badge-xiaochunlu' : ''
 		},
+		normalizedThinkingText() {
+			return this.normalizeThinkingText(this.thinkingText)
+		},
+		thinkingSegments() {
+			return this.splitThinkingSegments(this.normalizedThinkingText)
+		},
+		hasThinkingText() {
+			return Boolean(this.normalizedThinkingText)
+		},
+		shouldAnimateThinkingPreview() {
+			return !this.thinkingExpanded && this.thinkingSegments.length > 1
+		},
+		currentThinkingPreview() {
+			if (!this.thinkingSegments.length) {
+				return '正在整理思路'
+			}
+			if (this.shouldAnimateThinkingPreview) {
+				return this.thinkingSegments[this.thinkingPreviewTick % this.thinkingSegments.length] || this.thinkingSegments[0]
+			}
+			return this.thinkingSegments[0]
+		},
 		shouldRenderMessageCard() {
 			return Boolean(this.text)
 		}
@@ -190,11 +252,68 @@ export default {
 	watch: {
 		avatarUrl() {
 			this.avatarLoadFailed = false
+		},
+		thinkingText: {
+			immediate: true,
+			handler(nextValue) {
+				if (!String(nextValue || '').trim()) {
+					this.thinkingExpanded = false
+					this.stopThinkingPreviewTicker()
+					return
+				}
+				if (!this.thinkingExpanded) {
+					this.startThinkingPreviewTicker()
+				}
+			}
 		}
+	},
+	mounted() {
+		this.startThinkingPreviewTicker()
+	},
+	beforeDestroy() {
+		this.stopThinkingPreviewTicker()
 	},
 	methods: {
 		handleAvatarError() {
 			this.avatarLoadFailed = true
+		},
+		normalizeThinkingText(value = '') {
+			return String(value || '')
+				.replace(/\r\n/g, '\n')
+				.replace(/\n{3,}/g, '\n\n')
+				.trim()
+		},
+		splitThinkingSegments(value = '') {
+			const source = String(value || '').trim()
+			if (!source) return []
+			return source
+				.split(/[\n。！？!?；;]+/g)
+				.map((item) => String(item || '').trim())
+				.filter(Boolean)
+				.slice(0, 8)
+		},
+		startThinkingPreviewTicker() {
+			this.stopThinkingPreviewTicker()
+			if (!this.hasThinkingText || this.thinkingSegments.length <= 1 || this.thinkingExpanded) return
+			this.thinkingPreviewTimer = setInterval(() => {
+				this.thinkingPreviewTick = (this.thinkingPreviewTick + 1) % this.thinkingSegments.length
+			}, 1600)
+		},
+		stopThinkingPreviewTicker() {
+			if (this.thinkingPreviewTimer) {
+				clearInterval(this.thinkingPreviewTimer)
+				this.thinkingPreviewTimer = null
+			}
+			this.thinkingPreviewTick = 0
+		},
+		toggleThinking() {
+			if (!this.hasThinkingText) return
+			this.thinkingExpanded = !this.thinkingExpanded
+			if (this.thinkingExpanded) {
+				this.stopThinkingPreviewTicker()
+				return
+			}
+			this.startThinkingPreviewTicker()
 		}
 	}
 }
@@ -303,6 +422,84 @@ export default {
 	padding-left: 6rpx;
 }
 
+.thinking-card {
+	width: 560rpx;
+	max-width: calc(100vw - 190rpx);
+	min-width: 0;
+	box-sizing: border-box;
+	padding: 18rpx 20rpx;
+	border-radius: 26rpx;
+	background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(236, 241, 246, 0.98));
+	border: 1rpx solid rgba(148, 163, 184, 0.28);
+	box-shadow: 0 12rpx 26rpx rgba(71, 85, 105, 0.06);
+	color: #5b6472;
+}
+
+.thinking-card-open {
+	padding-bottom: 14rpx;
+}
+
+.thinking-card-head {
+	display: flex;
+	flex-direction: column;
+	gap: 10rpx;
+}
+
+.thinking-title-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12rpx;
+}
+
+.thinking-title {
+	font-size: 20rpx;
+	font-weight: 700;
+	color: #6b7280;
+}
+
+.thinking-state-chip {
+	display: inline-flex;
+	align-items: center;
+	padding: 2rpx 10rpx;
+	border-radius: 999rpx;
+	background: rgba(148, 163, 184, 0.14);
+}
+
+.thinking-state-chip-text {
+	font-size: 18rpx;
+	font-weight: 600;
+	color: #718096;
+}
+
+.thinking-preview {
+	font-size: 22rpx;
+	line-height: 1.45;
+	color: #6b7280;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.thinking-preview-animated {
+	opacity: 0.95;
+}
+
+.thinking-body {
+	margin-top: 10rpx;
+	height: 220rpx;
+}
+
+.thinking-body-text {
+	display: block;
+	font-size: 22rpx;
+	line-height: 1.7;
+	color: #4b5563;
+	white-space: pre-wrap;
+	word-break: break-word;
+	overflow-wrap: anywhere;
+}
+
 .message-card {
 	width: 560rpx;
 	max-width: calc(100vw - 190rpx);
@@ -318,6 +515,7 @@ export default {
 }
 
 .message-tool-calls,
+.thinking-card,
 .message-article-cards,
 .message-business-cards,
 .message-goal-cards,
@@ -333,6 +531,7 @@ export default {
 
 @media (max-width: 750rpx) {
 	.message-card,
+	.thinking-card,
 	.message-tool-calls,
 	.message-article-cards,
 	.message-business-cards,

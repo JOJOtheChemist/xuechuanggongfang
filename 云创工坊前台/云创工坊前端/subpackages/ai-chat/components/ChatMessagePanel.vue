@@ -20,6 +20,7 @@
 					:name="assistantName"
 					:avatar-url="assistantAvatarUrl"
 					:text="message.content"
+					:thinking-text="message.thinkingText || ''"
 					:tool-calls="message.toolCalls || message.tools || []"
 					:business-cards="message.businessCards || []"
 					:goal-cards="message.goalCards || []"
@@ -28,10 +29,12 @@
 					:invite-cards="message.inviteCards || []"
 					:membership-cards="message.membershipCards || []"
 					:choice-cards="message.choiceCards || []"
+					:current-user-is-campus-partner="currentUserIsCampusPartner"
 					:card-disabled="isSending"
 					:display-mode="displayMode"
 					@membership-action="$emit('membership-action', $event)"
 					@school-card-tap="$emit('school-card-tap', $event)"
+					@school-card-copy="$emit('school-card-copy', $event)"
 					@choice-select="$emit('choice-select', $event)"
 				/>
 				<UserMessageBubble
@@ -105,6 +108,10 @@ export default {
 			type: String,
 			default: ''
 		},
+		currentUserIsCampusPartner: {
+			type: Boolean,
+			default: false
+		},
 		messages: {
 			type: Array,
 			default: () => []
@@ -130,7 +137,7 @@ export default {
 			default: 'default'
 		}
 	},
-	emits: ['membership-action', 'school-card-tap', 'choice-select'],
+	emits: ['membership-action', 'school-card-tap', 'school-card-copy', 'choice-select'],
 	computed: {
 		displayModeClass() {
 			return this.isVisualImageMode ? 'message-panel-xiaochunlu' : ''
@@ -160,10 +167,10 @@ export default {
 		typingMessages() {
 			if (this.displayMode === 'gaokao') {
 				return [
-					'正在结合你的分数、位次和偏好细化判断',
-					'正在补充云南院校与专业方向的相关资料',
-					'正在对比更适合你的志愿梯度与选择范围',
-					'正在整理一份更贴近你情况的建议'
+					'首次查询要先核验数据，通常会慢一点，但更准。',
+					'正在同步云南院校、专业和分数线的最新口径。',
+					'正在核对公开信息，避免给你过期结果。',
+					'正在整理更稳的查分结论，马上就好。'
 				]
 			}
 			if (this.displayMode === 'xiaochunlu') {

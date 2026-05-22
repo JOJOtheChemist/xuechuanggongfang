@@ -26,6 +26,14 @@ export default {
 			type: String,
 			default: ''
 		},
+		routeUrl: {
+			type: String,
+			default: ''
+		},
+		reply: {
+			type: String,
+			default: ''
+		},
 		disabled: {
 			type: Boolean,
 			default: false
@@ -37,7 +45,9 @@ export default {
 			this.$emit('select', {
 				label: this.label,
 				tone: this.tone,
-				action: this.action
+				action: this.action,
+				routeUrl: this.routeUrl,
+				reply: this.reply
 			})
 		}
 	}

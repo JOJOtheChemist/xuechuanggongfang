@@ -270,7 +270,7 @@ export default {
 		},
 		goToAiChat() {
 			uni.navigateTo({
-				url: '/subpackages/ai-chat/index?agentId=yunnan-gaokao-volunteer-consultant'
+				url: '/subpackages/ai-chat/index?agentId=gaokao-volunteer-consultant-sales-v13'
 			})
 		},
 		goToScorePage() {

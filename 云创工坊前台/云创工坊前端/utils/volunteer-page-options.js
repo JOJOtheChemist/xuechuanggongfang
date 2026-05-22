@@ -29,8 +29,11 @@ import {
   resolveScoreGap as resolveAdmissionScoreGap,
   resolveSupplementAvailability as resolveAdmissionSupplementAvailability,
   sortInstitutionsForScore,
+  buildLocalGuestPreviewCacheKey,
+  readLocalGuestPreviewCache,
   writeLocalQueryQuota,
-  writeLocalUnlockStatus
+  writeLocalUnlockStatus,
+  writeLocalGuestPreviewCache
 } from './volunteer-local-admission'
 import {
   buildVolunteerPaymentConfirmText,
@@ -719,12 +722,6 @@ export function createVolunteerPageOptions() {
 	    selectedNatureValue() {
 	      return this.natureOptions[this.appliedNatureIndex]?.value || ''
 	    },
-	    selectedSchoolTypeLabel() {
-	      return this.schoolTypeOptions[this.selectedSchoolTypeIndex]?.label || '全部院校类型'
-	    },
-	    selectedSchoolTypeValue() {
-	      return this.schoolTypeOptions[this.appliedSchoolTypeIndex]?.value || ''
-	    },
 	    scoreValue() {
 	      return parseScoreNumber(this.appliedScoreInput)
 	    },
@@ -750,13 +747,6 @@ export function createVolunteerPageOptions() {
         }
 
         return Boolean(scoreStatus.canModify)
-      },
-      scoreInputPlaceholder() {
-        if (!this.canEditScoreInput) {
-          return '分数已锁定'
-        }
-
-        return '输入分数'
       },
       remainingQueryCountText() {
         if (!this.userLoggedIn) {
@@ -793,15 +783,17 @@ export function createVolunteerPageOptions() {
         return `剩余 ${Math.max(0, Number(this.localRemainingQueryCount) || 0)} 次`
       },
       queryActionTitle() {
+        const hasDraftScore = this.draftScoreValue !== null
+
         if (this.queryCountConsuming) {
           return '正在同步'
         }
 
         if (this.loading || this.scoreSaving) {
-          return '正在查分'
+          return hasDraftScore ? '正在查分' : '正在筛选'
         }
 
-        return '开始查分'
+        return hasDraftScore ? '开始查分' : '开始筛选'
       },
       searchActionDisabled() {
         if (this.loading || this.scoreSaving || this.unlockStatusLoading || this.queryCountConsuming) {
@@ -831,7 +823,6 @@ export function createVolunteerPageOptions() {
           this.selectedCityIndex !== this.appliedCityIndex ||
           this.selectedLevelIndex !== this.appliedLevelIndex ||
           this.selectedNatureIndex !== this.appliedNatureIndex ||
-          this.selectedSchoolTypeIndex !== this.appliedSchoolTypeIndex ||
           this.selectedRiskFilterKey !== this.appliedRiskFilterKey
         )
       },
@@ -840,7 +831,6 @@ export function createVolunteerPageOptions() {
 	        city: this.selectedCityValue,
 	        schoolLevel: this.selectedLevelValue,
 	        ownershipType: this.selectedNatureValue,
-	        schoolType: this.selectedSchoolTypeValue,
 	        keyword: this.appliedKeyword,
 	        majorKeyword: this.appliedMajorKeyword
 	      }
@@ -851,30 +841,65 @@ export function createVolunteerPageOptions() {
 
 	      return this.scoreValue === null ? items : sortInstitutionsForScore(items, this.scoreValue)
 	    },
-      guestPreviewInstitutionItems() {
-        return (Array.isArray(this.guestPreviewInstitutions) ? this.guestPreviewInstitutions : [])
-          .filter((item) => !shouldHideDirectScoreInstitution(item))
-      },
+	    guestPreviewInstitutionItems() {
+	        return (Array.isArray(this.guestPreviewInstitutions) ? this.guestPreviewInstitutions : [])
+	          .filter((item) => !shouldHideDirectScoreInstitution(item))
+	      },
       hasFullInstitutionAccess() {
         return Boolean(this.userLoggedIn && this.admissionUnlockStatus && this.admissionUnlockStatus.unlocked)
       },
-	    visibleInstitutions() {
+      visibleInstitutions() {
+        const localFilters = {
+          city: this.selectedCityValue,
+          schoolLevel: this.selectedLevelValue,
+          ownershipType: this.selectedNatureValue,
+          keyword: this.appliedKeyword,
+          majorKeyword: this.appliedMajorKeyword
+        }
+        const filterGuestPreviewInstitutions = (items) => (Array.isArray(items) ? items : [])
+          .filter(isValidInstitution)
+          .filter((item) => !shouldHideDirectScoreInstitution(item))
+          .filter((item) => institutionMatchesLocalFilters(item, localFilters))
+        const hasActiveLocalFilters = Boolean(
+          this.selectedCityValue ||
+          this.selectedLevelValue ||
+          this.selectedNatureValue ||
+          this.appliedKeyword ||
+          this.appliedMajorKeyword
+        )
+
         if (!this.hasFullInstitutionAccess) {
-          return this.guestPreviewInstitutionItems
+          return filterGuestPreviewInstitutions(this.guestPreviewInstitutionItems)
         }
 
-	      if (this.scoreValue === null) {
-	        return this.filteredInstitutions.length > 0 ? this.filteredInstitutions : this.guestPreviewInstitutionItems
-	      }
+        if (this.scoreValue === null) {
+          if (this.filteredInstitutions.length > 0) {
+            return this.filteredInstitutions
+          }
+
+          if (hasActiveLocalFilters || this.institutions.length > 0) {
+            return []
+          }
+
+          return filterGuestPreviewInstitutions(this.guestPreviewInstitutionItems)
+        }
 
         const locallyMatchedInstitutions = this.filteredInstitutions.filter((item) => this.isLocalRecommendationMatch(item))
 
-	      if (this.appliedRiskFilterKey) {
-	        const matchedInstitutions = locallyMatchedInstitutions.filter((item) => this.matchesRiskFilter(item, this.appliedRiskFilterKey))
-          return matchedInstitutions.length > 0 ? matchedInstitutions : this.guestPreviewInstitutionItems
-	      }
+        if (this.appliedRiskFilterKey) {
+          const matchedInstitutions = locallyMatchedInstitutions.filter((item) => this.matchesRiskFilter(item, this.appliedRiskFilterKey))
+          return matchedInstitutions.length > 0
+            ? matchedInstitutions
+            : (hasActiveLocalFilters || this.institutions.length > 0
+              ? []
+              : filterGuestPreviewInstitutions(this.guestPreviewInstitutionItems))
+        }
 
-	      return locallyMatchedInstitutions.length > 0 ? locallyMatchedInstitutions : this.guestPreviewInstitutionItems
+        return locallyMatchedInstitutions.length > 0
+          ? locallyMatchedInstitutions
+          : (hasActiveLocalFilters || this.institutions.length > 0
+            ? []
+            : filterGuestPreviewInstitutions(this.guestPreviewInstitutionItems))
       },
       visibleSchoolCards() {
         const keyCount = {}
@@ -953,27 +978,37 @@ export function createVolunteerPageOptions() {
 	        return currentSummary
 	      }, summary)
 	    },
-	    hasMore() {
-	      return false
-	    },
+      hasMore() {
+        return false
+      },
       resultSummaryText() {
         if (!this.hasFullInstitutionAccess) {
-          return `当前展示 ${this.guestPreviewInstitutionItems.length || 0} 所预览院校`
+          return `当前展示 ${this.visibleInstitutions.length || 0} 所预览院校`
         }
 
         const loadedCount = Array.isArray(this.institutions) ? this.institutions.length : 0
         const visibleCount = Array.isArray(this.visibleInstitutions) ? this.visibleInstitutions.length : 0
         const totalCount = Number(this.total || 0) > 0 ? Number(this.total || 0) : loadedCount
+        const loadPercent = totalCount > 0
+          ? Math.min(100, Math.round((loadedCount / totalCount) * 100))
+          : 0
+
+        if (totalCount > 0) {
+          return `已展示 ${visibleCount} 所 · 已加载 ${loadedCount}/${totalCount} 所（${loadPercent}%）`
+        }
 
         if (this.loading && loadedCount === 0) {
           return '正在加载院校数据...'
         }
 
-        if (totalCount > loadedCount) {
-          return `已展示 ${visibleCount} 所 · 已加载 ${loadedCount}/${totalCount} 所`
+        return `已展示 ${visibleCount} 所 · 已加载 ${loadedCount} 所`
+      },
+      resultSummaryHintText() {
+        if (!this.hasFullInstitutionAccess) {
+          return ''
         }
 
-        return `已展示 ${visibleCount} 所 · 已加载 ${loadedCount} 所`
+        return '首次加载会稍慢一点，后续查分会更顺畅。'
       },
       institutionLoadingText() {
         const baseText = this.institutionLoadProgressText || '正在加载院校数据'
@@ -995,7 +1030,11 @@ export function createVolunteerPageOptions() {
         return '如果长时间停在这里，可以点下面按钮直接切换普通加载。'
       },
       emptyInstitutionStateText() {
-        return this.scoreValue === null ? '暂无匹配院校' : '按当前分数未匹配到院校'
+        if (this.scoreValue === null) {
+          return '当前条件下暂无匹配院校，换个地区、层次或性质试试'
+        }
+
+        return '按当前分数未匹配到院校'
       },
 	      emptyInstitutionActionText() {
 	        return this.userLoggedIn ? '重新拉取院校' : '立即登录'
@@ -1401,7 +1440,6 @@ export function createVolunteerPageOptions() {
         this.appliedCityIndex = this.selectedCityIndex
         this.appliedLevelIndex = this.selectedLevelIndex
         this.appliedNatureIndex = this.selectedNatureIndex
-        this.appliedSchoolTypeIndex = this.selectedSchoolTypeIndex
         this.appliedRiskFilterKey = this.draftScoreValue === null ? '' : this.selectedRiskFilterKey
       },
       isInstitutionBaseQueryChanged() {
@@ -1411,6 +1449,16 @@ export function createVolunteerPageOptions() {
           String(this.draftSubjectTrackValue || '') !== String(this.selectedSubjectTrackValue || '') ||
           String(this.draftMajorCategoryValue || '') !== String(this.selectedMajorCategoryValue || '')
         )
+      },
+      isLocalSearchOnlyChange() {
+        const draftScoreValue = this.draftScoreValue
+        const appliedScoreValue = this.scoreValue
+        const scoreChanged =
+          draftScoreValue === null
+            ? appliedScoreValue !== null
+            : appliedScoreValue === null || Math.abs(Number(draftScoreValue) - Number(appliedScoreValue)) > 0.000001
+
+        return !this.isInstitutionBaseQueryChanged() && !scoreChanged
       },
       async persistScoreIfNeeded() {
         const draftScore = this.draftScoreValue
@@ -1559,11 +1607,41 @@ export function createVolunteerPageOptions() {
           return this.guestPreviewInstitutions
         }
 
-        this.guestPreviewLoading = true
         const query = {
           examType: this.selectedExamValue,
           subjectTrack: this.selectedSubjectTrackValue
         }
+        const cacheKey = buildLocalGuestPreviewCacheKey(query)
+        const cached = options.force ? null : readLocalGuestPreviewCache(cacheKey)
+        const hasCachedItems = Boolean(cached && Array.isArray(cached.items) && cached.items.length > 0)
+
+        if (cached && hasCachedItems) {
+          this.guestPreviewInstitutions = cached.items
+          this.setAdmissionDebugPayload({
+            api: {
+              guestPreview: {
+                requestedAt: new Date().toISOString(),
+                source: 'local-cache',
+                response: {
+                  total: Array.isArray(cached.items) ? cached.items.length : 0,
+                  firstSchool: Array.isArray(cached.items) ? cached.items[0] && cached.items[0].name : ''
+                }
+              }
+            }
+          })
+
+          if (!options.force) {
+            return this.guestPreviewInstitutions
+          }
+        } else if (cached && !hasCachedItems) {
+          console.log('[volunteer] ignore empty guest preview cache, fetching remote')
+        }
+
+        this.guestPreviewLoading = !hasCachedItems
+        if (!hasCachedItems) {
+          this.guestPreviewInstitutions = []
+        }
+
         const requestPromise = requestAdmission('/admission/preview-institutions', query)
         this.guestPreviewRequestPromise = requestPromise
 
@@ -1571,6 +1649,7 @@ export function createVolunteerPageOptions() {
           const result = await requestPromise
           const items = Array.isArray(result && result.items) ? result.items.filter(isValidInstitution) : []
           this.guestPreviewInstitutions = items
+          writeLocalGuestPreviewCache(cacheKey, items)
           this.setAdmissionDebugPayload({
             api: {
               guestPreview: {
@@ -1590,7 +1669,9 @@ export function createVolunteerPageOptions() {
           return items
         } catch (error) {
           console.error('[volunteer] load guest preview institutions failed:', error)
-          this.guestPreviewInstitutions = []
+          if (!hasCachedItems) {
+            this.guestPreviewInstitutions = []
+          }
           this.setAdmissionDebugPayload({
             api: {
               guestPreview: {
@@ -1604,7 +1685,7 @@ export function createVolunteerPageOptions() {
               }
             }
           })
-          return []
+          return hasCachedItems ? this.guestPreviewInstitutions : []
         } finally {
           this.guestPreviewLoading = false
           if (this.guestPreviewRequestPromise === requestPromise) {
@@ -1725,7 +1806,20 @@ export function createVolunteerPageOptions() {
           : this.syncCurrentUserProfile().catch((error) => {
               console.error('[volunteer] sync current user profile failed:', error)
             })
-        const shouldReloadInstitutions = options.reloadInstitutions === true || this.institutions.length === 0
+        const loadedInstitutionCount = Array.isArray(this.institutions) ? this.institutions.length : 0
+        const loadedInstitutionTotal = Number(this.total || 0)
+        const hasIncompleteInstitutionResults =
+          loadedInstitutionCount > 0 &&
+          (
+            loadedInstitutionTotal <= 0 ||
+            loadedInstitutionTotal > loadedInstitutionCount ||
+            this.loadingMore ||
+            Boolean(this.institutionLoadProgressText)
+          )
+        const shouldReloadInstitutions =
+          options.reloadInstitutions === true ||
+          loadedInstitutionCount === 0 ||
+          hasIncompleteInstitutionResults
 
         return this.loadAdmissionUnlockStatus({
           force: options.forceUnlockStatus === true
@@ -2055,6 +2149,17 @@ export function createVolunteerPageOptions() {
       },
       handlePhoneCopied() {},
       async handleSearchAction() {
+        const hasLocalInstitutions =
+          (Array.isArray(this.institutions) && this.institutions.length > 0) ||
+          (Array.isArray(this.guestPreviewInstitutions) && this.guestPreviewInstitutions.length > 0)
+
+        if (this.isLocalSearchOnlyChange() && hasLocalInstitutions) {
+          this.closeDropdown()
+          this.applyDraftFilters()
+          this.errorText = ''
+          return
+        }
+
         if (!this.canQueryInstitutions) {
           if (!this.userLoggedIn) {
             const shouldLogin = await new Promise((resolve) => {
@@ -2086,6 +2191,8 @@ export function createVolunteerPageOptions() {
           return
         }
 
+        this.closeDropdown()
+
         if (this.searchActionDisabled) {
           if (!this.localQueryUnlimited && this.localRemainingQueryCount !== null && this.localRemainingQueryCount <= 0) {
             this.showCustomerServiceModal()
@@ -2093,7 +2200,6 @@ export function createVolunteerPageOptions() {
           return
         }
 
-        this.closeDropdown()
         const ready = await this.persistScoreIfNeeded()
         if (!ready) return
 
@@ -2159,10 +2265,6 @@ export function createVolunteerPageOptions() {
 	    },
 	    onNatureChange(event) {
 	      this.selectedNatureIndex = this.resolveSelectorIndex(event)
-	      this.handleFilterChange()
-	    },
-	    onSchoolTypeChange(event) {
-	      this.selectedSchoolTypeIndex = this.resolveSelectorIndex(event)
 	      this.handleFilterChange()
 	    },
 	    handleRiskFilterSelect(value) {
@@ -2268,8 +2370,6 @@ export function createVolunteerPageOptions() {
         this.appliedLevelIndex = 0
 	      this.selectedNatureIndex = 0
         this.appliedNatureIndex = 0
-	      this.selectedSchoolTypeIndex = 0
-        this.appliedSchoolTypeIndex = 0
 	      this.selectedRiskFilterKey = ''
         this.appliedRiskFilterKey = ''
 	      this.scheduleInstitutionReload(true, { immediate: true })

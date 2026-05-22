@@ -40,15 +40,15 @@
 <script>
 function stripHiddenCourseCardMeta(value = '') {
 	return String(value || '')
-		.replace(/<business_card_meta>[\s\S]*?<\/business_card_meta>/gi, '')
-		.replace(/<article_card_meta>[\s\S]*?<\/article_card_meta>/gi, '')
-		.replace(/<invite_card_meta>[\s\S]*?<\/invite_card_meta>/gi, '')
-		.replace(/<project_card_meta>[\s\S]*?<\/project_card_meta>/gi, '')
-		.replace(/<activity_card_meta>[\s\S]*?<\/activity_card_meta>/gi, '')
-		.replace(/<course_card_meta>[\s\S]*?<\/course_card_meta>/gi, '')
-		.replace(/<membership_card_meta>[\s\S]*?<\/membership_card_meta>/gi, '')
-		.replace(/<choice_card_meta>[\s\S]*?<\/choice_card_meta>/gi, '')
-		.replace(/<reply_json>[\s\S]*?<\/reply_json>/gi, '')
+		.replace(/<business(?:[_\s-]*card)(?:[_\s-]*meta)>[\s\S]*?<\/business(?:[_\s-]*card)(?:[_\s-]*meta)>/gi, '')
+		.replace(/<article(?:[_\s-]*card)(?:[_\s-]*meta)>[\s\S]*?<\/article(?:[_\s-]*card)(?:[_\s-]*meta)>/gi, '')
+		.replace(/<invite(?:[_\s-]*card)(?:[_\s-]*meta)>[\s\S]*?<\/invite(?:[_\s-]*card)(?:[_\s-]*meta)>/gi, '')
+		.replace(/<project(?:[_\s-]*card)(?:[_\s-]*meta)>[\s\S]*?<\/project(?:[_\s-]*card)(?:[_\s-]*meta)>/gi, '')
+		.replace(/<activity(?:[_\s-]*card)(?:[_\s-]*meta)>[\s\S]*?<\/activity(?:[_\s-]*card)(?:[_\s-]*meta)>/gi, '')
+		.replace(/<course(?:[_\s-]*card)(?:[_\s-]*meta)>[\s\S]*?<\/course(?:[_\s-]*card)(?:[_\s-]*meta)>/gi, '')
+		.replace(/<membership(?:[_\s-]*card)(?:[_\s-]*meta)>[\s\S]*?<\/membership(?:[_\s-]*card)(?:[_\s-]*meta)>/gi, '')
+		.replace(/<choice(?:[_\s-]*card)(?:[_\s-]*meta)>[\s\S]*?<\/choice(?:[_\s-]*card)(?:[_\s-]*meta)>/gi, '')
+		.replace(/<reply(?:[_\s-]*json)>[\s\S]*?<\/reply(?:[_\s-]*json)>/gi, '')
 		.trim()
 }
 

@@ -163,8 +163,10 @@ export default {
       }
     },
     getPreviewMajors(item) {
-      if (Array.isArray(item && item.majorPreview)) return item.majorPreview
-      if (Array.isArray(item && item.major_preview)) return item.major_preview
+      if (Array.isArray(item && item.majorPreview) && item.majorPreview.length) return item.majorPreview
+      if (Array.isArray(item && item.major_preview) && item.major_preview.length) return item.major_preview
+      if (Array.isArray(item && item.majors) && item.majors.length) return item.majors
+      if (Array.isArray(item && item.detail && item.detail.majors) && item.detail.majors.length) return item.detail.majors
       return []
     },
     getMajorCount(item) {
@@ -266,8 +268,13 @@ export default {
     },
     resolveVisibleMajors(item) {
       const previewMajors = this.getPreviewMajors(item)
+      const filteredMajors = this.filterMajorsByCategory(previewMajors)
 
-      return this.filterMajorsByCategory(previewMajors)
+      if (filteredMajors.length) {
+        return filteredMajors
+      }
+
+      return previewMajors
     },
     isHintMajor(text) {
       const value = String(text || '').trim()

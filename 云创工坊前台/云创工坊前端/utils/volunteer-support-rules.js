@@ -58,7 +58,7 @@ export function buildVolunteerSupportFooterText(options = {}) {
 
 export function buildVolunteerShareUnlockPrompt(options = {}) {
   const inviteCount = resolveInviteCount(options.requiredInviteCount)
-  return `分享 ${inviteCount} 名好友成功登录后可免费解锁，解锁后有 2 次查分机会。`
+  return `分享${inviteCount}人成功登录后可免费解锁，解锁后有 2 次查分机会。`
 }
 
 export function buildVolunteerPaymentConfirmText(options = {}) {

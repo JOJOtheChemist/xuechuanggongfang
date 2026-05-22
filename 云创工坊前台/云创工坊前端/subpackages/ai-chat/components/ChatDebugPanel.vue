@@ -46,6 +46,35 @@
 				<text class="chat-debug-line">liveThinkingText: {{ runtimeDebugSummary.liveThinkingText }}</text>
 				<text class="chat-debug-line">liveRenderedText: {{ runtimeDebugSummary.liveRenderedText }}</text>
 				<view class="chat-debug-section">
+					<text class="chat-debug-section-title">用户结构化信息</text>
+					<text
+						v-for="line in profileDebugLines"
+						:key="line"
+						class="chat-debug-line"
+					>{{ line }}</text>
+				</view>
+				<view class="chat-debug-section">
+					<text class="chat-debug-section-title">会员状态</text>
+					<text
+						v-for="line in membershipDebugLines"
+						:key="line"
+						class="chat-debug-line"
+					>{{ line }}</text>
+					<text class="chat-debug-pre">{{ safeJsonStringify(membershipDebugData.profileSnapshot, '{}') }}</text>
+				</view>
+				<view class="chat-debug-section">
+					<text class="chat-debug-section-title">用户画像原始快照</text>
+					<text class="chat-debug-pre">{{ safeJsonStringify(profileDebugData.profileSnapshot, '[]') }}</text>
+				</view>
+				<view class="chat-debug-section">
+					<text class="chat-debug-section-title">高考状态原始快照</text>
+					<text class="chat-debug-pre">{{ safeJsonStringify(profileDebugData.gaokaoSnapshot, '[]') }}</text>
+				</view>
+				<view class="chat-debug-section">
+					<text class="chat-debug-section-title">最近用户原话</text>
+					<text class="chat-debug-pre">{{ safeJsonStringify(profileDebugData.recentUserMessages, '[]') }}</text>
+				</view>
+				<view class="chat-debug-section">
 					<text class="chat-debug-section-title">分级后的 runtime messages</text>
 					<view v-if="runtimeDebugSummary.structuredRawMessages.length" class="chat-debug-message-list">
 						<view
@@ -138,6 +167,46 @@
 </template>
 
 <script>
+function isRecord(value) {
+	return value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function safeJsonStringify(value, fallback = '[]') {
+	if (value == null) {
+		return fallback
+	}
+	try {
+		const serialized = JSON.stringify(value, null, 2)
+		return serialized || fallback
+	} catch (error) {
+		return fallback
+	}
+}
+
+function formatDebugValue(value) {
+	if (value == null || value === '') {
+		return '[]'
+	}
+	if (Array.isArray(value)) {
+		if (!value.length) {
+			return '[]'
+		}
+		const normalized = value
+			.map((item) => {
+				if (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') {
+					return String(item)
+				}
+				return safeJsonStringify(item, '')
+			})
+			.filter(Boolean)
+		return normalized.length ? normalized.join(' | ') : '[]'
+	}
+	if (isRecord(value)) {
+		return safeJsonStringify(value, '{}')
+	}
+	return String(value)
+}
+
 export default {
 	name: 'ChatDebugPanel',
 	props: {
@@ -180,7 +249,121 @@ export default {
 		debugSummary: {
 			type: Object,
 			default: () => ({})
+		},
+		profileDebugData: {
+			type: Object,
+			default: () => ({})
+		},
+		membershipDebugData: {
+			type: Object,
+			default: () => ({})
 		}
+	},
+	computed: {
+		profileDebugLines() {
+			const data = this.profileDebugData || {}
+			const profileSnapshot = isRecord(data.profileSnapshot) ? data.profileSnapshot : {}
+			const gaokaoSnapshot = isRecord(data.gaokaoSnapshot) ? data.gaokaoSnapshot : {}
+			const gaokaoProfile = isRecord(gaokaoSnapshot.gaokaoProfile) ? gaokaoSnapshot.gaokaoProfile : {}
+			const consultationProgress = isRecord(gaokaoSnapshot.consultationProgress)
+				? gaokaoSnapshot.consultationProgress
+				: {}
+			const userProfile = isRecord(profileSnapshot.userProfile)
+				? profileSnapshot.userProfile
+				: isRecord(profileSnapshot.profile)
+					? profileSnapshot.profile
+					: {}
+			const intelligence = isRecord(profileSnapshot.intelligence) ? profileSnapshot.intelligence : {}
+			const recentUserMessages = Array.isArray(data.recentUserMessages) ? data.recentUserMessages : []
+
+			return [
+				`sessionId: ${data.sessionId || this.sessionId || '[]'}`,
+				`最近刷新: ${data.fetchedAt || '[]'}`,
+				`debugError: ${data.error || '[]'}`,
+				`分数: ${formatDebugValue(gaokaoProfile.score != null ? gaokaoProfile.score : userProfile.score)}`,
+				`位次: ${formatDebugValue(
+					gaokaoProfile.rank != null
+						? gaokaoProfile.rank
+						: gaokaoSnapshot.position != null
+							? gaokaoSnapshot.position
+							: userProfile.rank
+				)}`,
+				`科类/模式: ${formatDebugValue(
+					gaokaoProfile.subjectMode != null
+						? gaokaoProfile.subjectMode
+						: gaokaoProfile.examType != null
+							? gaokaoProfile.examType
+							: userProfile.subjectMode
+				)}`,
+				`选科: ${formatDebugValue(
+					gaokaoProfile.selectedSubjects != null
+						? gaokaoProfile.selectedSubjects
+						: userProfile.selectedSubjects
+				)}`,
+				`专业偏好: ${formatDebugValue(
+					gaokaoProfile.majorPreferences != null
+						? gaokaoProfile.majorPreferences
+						: userProfile.majorPreferences
+				)}`,
+				`专业避坑: ${formatDebugValue(gaokaoProfile.majorAvoidances)}`,
+				`城市偏好: ${formatDebugValue(
+					gaokaoProfile.preferredCities != null
+						? gaokaoProfile.preferredCities
+						: userProfile.preferredCities
+				)}`,
+				`省份偏好: ${formatDebugValue(gaokaoProfile.preferredProvinces)}`,
+				`省内优先: ${formatDebugValue(gaokaoProfile.inProvincePriority)}`,
+				`学校层次: ${formatDebugValue(gaokaoProfile.targetSchoolLevels)}`,
+				`公办民办偏好: ${formatDebugValue(gaokaoProfile.ownershipPreference)}`,
+				`风险偏好: ${formatDebugValue(gaokaoProfile.riskPreference)}`,
+				`就业/升学目标: ${formatDebugValue(gaokaoProfile.careerGoals)}`,
+				`预算备注: ${formatDebugValue(gaokaoProfile.budgetNote)}`,
+				`家庭约束: ${formatDebugValue(gaokaoProfile.familyConstraints)}`,
+				`距离偏好: ${formatDebugValue(gaokaoProfile.distancePreference)}`,
+				`必须避开: ${formatDebugValue(gaokaoProfile.mustAvoidFactors)}`,
+				`当前阶段: ${formatDebugValue(
+					consultationProgress.currentStage != null
+						? consultationProgress.currentStage
+						: intelligence.currentStage
+				)}`,
+				`主要顾虑: ${formatDebugValue(
+					consultationProgress.mainConcerns != null
+						? consultationProgress.mainConcerns
+						: gaokaoSnapshot.mainConcerns != null
+							? gaokaoSnapshot.mainConcerns
+							: intelligence.mainConcerns
+				)}`,
+				`待补字段: ${formatDebugValue(
+					gaokaoSnapshot.missingKeyFields != null
+						? gaokaoSnapshot.missingKeyFields
+						: intelligence.missingKeyFields
+				)}`,
+				`推荐下一问: ${formatDebugValue(
+					gaokaoSnapshot.recommendedNextQuestion != null
+						? gaokaoSnapshot.recommendedNextQuestion
+						: intelligence.recommendedNextQuestion
+				)}`,
+				`会话用户原话: ${formatDebugValue(recentUserMessages.map((item) => item && item.content).filter(Boolean))}`
+			]
+		},
+		membershipDebugLines() {
+			const data = this.membershipDebugData || {}
+			return [
+				`是否是会员: ${data.isCampusPartner ? '是' : '否'}`,
+				`userId: ${data.userId || '[]'}`,
+				`nickname: ${data.nickname || '[]'}`,
+				`membershipSegment: ${formatDebugValue(data.membershipSegment)}`,
+				`membershipSegmentLabel: ${formatDebugValue(data.membershipSegmentLabel)}`,
+				`memberIdentity: ${formatDebugValue(data.memberIdentity)}`,
+				`memberIdentityLabel: ${formatDebugValue(data.memberIdentityLabel)}`,
+				`teamId: ${formatDebugValue(data.teamId)}`,
+				`teamStatus: ${formatDebugValue(data.teamStatus)}`,
+				`partnerStatus: ${formatDebugValue(data.partnerStatus)}`
+			]
+		}
+	},
+	methods: {
+		safeJsonStringify
 	}
 }
 </script>

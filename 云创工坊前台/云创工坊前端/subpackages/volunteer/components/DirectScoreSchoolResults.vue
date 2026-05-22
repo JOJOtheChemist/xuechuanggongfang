@@ -2,7 +2,7 @@
   <view class="school-results">
     <view class="school-list">
       <view
-        v-for="school in schoolItems"
+        v-for="school in visibleSchoolItems"
         :key="school.renderKey"
         class="school-list-item school-preview-card"
         :class="{ 'school-preview-card-single-major': !shouldUseMajorScroll(school) }"
@@ -41,7 +41,10 @@
           >{{ tag.label }}</text>
         </view>
 
-        <view v-if="school.loadingDetails" class="school-preview-loading">
+        <view
+          v-if="shouldShowSchoolLoadingText(school)"
+          class="school-preview-loading"
+        >
           <text class="school-preview-loading-text">专业分数正在补充加载</text>
         </view>
 
@@ -64,7 +67,7 @@
                 <view class="school-preview-major-title-row">
                   <text class="school-preview-major-title">{{ major.label }}</text>
                 </view>
-                <view class="school-preview-score-table-scroll">
+                <view v-if="major.scoreRows && major.scoreRows.length" class="school-preview-score-table-scroll">
                   <view class="school-preview-score-table">
                     <view class="school-preview-score-row school-preview-score-row-head">
                       <view
@@ -92,6 +95,10 @@
                     </view>
                   </view>
                 </view>
+                <view v-else class="school-preview-major-score-summary">
+                  <text class="school-preview-major-score-summary-label">{{ major.scoreLabel || '参考分' }}</text>
+                  <text class="school-preview-major-score-summary-value">{{ major.scoreText || '待补充' }}</text>
+                </view>
               </block>
             </view>
             <text
@@ -114,7 +121,7 @@
               <view class="school-preview-major-title-row">
                 <text class="school-preview-major-title">{{ major.label }}</text>
               </view>
-              <view class="school-preview-score-table-scroll">
+              <view v-if="major.scoreRows && major.scoreRows.length" class="school-preview-score-table-scroll">
                 <view class="school-preview-score-table">
                   <view class="school-preview-score-row school-preview-score-row-head">
                     <view
@@ -142,10 +149,22 @@
                   </view>
                 </view>
               </view>
+              <view v-else class="school-preview-major-score-summary">
+                <text class="school-preview-major-score-summary-label">{{ major.scoreLabel || '参考分' }}</text>
+                <text class="school-preview-major-score-summary-value">{{ major.scoreText || '待补充' }}</text>
+              </view>
             </block>
           </view>
         </view>
       </view>
+    </view>
+
+    <view
+      v-if="hasHiddenSchoolItems"
+      class="load-more"
+      @tap="handleLoadMore"
+    >
+      <text>继续显示更多院校（{{ visibleSchoolItems.length }}/{{ schoolItems.length }}）</text>
     </view>
   </view>
 </template>
@@ -183,6 +202,12 @@ function toFiniteNumber(value) {
   return Number.isFinite(number) ? number : null
 }
 
+function formatScoreDisplayValue(value) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric <= 0) return ''
+  return Number.isInteger(numeric) ? `${numeric}分` : `${numeric.toFixed(1).replace(/\.0$/, '')}分`
+}
+
 const SCORE_TABLE_COLUMNS = Object.freeze([
   { key: 'year', label: '年份' },
   { key: 'minScore', label: '最低分' },
@@ -190,6 +215,10 @@ const SCORE_TABLE_COLUMNS = Object.freeze([
   { key: 'groupMinScore', label: '专业组最低分' },
   { key: 'groupMinRank', label: '专业组最低位次' }
 ])
+
+const MAX_PREVIEW_MAJORS = 3
+const INITIAL_RENDER_BATCH = 24
+const RENDER_BATCH_STEP = 24
 
 export default {
   name: 'VolunteerDirectScoreResults',
@@ -227,6 +256,7 @@ export default {
       cachedThumbMap: {},
       thumbCacheTaskToken: 0,
       schoolItems: [],
+      renderedSchoolCount: 0,
       schoolHydrationTimer: null,
       schoolHydrationTaskToken: 0,
       hydratedSchoolMap: {}
@@ -237,13 +267,16 @@ export default {
       immediate: true,
       handler() {
         this.syncSchoolThumbCache()
+        this.resetRenderedSchoolCount()
         this.scheduleSchoolHydration()
       }
     },
     majorCategoryFilter() {
+      this.resetRenderedSchoolCount()
       this.scheduleSchoolHydration()
     },
     subjectTrackFilter() {
+      this.resetRenderedSchoolCount()
       this.scheduleSchoolHydration()
     }
   },
@@ -258,11 +291,30 @@ export default {
     normalizedSubjectTrackFilter() {
       return normalizeSubjectTrack(this.subjectTrackFilter)
     },
+    visibleSchoolItems() {
+      const limit = Math.max(0, Number(this.renderedSchoolCount) || 0)
+      if (!limit) return []
+      return Array.isArray(this.schoolItems) ? this.schoolItems.slice(0, limit) : []
+    },
+    hasHiddenSchoolItems() {
+      return Array.isArray(this.schoolItems) && this.schoolItems.length > this.visibleSchoolItems.length
+    },
     scoreTableColumns() {
       return SCORE_TABLE_COLUMNS
     }
   },
   methods: {
+    resetRenderedSchoolCount(totalCount) {
+      const sourceCount = Number.isFinite(Number(totalCount))
+        ? Math.max(0, Number(totalCount))
+        : (Array.isArray(this.schoolItems) && this.schoolItems.length
+          ? this.schoolItems.length
+          : Array.isArray(this.institutions)
+            ? this.institutions.length
+            : 0)
+
+      this.renderedSchoolCount = Math.min(INITIAL_RENDER_BATCH, sourceCount)
+    },
     resolveCachedThumbUrl(url) {
       const source = String(url || '').trim()
       if (!source) return ''
@@ -323,6 +375,16 @@ export default {
         console.warn('[direct-score-results] cache school thumbs failed:', error)
       }
     },
+    handleLoadMore() {
+      if (!this.hasHiddenSchoolItems) {
+        return
+      }
+
+      this.renderedSchoolCount = Math.min(
+        this.schoolItems.length,
+        (Number(this.renderedSchoolCount) || 0) + RENDER_BATCH_STEP
+      )
+    },
     clearSchoolHydrationTimer() {
       if (this.schoolHydrationTimer) {
         clearTimeout(this.schoolHydrationTimer)
@@ -335,9 +397,9 @@ export default {
       }
 
       const nextItems = this.schoolItems.map((school) => {
-        if (!school || !school.raw) return school
+        if (!school || !school.thumbSourceUrl) return school
 
-        const nextThumbUrl = this.resolveCachedThumbUrl(this.resolveSchoolThumb(school.raw))
+        const nextThumbUrl = this.resolveCachedThumbUrl(school.thumbSourceUrl)
         if (nextThumbUrl === school.thumbUrl) {
           return school
         }
@@ -351,6 +413,7 @@ export default {
     },
     scheduleSchoolHydration() {
       this.clearSchoolHydrationTimer()
+      this._rawSchoolMap = Object.create(null)
 
       const source = Array.isArray(this.institutions) ? this.institutions.slice() : []
       const keyCount = {}
@@ -369,6 +432,7 @@ export default {
 
         const renderKey = duplicateCount > 0 ? `${baseKey}-${duplicateCount}` : baseKey
         const hydratedCacheKey = this.buildHydratedSchoolCacheKey(item, index)
+        this._rawSchoolMap[renderKey] = item
         const cachedSchool = this.hydratedSchoolMap[hydratedCacheKey]
         const schoolItem = cachedSchool
           ? this.withSchoolRenderKeys(cachedSchool, renderKey)
@@ -387,6 +451,7 @@ export default {
       })
 
       this.schoolItems = nextSchoolItems
+      this.resetRenderedSchoolCount(nextSchoolItems.length)
       if (!pendingHydrations.length) {
         return
       }
@@ -468,19 +533,38 @@ export default {
       this.$set(this.failedThumbMap, key, true)
     },
     handleSelect(school) {
-      this.$emit('select', school)
+      if (!school || typeof school !== 'object') {
+        return
+      }
+
+      const raw = this._rawSchoolMap && school.renderKey ? this._rawSchoolMap[school.renderKey] : null
+      this.$emit('select', Object.assign({}, school, { raw }))
     },
     formatScoreCell(value) {
       if (value === null || value === undefined || value === '') return '-'
       return String(value)
+    },
+    shouldShowSchoolLoadingText(school) {
+      if (!school || !school.loadingDetails) {
+        return false
+      }
+
+      const majors = Array.isArray(school.majors) ? school.majors : []
+      if (!majors.length) {
+        return true
+      }
+
+      return majors.every((major) => major && major.isPlaceholder)
     },
     shouldUseMajorScroll(school) {
       const majorCount = Array.isArray(school && school.majors) ? school.majors.length : 0
       return majorCount > 2
     },
     getPreviewMajors(item) {
-      if (Array.isArray(item && item.majorPreview)) return item.majorPreview
-      if (Array.isArray(item && item.major_preview)) return item.major_preview
+      if (Array.isArray(item && item.majorPreview) && item.majorPreview.length) return item.majorPreview
+      if (Array.isArray(item && item.major_preview) && item.major_preview.length) return item.major_preview
+      if (Array.isArray(item && item.majors) && item.majors.length) return item.majors
+      if (Array.isArray(item && item.detail && item.detail.majors) && item.detail.majors.length) return item.detail.majors
       return []
     },
     getMajorCount(item) {
@@ -500,8 +584,7 @@ export default {
     },
     resolveVisibleMajorPreviews(item) {
       const previewMajors = this.getPreviewMajors(item)
-
-      return this.filterMajorsByCategory(previewMajors)
+      const categoryFilteredMajors = this.filterMajorsByCategory(previewMajors)
         .map((major) => {
           const subjectTrack = this.resolveMajorSubjectTrack(major) || this.normalizedSubjectTrackFilter
           return Object.assign({}, major, {
@@ -515,6 +598,17 @@ export default {
 
           return normalizeSubjectTrack(major.subjectTrack) === this.normalizedSubjectTrackFilter
         })
+
+      if (categoryFilteredMajors.length) {
+        return categoryFilteredMajors
+      }
+
+      return previewMajors.map((major) => {
+        const subjectTrack = this.resolveMajorSubjectTrack(major) || this.normalizedSubjectTrackFilter
+        return Object.assign({}, major, {
+          subjectTrack
+        })
+      })
     },
     filterMajorsByCategory(majors) {
       const normalizedFilter = this.normalizedMajorCategoryFilter
@@ -547,6 +641,22 @@ export default {
           : {}
 
       return normalizeSubjectTrack(extraPayload.subjectTrack || extraPayload.subject_track)
+    },
+    resolveMajorScoreRows(major) {
+      const extraPayload = major && major.extraPayload && typeof major.extraPayload === 'object'
+        ? major.extraPayload
+        : major && major.extra_payload && typeof major.extra_payload === 'object'
+          ? major.extra_payload
+          : {}
+
+      return this.normalizeScoreRows(
+        major && (
+          major.scoreRows ||
+          major.score_rows ||
+          extraPayload.scoreRows ||
+          extraPayload.score_rows
+        )
+      )
     },
     resolveSchoolThumb(item) {
       if (!item) return ''
@@ -617,9 +727,9 @@ export default {
     },
     resolveVisibleMajors(item) {
       const previewMajors = this.getPreviewMajors(item)
-      return this.filterMajorsByCategory(previewMajors)
+      const categoryFilteredMajors = this.filterMajorsByCategory(previewMajors)
         .map((major) => {
-          const scoreRows = this.normalizeScoreRows(major && (major.scoreRows || major.score_rows))
+          const scoreRows = this.resolveMajorScoreRows(major)
           const subjectTrack = this.resolveMajorSubjectTrack(major) || this.normalizedSubjectTrackFilter
           return Object.assign({}, major, {
             subjectTrack,
@@ -637,6 +747,20 @@ export default {
 
           return normalizeSubjectTrack(major.subjectTrack) === this.normalizedSubjectTrackFilter
         })
+
+      if (categoryFilteredMajors.length) {
+        return categoryFilteredMajors
+      }
+
+      return previewMajors
+        .map((major) => {
+          const scoreRows = this.resolveMajorScoreRows(major)
+          const subjectTrack = this.resolveMajorSubjectTrack(major) || this.normalizedSubjectTrackFilter
+          return Object.assign({}, major, {
+            subjectTrack,
+            scoreRows
+          })
+        })
     },
     formatMajorName(major) {
       const majorName = String((major && (major.majorName || major.major_name)) || '').trim()
@@ -652,15 +776,15 @@ export default {
 
       return scoreRows
         .map((row) => {
-          const year = Number(row && row.year)
+          const year = Number(row && (row.year !== undefined ? row.year : row.examYear !== undefined ? row.examYear : row.exam_year))
           if (!Number.isFinite(year) || year <= 0) return null
 
           return {
             year: String(Math.trunc(year)),
-            minScore: toFiniteNumber(row && row.minScore),
-            minRank: toFiniteNumber(row && row.minRank),
-            groupMinScore: toFiniteNumber(row && row.groupMinScore),
-            groupMinRank: toFiniteNumber(row && row.groupMinRank)
+            minScore: toFiniteNumber(row && (row.minScore !== undefined ? row.minScore : row.min_score)),
+            minRank: toFiniteNumber(row && (row.minRank !== undefined ? row.minRank : row.min_rank)),
+            groupMinScore: toFiniteNumber(row && (row.groupMinScore !== undefined ? row.groupMinScore : row.group_min_score)),
+            groupMinRank: toFiniteNumber(row && (row.groupMinRank !== undefined ? row.groupMinRank : row.group_min_rank))
           }
         })
         .filter(Boolean)
@@ -715,23 +839,18 @@ export default {
       const renderKey = `school-${stableId}`
       const schoolMeta = this.buildSchoolMeta(item)
       const majorCount = this.getMajorCount(item) || visibleMajors.length
-      const majorLabels = visibleMajors
-        .map((major) => this.formatMajorName(major))
-        .filter(Boolean)
+      const visibleMajorCards = visibleMajors.slice(0, MAX_PREVIEW_MAJORS)
       const city = item.city || item.city_name || '地区待补充'
       const level = item.schoolLevel || item.school_level || '层次待补充'
       const nature = normalizeNature(item.ownershipType || item.ownership_type) || '性质待补充'
-      const placeholderLabel = majorLabels.length
-        ? `已匹配 ${Math.min(majorLabels.length, majorCount)} 个专业，分数加载中`
-        : '院校已找到，分数加载中'
 
       return {
         id: item.id,
         stableId,
         renderKey,
-        raw: item,
         name: item.name,
         badge: badgeFromName(item.name),
+        thumbSourceUrl: this.resolveSchoolThumb(item),
         thumbUrl: this.resolveCachedThumbUrl(this.resolveSchoolThumb(item)),
         coverImageUrl: this.resolveSchoolCover(item),
         city,
@@ -744,15 +863,21 @@ export default {
           label: tag,
           renderKey: `${renderKey}-tag-${tagIndex}`
         })),
-        majors: [{
-          label: placeholderLabel,
-          scoreRows: [],
-          isPlaceholder: true,
-          isLoadingDetails: true,
-          renderKey: `${renderKey}-major-loading`
-        }],
+        majors: visibleMajorCards.map((major, majorIndex) => {
+          const label = this.formatMajorName(major)
+          return {
+            label,
+            scoreRows: [],
+            scoreText: '待补充',
+            scoreLabel: '参考分',
+            hasScore: false,
+            showScore: true,
+            isPlaceholder: false,
+            renderKey: `${renderKey}-major-${majorIndex}`
+          }
+        }),
         majorCount,
-        moreMajorCount: majorCount > 1 ? majorCount - 1 : 0,
+        moreMajorCount: majorCount > visibleMajorCards.length ? majorCount - visibleMajorCards.length : 0,
         referenceScoreText: this.buildReferenceScoreText(item),
         previewNote: majorCount > 0 ? `已收录 ${majorCount} 个专业` : '点击查看学校详情',
         loadingDetails: true
@@ -761,7 +886,7 @@ export default {
     mapInstitutionToSchool(item, index) {
       if (!item || typeof item !== 'object') return null
 
-      const visibleMajors = this.resolveVisibleMajors(item)
+      const visibleMajors = this.resolveVisibleMajors(item).slice(0, MAX_PREVIEW_MAJORS)
       if (!visibleMajors.length) {
         return null
       }
@@ -772,10 +897,28 @@ export default {
           if (!label) return null
 
           const realScoreRows = Array.isArray(major && major.scoreRows) ? major.scoreRows : []
+          const scoreValue = toFiniteNumber(
+            major && (
+              major.referenceScore ||
+              major.reference_score ||
+              major.minScore ||
+              major.min_score ||
+              major.avgScore ||
+              major.avg_score ||
+              major.predictedScore ||
+              major.predicted_score
+            )
+          )
+          const fallbackScoreValue = toFiniteNumber(item && (item.referenceScore || item.reference_score))
+          const resolvedScoreValue = scoreValue !== null ? scoreValue : fallbackScoreValue
 
           return {
             label,
             scoreRows: realScoreRows,
+            scoreText: formatScoreDisplayValue(resolvedScoreValue),
+            scoreLabel: '参考分',
+            hasScore: resolvedScoreValue !== null,
+            showScore: true,
             isPlaceholder: false
           }
         })
@@ -796,15 +939,16 @@ export default {
       const city = item.city || item.city_name || '地区待补充'
       const level = item.schoolLevel || item.school_level || '层次待补充'
       const nature = normalizeNature(item.ownershipType || item.ownership_type) || '性质待补充'
+      const thumbSourceUrl = this.resolveSchoolThumb(item)
 
       return {
         id: item.id,
         stableId,
         renderKey,
-        raw: item,
         name: item.name,
         badge: badgeFromName(item.name),
-        thumbUrl: this.resolveCachedThumbUrl(this.resolveSchoolThumb(item)),
+        thumbSourceUrl,
+        thumbUrl: this.resolveCachedThumbUrl(thumbSourceUrl),
         coverImageUrl: this.resolveSchoolCover(item),
         city,
         level,
@@ -1033,6 +1177,30 @@ export default {
   color: #64748b;
 }
 
+.school-preview-major-score-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 10rpx;
+  margin-top: 10rpx;
+  padding: 10rpx 16rpx;
+  border-radius: 999rpx;
+  background: #f8fafc;
+  border: 1rpx solid #dbe4f0;
+}
+
+.school-preview-major-score-summary-label {
+  font-size: 22rpx;
+  line-height: 1.4;
+  color: #64748b;
+}
+
+.school-preview-major-score-summary-value {
+  font-size: 24rpx;
+  font-weight: 700;
+  line-height: 1.4;
+  color: #1d4ed8;
+}
+
 .school-preview-score-table-scroll {
   width: 100%;
   margin-top: 4rpx;
@@ -1124,6 +1292,16 @@ export default {
   font-size: 22rpx;
   line-height: 1.5;
   color: #64748b;
+}
+
+.load-more {
+  margin-top: 18rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 18rpx;
+  background: #f8fafc;
+  border: 1rpx solid #dbe4f0;
+  text-align: center;
+  color: #2563eb;
 }
 
 </style>

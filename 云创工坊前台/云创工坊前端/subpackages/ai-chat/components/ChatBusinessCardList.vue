@@ -1,32 +1,39 @@
 <template>
 	<view v-if="cards.length" class="business-card-group">
-		<view
-			v-for="card in cards"
-			:key="card.id || card.businessId"
-			class="business-card"
-			hover-class="business-card-hover"
-			@tap="openBusiness(card)"
-		>
-			<view class="business-card-head">
-				<view class="business-card-copy">
-					<view class="business-card-title-row">
-						<text class="business-card-title">{{ card.title }}</text>
-						<text class="business-card-badge">创业板块</text>
+		<template v-for="card in cards">
+			<navigator
+				v-if="buildNavigatorUrl(card)"
+				:key="card.id || card.businessId"
+				class="business-card-nav"
+				hover-class="business-card-hover"
+				:url="buildNavigatorUrl(card)"
+				:open-type="resolveNavigatorOpenType(card)"
+			>
+				<view class="business-card">
+					<view class="business-card-head">
+						<view class="business-card-copy">
+							<view class="business-card-title-row">
+								<text class="business-card-title">{{ card.title }}</text>
+								<text v-if="resolveBusinessBadgeText(card)" class="business-card-badge">{{ resolveBusinessBadgeText(card) }}</text>
+							</view>
+							<text v-if="card.summary" class="business-card-summary">{{ card.summary }}</text>
+						</view>
+						<view v-if="resolveBusinessPillText(card)" class="business-card-pill">
+							<text class="business-card-pill-text">{{ resolveBusinessPillText(card) }}</text>
+						</view>
 					</view>
-					<text v-if="card.summary" class="business-card-summary">{{ card.summary }}</text>
-				</view>
-				<view class="business-card-pill">
-					<text class="business-card-pill-text">报名入口</text>
-				</view>
-			</view>
 
-			<view class="business-card-footer">
-				<text class="business-card-meta">
-					{{ resolveBusinessMeta(card) }}
-				</text>
-				<text class="business-card-button">{{ card.hasSignup ? '去填表单' : '去查看' }}</text>
-			</view>
-		</view>
+					<view class="business-card-footer">
+						<text class="business-card-meta">
+							{{ resolveBusinessMeta(card) }}
+						</text>
+						<view class="business-card-button">
+							<text class="business-card-button-text">{{ resolveBusinessButtonText(card) }}</text>
+						</view>
+					</view>
+				</view>
+			</navigator>
+		</template>
 	</view>
 </template>
 
@@ -40,31 +47,86 @@ export default {
 		}
 	},
 	methods: {
-		resolveBusinessMeta(card = {}) {
-			const parts = []
-			if (card.categoryType) parts.push(card.categoryType)
-			if (card.tag) parts.push(card.tag)
-			if (card.hasArticles) parts.push('有文章')
-			return parts.join(' · ') || '业务板块'
-		},
-		openBusiness(card = {}) {
-			const routeUrl = String((card && (card.routeUrl || card.url)) || '').trim()
-			if (routeUrl) {
-				uni.navigateTo({
-					url: routeUrl,
-					fail: () => {
-						uni.showToast({ title: '页面打开失败', icon: 'none' })
-					}
-				})
-				return
+		resolveBusinessBadgeText(card = {}) {
+			if (Object.prototype.hasOwnProperty.call(card, 'badgeText')) {
+				return String(card.badgeText || '').trim()
 			}
-			const id = card.businessId || card.id
-			if (!id) return
-			const title = encodeURIComponent(card.title || '')
-			const type = encodeURIComponent(card.categoryType || 'signup')
-			uni.navigateTo({
-				url: `/pages/extra/signup/index?id=${id}&category=${title}&type=${type}`
-			})
+			return ''
+		},
+		resolveBusinessMeta(card = {}) {
+			const tag = String(card.tag || '').trim()
+			const categoryLabel = this.resolveCategoryTypeLabel(card.categoryType)
+			if (tag) return tag
+			if (categoryLabel) return categoryLabel
+			return card.hasSignup ? '支持在线报名' : '可查看服务详情'
+		},
+		resolveCategoryTypeLabel(categoryType = '') {
+			const normalizedType = String(categoryType || '').trim().toLowerCase()
+			if (normalizedType === 'learning') return '学习服务'
+			if (normalizedType === 'signup') return '报名服务'
+			if (normalizedType === 'consult') return '咨询服务'
+			return ''
+		},
+		resolveBusinessPillText(card = {}) {
+			if (Object.prototype.hasOwnProperty.call(card, 'pillText')) {
+				return String(card.pillText || '').trim()
+			}
+			return card.hasSignup ? '报名入口' : '咨询入口'
+		},
+		resolveBusinessButtonText(card = {}) {
+			if (Object.prototype.hasOwnProperty.call(card, 'buttonText')) {
+				return String(card.buttonText || '').trim() || '去查看'
+			}
+			return card.hasSignup ? '去报名' : '去咨询'
+		},
+		normalizeRouteUrl(routeUrl = '') {
+			const normalizedRoute = String(routeUrl || '').trim()
+			if (!normalizedRoute) return ''
+			return normalizedRoute.startsWith('/') ? normalizedRoute : `/${normalizedRoute}`
+		},
+		appendAiPlanningSource(routeUrl, card = {}) {
+			const normalizedRoute = this.normalizeRouteUrl(routeUrl)
+			if (!normalizedRoute) return ''
+			if (!normalizedRoute.includes('/pages/extra/signup/index')) return normalizedRoute
+			if (/[?&]source=/.test(normalizedRoute)) return normalizedRoute
+			const businessId = String(card.businessId || card.id || '').trim()
+			const isPlanningSignup = businessId === '15' || /[?&]id=15(?:&|$)/.test(normalizedRoute)
+			if (!isPlanningSignup) return normalizedRoute
+			return `${normalizedRoute}${normalizedRoute.includes('?') ? '&' : '?'}source=ai_chat_business`
+		},
+		buildBusinessRoute(card = {}) {
+			const explicitRoute = this.appendAiPlanningSource(card.routeUrl || card.url || '', card)
+			if (explicitRoute) return explicitRoute
+
+			const businessId = String(card.businessId || card.id || '').trim()
+			if (!businessId) return ''
+
+			const query = [`id=${encodeURIComponent(businessId)}`]
+			const title = String(card.title || '').trim()
+			if (title) query.push(`category=${encodeURIComponent(title)}`)
+			query.push(`type=${encodeURIComponent(card.hasSignup ? 'signup' : 'consult')}`)
+			if (businessId === '15') query.push('source=ai_chat_business')
+			return `/pages/extra/signup/index?${query.join('&')}`
+		},
+		buildNavigatorUrl(card = {}) {
+			const routeUrl = this.buildBusinessRoute(card)
+			if (!routeUrl) return ''
+			const openType = this.resolveNavigatorOpenType(card)
+			if (openType === 'switchTab') {
+				return routeUrl.split('?')[0]
+			}
+			return routeUrl
+		},
+		resolveNavigatorOpenType(card = {}) {
+			const routeUrl = this.buildBusinessRoute(card)
+			const path = String(routeUrl || '').split('?')[0]
+			if (path === '/pages/dashboard/index' || path === '/pages/business/index' || path === '/pages/task-center/index' || path === '/pages/profile/index') {
+				return 'switchTab'
+			}
+			if (path === '/pages/extra/signup/index') {
+				return 'redirect'
+			}
+			return 'navigate'
 		}
 	}
 }
@@ -75,6 +137,10 @@ export default {
 	display: flex;
 	flex-direction: column;
 	gap: 16rpx;
+}
+
+.business-card-nav {
+	display: block;
 }
 
 .business-card {
@@ -163,12 +229,18 @@ export default {
 }
 
 .business-card-button {
+	display: flex;
+	align-items: center;
+	justify-content: center;
 	padding: 16rpx 24rpx;
 	border-radius: 999rpx;
+	background: linear-gradient(135deg, #f1a95b, #d98a36);
+	box-shadow: 0 10rpx 20rpx rgba(201, 132, 57, 0.24);
+}
+
+.business-card-button-text {
 	font-size: 24rpx;
 	font-weight: 800;
 	color: #ffffff;
-	background: linear-gradient(135deg, #f1a95b, #d98a36);
-	box-shadow: 0 10rpx 20rpx rgba(201, 132, 57, 0.24);
 }
 </style>

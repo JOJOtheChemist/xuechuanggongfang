@@ -1,8 +1,8 @@
 export const DEFAULT_ADMISSION_PROVINCE = '云南'
-export const INSTITUTION_CACHE_PAGE_SIZE = 100
+export const INSTITUTION_CACHE_PAGE_SIZE = 50
 export const VOLUNTEER_UNLOCK_REQUIRED_INVITE_COUNT = 6
 export const VOLUNTEER_UNLOCK_PAYMENT_AMOUNT = 19.9
-export const VOLUNTEER_CUSTOMER_SERVICE_PHONE = '15087599770'
+export const VOLUNTEER_CUSTOMER_SERVICE_PHONE = '19184057109'
 export const VOLUNTEER_TOP_FILTER_OPTIONS = [
   { label: '物理+化学+生物', examType: 'gaokao', subjectTrack: '物理组', majorCategory: '' },
   { label: '物理+化学+地理', examType: 'gaokao', subjectTrack: '物理组', majorCategory: '' },
@@ -18,9 +18,12 @@ export const VOLUNTEER_TOP_FILTER_OPTIONS = [
   { label: '历史+化学+生物', examType: 'gaokao', subjectTrack: '历史组', majorCategory: '' }
 ]
 
-const LOCAL_INSTITUTION_CACHE_VERSION = '20260516-gaokao-subject-track-v1'
+const LOCAL_INSTITUTION_CACHE_VERSION = '20260522-gaokao-major-score-rows-v2'
 const LOCAL_INSTITUTION_CACHE_TTL_MS = 12 * 60 * 60 * 1000
 const LOCAL_INSTITUTION_CACHE_PREFIX = 'admission_institutions_cache:'
+const LOCAL_GUEST_PREVIEW_CACHE_VERSION = '20260521-gaokao-guest-preview-v1'
+const LOCAL_GUEST_PREVIEW_CACHE_TTL_MS = 12 * 60 * 60 * 1000
+const LOCAL_GUEST_PREVIEW_CACHE_PREFIX = 'admission_guest_preview_cache:'
 const LOCAL_UNLOCK_STATUS_CACHE_PREFIX = 'admission_unlock_status_cache:'
 const LOCAL_QUERY_QUOTA_CACHE_PREFIX = 'admission_local_query_quota:'
 const LOCAL_UNLOCK_STATUS_LOCKED_CACHE_TTL_MS = 5 * 60 * 1000
@@ -161,7 +164,7 @@ export function normalizeUnlockStatus(status = {}) {
     remainingInviteCount,
     unlocked,
     unlockMode,
-    unlockModeLabel: source.unlockModeLabel || source.unlock_mode_label || (unlockMode === 'paid' ? '付费解锁' : unlockMode === 'invite' ? '分享解锁' : '未解锁'),
+    unlockModeLabel: source.unlockModeLabel || source.unlock_mode_label || (unlockMode === 'paid' ? '付费解锁' : unlockMode === 'invite' ? `分享${requiredInviteCount}人解锁` : '未解锁'),
     userType,
     userTypeLabel:
       source.userTypeLabel ||
@@ -322,9 +325,7 @@ function matchesRegionFilter(item, expectedRegion) {
     item && item.institutionRegion,
     item && item.institution_region,
     item && item.city,
-    item && item.city_name,
-    item && item.province,
-    item && item.province_name
+    item && item.city_name
   ]
     .map((value) => normalizeRegionText(value))
     .filter(Boolean)
@@ -379,11 +380,57 @@ export function readLocalInstitutionCache(cacheKey) {
   return cached
 }
 
-export function writeLocalInstitutionCache(cacheKey, items) {
+export function writeLocalInstitutionCache(cacheKey, items, meta = {}) {
+  const cachedAt = Date.now()
+  const normalizedMeta = meta && typeof meta === 'object' ? meta : {}
+  const hasExplicitTotal = normalizedMeta.total !== undefined && normalizedMeta.total !== null
+  const hasExplicitPageCount = normalizedMeta.pageCount !== undefined && normalizedMeta.pageCount !== null
+
   safeSetStorage(cacheKey, {
     version: LOCAL_INSTITUTION_CACHE_VERSION,
+    cachedAt,
+    expiresAt: cachedAt + LOCAL_INSTITUTION_CACHE_TTL_MS,
+    items: Array.isArray(items) ? items : [],
+    total: hasExplicitTotal
+      ? Math.max(0, toFiniteNumber(normalizedMeta.total, 0))
+      : (Array.isArray(items) ? items.length : 0),
+    page: Math.max(1, toFiniteNumber(normalizedMeta.page, 1)),
+    pageSize: Math.max(1, toFiniteNumber(normalizedMeta.pageSize, 1)),
+    loadedPages: Math.max(1, toFiniteNumber(normalizedMeta.loadedPages, 1)),
+    loadingMore: Boolean(normalizedMeta.loadingMore),
+    progressText: String(normalizedMeta.progressText || '').trim(),
+    pageCount: hasExplicitPageCount
+      ? Math.max(0, toFiniteNumber(normalizedMeta.pageCount, 0))
+      : 1
+  })
+}
+
+export function buildLocalGuestPreviewCacheKey(query) {
+  return `${LOCAL_GUEST_PREVIEW_CACHE_PREFIX}${encodeURIComponent(JSON.stringify({
+    version: LOCAL_GUEST_PREVIEW_CACHE_VERSION,
+    examType: query.examType || '',
+    subjectTrack: query.subjectTrack || ''
+  }))}`
+}
+
+export function readLocalGuestPreviewCache(cacheKey) {
+  const cached = safeGetStorage(cacheKey)
+  if (!cached || cached.version !== LOCAL_GUEST_PREVIEW_CACHE_VERSION || !Array.isArray(cached.items)) {
+    return null
+  }
+
+  if (Number(cached.expiresAt || 0) <= Date.now()) {
+    return null
+  }
+
+  return cached
+}
+
+export function writeLocalGuestPreviewCache(cacheKey, items) {
+  safeSetStorage(cacheKey, {
+    version: LOCAL_GUEST_PREVIEW_CACHE_VERSION,
     cachedAt: Date.now(),
-    expiresAt: Date.now() + LOCAL_INSTITUTION_CACHE_TTL_MS,
+    expiresAt: Date.now() + LOCAL_GUEST_PREVIEW_CACHE_TTL_MS,
     items: Array.isArray(items) ? items : []
   })
 }
@@ -504,6 +551,19 @@ function matchesMajorKeyword(item, keyword) {
   })
 }
 
+function matchesInstitutionKeyword(item, keyword) {
+  if (!keyword) return true
+
+  // 这里的“院校名称”输入框只按学校本名/代码匹配，地区和层次已经有单独筛选项了。
+  const candidates = [
+    item && item.name,
+    item && item.institutionCode,
+    item && item.institution_code
+  ]
+
+  return candidates.some((candidate) => includesSearchText(candidate, keyword)) || matchesMajorKeyword(item, keyword)
+}
+
 export function institutionMatchesLocalFilters(item, filters = {}) {
   if (!item) return false
 
@@ -519,12 +579,8 @@ export function institutionMatchesLocalFilters(item, filters = {}) {
     return false
   }
 
-  if (filters.schoolType && String(item.schoolType || item.school_type || '').trim() !== filters.schoolType) {
-    return false
-  }
-
   const keyword = normalizeSearchText(filters.keyword)
-  if (keyword && !includesSearchText(item.name, keyword) && !includesSearchText(item.institutionCode || item.institution_code, keyword)) {
+  if (keyword && !matchesInstitutionKeyword(item, keyword)) {
     return false
   }
 

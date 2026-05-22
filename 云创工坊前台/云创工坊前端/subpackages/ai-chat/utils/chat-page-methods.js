@@ -9,6 +9,7 @@ import {
 	normalizeUnlockStatus
 } from '@/utils/volunteer-local-admission.js'
 import { buildVolunteerPaymentConfirmText } from '@/utils/volunteer-support-rules.js'
+import { getCurrentUserInfo, getHttpService, normalizeUserInfo } from '@/utils/http-services'
 import {
 	CHAT_PATH,
 	buildRequestError,
@@ -37,6 +38,308 @@ function clipInlineText(value, limit = 120) {
 	return text.length > limit ? `${text.slice(0, Math.max(0, limit - 1)).trim()}…` : text
 }
 
+const MID_BODY_PROTOCOL_BRACKETS = new Set(['{', '}', '[', ']', '｛', '｝', '［', '］'])
+
+function normalizeMidBodyProtocolLineBreaks(value = '') {
+	return String(value || '')
+		.replace(/[}｝]\s*[{｛]/g, '\n')
+		.replace(/[\]］]\s*[\[［]/g, '\n')
+}
+
+function stripVisibleFormattingMarkers(value = '') {
+	return String(value || '').replace(/\*\*(.+?)\*\*/g, '$1')
+}
+
+function stripMidBodyProtocolBrackets(value = '') {
+	const source = String(value || '')
+	if (!source) {
+		return ''
+	}
+
+	const chars = Array.from(source)
+	let firstVisibleIndex = 0
+	while (firstVisibleIndex < chars.length && /\s/.test(chars[firstVisibleIndex])) {
+		firstVisibleIndex += 1
+	}
+
+	let lastVisibleIndex = chars.length - 1
+	while (lastVisibleIndex >= 0 && /\s/.test(chars[lastVisibleIndex])) {
+		lastVisibleIndex -= 1
+	}
+
+	if (firstVisibleIndex >= lastVisibleIndex) {
+		return source
+	}
+
+	const cleaned = chars
+		.filter((char, index) => {
+			if (index <= firstVisibleIndex || index >= lastVisibleIndex) {
+				return true
+			}
+			return !MID_BODY_PROTOCOL_BRACKETS.has(char)
+		})
+		.join('')
+
+	return cleaned.replace(/^\s*[\[{｛［]\s*/, '').replace(/\s*[\]｝}］]\s*$/, '')
+}
+
+function normalizeFixedQaKey(value = '') {
+	return String(value || '')
+		.trim()
+		.toLowerCase()
+		.replace(/[\s，。！？；：、,.!?;:“”"'（）()\[\]{}<>《》·—\-]/g, '')
+}
+
+function enrichPromptEntryWithReply(item = {}, replyMap = {}) {
+	if (!item || typeof item !== 'object') return item
+	const label = normalizeText(item.label, '')
+	const action = normalizeText(item.action, '')
+	const routeUrl = normalizeText(item.routeUrl, '')
+	const reply = normalizeText(
+		item.reply ||
+		item.fixedReply ||
+		resolveFixedQaReplyFromMap({ ...item, label, action }, replyMap),
+		''
+	)
+
+	return {
+		...item,
+		label,
+		action: action || label,
+		routeUrl,
+		reply
+	}
+}
+
+function enrichPromptCollectionWithReplies(prompts = [], replyMap = {}) {
+	return (Array.isArray(prompts) ? prompts : []).map((item) => enrichPromptEntryWithReply(item, replyMap))
+}
+
+function enrichIntroTopicsWithReplies(topics = [], replyMap = {}) {
+	return (Array.isArray(topics) ? topics : []).map((topic) => {
+		if (!topic || typeof topic !== 'object') return topic
+		return {
+			...topic,
+			guessPrompts: enrichPromptCollectionWithReplies(topic.guessPrompts, replyMap),
+			suggestionPrompts: enrichPromptCollectionWithReplies(topic.suggestionPrompts, replyMap)
+		}
+	})
+}
+
+function normalizeFixedQaLookupKey(value) {
+	return normalizeText(value, '')
+		.toLowerCase()
+		.replace(/[\s，。！？；：、,.!?;:“”"'（）()\[\]{}<>《》·—\-]/g, '')
+}
+
+function buildFixedQaReplyMap(entries = []) {
+	return (Array.isArray(entries) ? entries : []).reduce((acc, entry) => {
+		const question = normalizeText(entry && entry.question, '')
+		const answer = normalizeText(entry && entry.answer, '')
+		const entryKey = normalizeText(entry && entry.entryKey, '')
+		if (question && answer) {
+			acc[normalizeFixedQaLookupKey(question)] = answer
+		}
+		if (entryKey && answer) {
+			acc[`key:${normalizeFixedQaLookupKey(entryKey)}`] = answer
+		}
+		return acc
+	}, {})
+}
+
+function resolveFixedQaReplyFromMap(item = {}, replyMap = {}) {
+	const candidates = [
+		item && item.reply,
+		item && item.fixedReply,
+		item && item.answer,
+		item && item.response,
+		item && item.action,
+		item && item.label,
+		item && item.question,
+		item && item.entryKey
+	]
+
+	for (let i = 0; i < candidates.length; i += 1) {
+		const candidate = normalizeText(candidates[i], '')
+		if (!candidate) continue
+		const answer = replyMap[normalizeFixedQaLookupKey(candidate)] || replyMap[`key:${normalizeFixedQaLookupKey(candidate)}`]
+		if (answer) return answer
+	}
+
+	return ''
+}
+
+function enrichPromptItemWithFixedReply(item, replyMap = {}) {
+	if (typeof item === 'string') {
+		const text = normalizeText(item, '')
+		if (!text) return null
+		return {
+			label: text,
+			action: text,
+			routeUrl: '',
+			reply: resolveFixedQaReplyFromMap({ label: text, action: text }, replyMap)
+		}
+	}
+
+	if (!item || typeof item !== 'object') return null
+	const label = normalizeText(item.label || '', '')
+	const action = normalizeText(item.action || label, '')
+	if (!label && !action) return null
+
+	return {
+		...item,
+		label,
+		action: action || label,
+		routeUrl: normalizeText(item.routeUrl || '', ''),
+		reply: normalizeText(
+			item.reply || item.fixedReply || resolveFixedQaReplyFromMap({ ...item, label, action }, replyMap),
+			''
+		)
+	}
+}
+
+function enrichPromptArrayWithFixedReplies(prompts = [], replyMap = {}) {
+	return (Array.isArray(prompts) ? prompts : [])
+		.map((item) => enrichPromptItemWithFixedReply(item, replyMap))
+		.filter(Boolean)
+}
+
+function enrichIntroTopicsWithFixedReplies(topics = [], replyMap = {}) {
+	return (Array.isArray(topics) ? topics : [])
+		.map((topic) => {
+			if (!topic || typeof topic !== 'object') return null
+			return {
+				...topic,
+				guessPrompts: enrichPromptArrayWithFixedReplies(topic.guessPrompts, replyMap),
+				suggestionPrompts: enrichPromptArrayWithFixedReplies(topic.suggestionPrompts, replyMap)
+			}
+		})
+		.filter(Boolean)
+}
+
+function compactToolText(value) {
+	return String(value || '')
+		.replace(/\{\s*query\s*\}/gi, '')
+		.replace(/(^|\n)\s*(query|url|link|href)\s*[:：]\s*/gi, '$1')
+		.replace(/\s+/g, ' ')
+		.trim()
+}
+
+function resolveToolDisplayName(toolName = '', toolLabel = '') {
+	const name = normalizeText(toolName, '')
+	const label = normalizeText(toolLabel, '')
+	const normalizedName = name.toLowerCase()
+	const normalizedLabel = label.toLowerCase()
+
+	if (
+		normalizedName === 'web_search' ||
+		normalizedLabel === 'web search' ||
+		normalizedLabel === 'web research summary' ||
+		normalizedLabel === '网页研究总结'
+	) {
+		return '网页研究总结'
+	}
+
+	if (
+		normalizedName === 'web_fetch' ||
+		normalizedLabel === '网页正文抓取' ||
+		normalizedLabel === '网页正文提取'
+	) {
+		return '网页正文提取'
+	}
+
+	if (normalizedName.includes('update_current_user_intelligence')) {
+		return '更新用户画像'
+	}
+
+	if (normalizedName.includes('get_current_user_profile_snapshot')) {
+		return '读取用户画像'
+	}
+
+	if (normalizedName.includes('search_yunnan_admission_school_detail')) {
+		return '院校详情核验'
+	}
+
+	if (normalizedName.includes('search_yunnan_admission')) {
+		return '云南志愿检索'
+	}
+
+	if (normalizedName.includes('search_web_search_knowledge')) {
+		return '历史搜索知识库'
+	}
+
+	return label || name || '工具'
+}
+
+function isWebSearchTool(toolName = '', toolLabel = '') {
+	const name = normalizeText(toolName, '').toLowerCase()
+	const label = normalizeText(toolLabel, '').toLowerCase()
+	return (
+		name === 'web_search' ||
+		label === 'web search' ||
+		label === 'web research summary' ||
+		label === '网页研究总结'
+	)
+}
+
+function isWebFetchTool(toolName = '', toolLabel = '') {
+	const name = normalizeText(toolName, '').toLowerCase()
+	const label = normalizeText(toolLabel, '').toLowerCase()
+	return (
+		name === 'web_fetch' ||
+		label === '网页正文抓取' ||
+		label === '网页正文提取'
+	)
+}
+
+function isProfileReadTool(toolName = '', toolLabel = '') {
+	const name = normalizeText(toolName, '').toLowerCase()
+	const label = normalizeText(toolLabel, '').toLowerCase()
+	return (
+		name.includes('get_current_user_profile_snapshot') ||
+		label === '读取用户画像'
+	)
+}
+
+function isProfileWriteTool(toolName = '', toolLabel = '') {
+	const name = normalizeText(toolName, '').toLowerCase()
+	const label = normalizeText(toolLabel, '').toLowerCase()
+	return (
+		name.includes('update_current_user_intelligence') ||
+		label === '更新用户画像'
+	)
+}
+
+function isProfileTool(toolName = '', toolLabel = '') {
+	return isProfileReadTool(toolName, toolLabel) || isProfileWriteTool(toolName, toolLabel)
+}
+
+function isPendingToolState(state = '') {
+	const normalized = normalizeText(state, '').toLowerCase()
+	return normalized === 'executing' || normalized === 'running' || normalized === 'pending'
+}
+
+function resolveProfileToolSummary(toolName = '', state = '') {
+	const normalizedState = normalizeText(state, '').toLowerCase()
+	if (isProfileReadTool(toolName)) {
+		if (normalizedState === 'failed' || normalizedState === 'error') return '读取用户画像失败'
+		if (isPendingToolState(normalizedState)) return '正在读取当前用户画像'
+		return '已读取当前用户画像'
+	}
+	if (isProfileWriteTool(toolName)) {
+		if (normalizedState === 'failed' || normalizedState === 'error') return '更新用户画像失败'
+		if (isPendingToolState(normalizedState)) return '正在更新当前用户画像'
+		return '已更新当前用户画像'
+	}
+	return ''
+}
+
+function resolveToolSemanticKey(tool = {}) {
+	const name = normalizeText(tool && tool.name, '').toLowerCase()
+	const label = normalizeText(tool && tool.label, '').toLowerCase()
+	return `${name}::${label}`
+}
+
 function parseJsonLikeToolPayload(value) {
 	if (typeof value !== 'string') return null
 	const text = String(value || '').trim()
@@ -53,12 +356,16 @@ function parseJsonLikeToolPayload(value) {
 
 function extractToolDisplayText(value, limit = 0) {
 	const text = normalizeText(value, '')
+		.replace(/\{\s*query\s*\}/gi, '')
+		.replace(/(^|\n)\s*(query|url|link|href)\s*[:：]\s*/gi, '$1')
 	if (!text) return ''
 	return limit > 0 ? clipInlineText(text, limit) : text
 }
 
 function splitToolPreviewSegments(value, limit = 36, maxItems = 4) {
 	const text = normalizeText(value, '')
+		.replace(/\{\s*query\s*\}/gi, '')
+		.replace(/(^|\n)\s*(query|url|link|href)\s*[:：]\s*/gi, '$1')
 	if (!text) return []
 
 	const segments = text
@@ -74,14 +381,49 @@ function splitToolPreviewSegments(value, limit = 36, maxItems = 4) {
 	return [clipInlineText(text, limit)]
 }
 
+function resolveWebResearchLoadingSegments(tool = {}) {
+	if (isWebSearchTool(tool && tool.name, tool && tool.label)) {
+		return ['正在搜索', '正在筛选高相关网页', '正在整理研究总结']
+	}
+
+	if (isWebFetchTool(tool && tool.name, tool && tool.label)) {
+		return ['正在抓取网页正文', '正在提取关键段落', '正在整理网页信息']
+	}
+
+	return ['正在调用网页工具']
+}
+
+function extractSafeWebResearchText(value) {
+	const text = normalizeText(value, '')
+	if (!text) return ''
+
+	const parsed = parseJsonLikeToolPayload(text)
+	if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+		return extractToolDisplayText(
+			parsed.summary ||
+			parsed.content ||
+			parsed.body ||
+			parsed.text ||
+			parsed.message ||
+			'',
+			0
+		)
+	}
+
+	if (
+		/^\s*\{/.test(text) ||
+		/^\s*"?\s*(query|url|link|href|keyword|keywords|search)\s*"?\s*[:：]/i.test(text)
+	) {
+		return ''
+	}
+
+	return extractToolDisplayText(text, 0)
+}
+
 function buildWebResearchPresentation(tool = {}, fallbackParams = '') {
-	const name = normalizeText(tool && tool.name, '').toLowerCase()
-	const label = normalizeText(tool && tool.label, '').toLowerCase()
 	const isWebResearch =
-		name === 'web_search' ||
-		name === 'web_fetch' ||
-		label === 'web research summary' ||
-		label === '网页正文抓取'
+		isWebSearchTool(tool && tool.name, tool && tool.label) ||
+		isWebFetchTool(tool && tool.name, tool && tool.label)
 
 	if (!isWebResearch) {
 		return null
@@ -114,20 +456,84 @@ function buildWebResearchPresentation(tool = {}, fallbackParams = '') {
 		'',
 		0
 	)
-	const previewSource = resultText || tool.inputPreview || fallbackParams || ''
+	const safeInputPreview = extractSafeWebResearchText(tool && tool.inputPreview)
+	const previewSource = resultText || safeInputPreview
+	const previewSegments = resultText
+		? splitToolPreviewSegments(previewSource, 34, 5)
+		: resolveWebResearchLoadingSegments(tool)
 
 	return {
 		isWebResearch: true,
 		resultText,
-		previewSegments: splitToolPreviewSegments(previewSource, 34, 5),
+		previewSegments,
 	}
+}
+
+function extractWebResearchLivePreviewText(inputPreview = '') {
+	return extractSafeWebResearchText(inputPreview)
 }
 
 function syncCurrentUserProfile(ctx) {
 	const userInfo = extractDisplayUserInfo()
+	const cachedUserInfo = normalizeUserInfo(getCurrentUserInfo())
 	ctx.currentUserId = userInfo.userId || ''
 	ctx.currentUserName = userInfo.nickname || '我'
 	ctx.currentUserAvatarUrl = userInfo.avatar || ''
+	ctx.currentUserProfileInfo = cachedUserInfo
+	ctx.currentUserIsCampusPartner = hasCampusPartnerIdentity(cachedUserInfo)
+}
+
+function toIdentitySignalList(value) {
+	if (Array.isArray(value)) {
+		return value
+	}
+	if (value === undefined || value === null || value === '') {
+		return []
+	}
+	return [value]
+}
+
+function hasCampusPartnerIdentity(userInfo = {}) {
+	const source = userInfo && typeof userInfo === 'object' ? userInfo : {}
+	const profile = source.profile && typeof source.profile === 'object' ? source.profile : {}
+	const membership = source.membership && typeof source.membership === 'object' ? source.membership : {}
+	const teamInfo = source.team_info && typeof source.team_info === 'object'
+		? source.team_info
+		: (source.teamInfo && typeof source.teamInfo === 'object' ? source.teamInfo : {})
+	const partnerInfo = source.partner_info && typeof source.partner_info === 'object'
+		? source.partner_info
+		: (source.partnerInfo && typeof source.partnerInfo === 'object' ? source.partnerInfo : {})
+	const signalParts = [
+		...toIdentitySignalList(source.role),
+		...toIdentitySignalList(source.type),
+		...toIdentitySignalList(source.identities),
+		...toIdentitySignalList(source.identityTags),
+		normalizeText(source.membership_segment, ''),
+		normalizeText(source.membership_segment_label, ''),
+		normalizeText(source.memberIdentity, ''),
+		normalizeText(source.memberIdentityLabel, ''),
+		normalizeText(source.badge, ''),
+		normalizeText(membership.segment, ''),
+		normalizeText(membership.segmentLabel, ''),
+		normalizeText(membership.memberIdentity, ''),
+		normalizeText(membership.memberIdentityLabel, ''),
+		membership.hasCampusPartnerMembership ? 'campus_partner' : '',
+		(source.team_id || source.teamId || teamInfo.team_id || teamInfo.teamId) ? 'campus_partner' : '',
+		normalizeText(source.team_id || source.teamId, ''),
+		normalizeText(teamInfo.team_id || teamInfo.teamId, ''),
+		normalizeText(teamInfo.position, ''),
+		normalizeText(teamInfo.status, ''),
+		normalizeText(partnerInfo.level, ''),
+		normalizeText(partnerInfo.status, ''),
+		normalizeText(partnerInfo.partner_id, ''),
+		normalizeText(profile.badge, ''),
+		normalizeText(profile.role, ''),
+		normalizeText(profile.type, ''),
+	]
+		.map((item) => normalizeText(item, '').toLowerCase())
+		.filter(Boolean)
+
+	return signalParts.some((item) => /校园合伙人|校园大使|共建者|campus[_-\s]?partner|partner/.test(item))
 }
 
 function resolveAssistantAvatarUrl(nextAvatarUrl, currentAvatarUrl) {
@@ -526,42 +932,42 @@ function createStreamRequest({ url, data, token = '', onEvent }) {
 }
 
 const MEMBERSHIP_CARD_PRESETS = {
-	cobuilder: {
-		title: '校园大使入口',
+	campus_score_ambassador: {
+		title: '校园查分大使入口',
 		badgeByIntent: {
-			purchase: '19.9 入口',
-			upgrade: '升级建议',
+			purchase: '查分入口',
+			upgrade: '推荐查看',
 			renew: '续费提醒'
 		},
-		pillText: '创业路径',
+		pillText: '查分路径',
 		benefitsByIntent: {
-			purchase: ['加入团队后可继续看伙伴动态与开单情况', '可生成团队邀请二维码，开始拉新推广', '适合从创业入口进入实操路径'],
-			upgrade: ['补上团队身份后，很多创业动作会更顺', '后续可继续看团队协同与邀请数据', '更适合往创业实操和推广路径走'],
-			renew: ['续费后继续保留校园大使身份', '继续使用团队协同和邀请相关权益', '继续衔接团队动态和成长路径']
-		},
-		buttonTextByIntent: {
-			purchase: '去加入团队',
-			upgrade: '去加入团队',
-			renew: '去查看团队'
-		}
-	},
-	student: {
-		title: '学习成长入口',
-		badgeByIntent: {
-			purchase: '学习入口',
-			upgrade: '推荐查看',
-			renew: '继续学习'
-		},
-		pillText: '学习路径',
-		benefitsByIntent: {
-			purchase: ['适合先了解主菜单学习与创业板块', '看完资料后再决定是否加入团队', '先把方向、目标和节奏定清楚'],
-			upgrade: ['先补齐学习基础，再决定下一步', '适合先把个人目标设起来', '更容易判断自己适合哪条路径'],
-			renew: ['继续保留当前学习节奏', '继续补齐目标与资料查看', '再决定是否进入更深的实操路径']
+			purchase: ['适合先了解查分与成长板块', '看完资料后再决定下一步', '先把方向、目标和节奏定清楚'],
+			upgrade: ['先补齐查分基础，再决定下一步', '适合先把个人目标设起来', '更容易判断自己适合哪条路径'],
+			renew: ['继续保留当前查分节奏', '继续补齐目标与资料查看', '再决定是否进入更深的路径']
 		},
 		buttonTextByIntent: {
 			purchase: '去设定目标',
 			upgrade: '去设定目标',
 			renew: '去设定目标'
+		}
+	},
+	campus_partner: {
+		title: '校园合伙人加入入口',
+		badgeByIntent: {
+			purchase: '19.9入口',
+			upgrade: '推荐查看',
+			renew: '续费提醒'
+		},
+		pillText: '团队加入',
+		benefitsByIntent: {
+			purchase: ['先把 19.9 团队入口看清楚', '适合还没进团队的同学', '再决定要不要往下走'],
+			upgrade: ['如果你已经有基础，可直接看团队路径', '更适合想进入协同与实践路径', '先确认入口再做决定'],
+			renew: ['继续保留当前团队路径', '适合先看清入口和状态', '再决定下一步动作']
+		},
+		buttonTextByIntent: {
+			purchase: '去加入团队',
+			upgrade: '去查看团队',
+			renew: '去查看团队'
 		}
 	}
 }
@@ -572,19 +978,24 @@ function normalizeMembershipCardType(value) {
 	if (
 		normalized === 'student' ||
 		normalized === 'member' ||
+		normalized === 'campus_score_ambassador' ||
+		normalized === 'campus-score-ambassador' ||
 		normalized.includes('学生证') ||
-		normalized.includes('会员')
+		normalized.includes('会员') ||
+		normalized.includes('校园查分大使') ||
+		normalized.includes('查分大使')
 	) {
-		return 'student'
+		return 'campus_score_ambassador'
 	}
 	if (
-		normalized === 'cobuilder' ||
-		normalized === 'co_builder' ||
+		normalized === 'campus_partner' ||
+		normalized === 'campus-partner' ||
+		normalized.includes('校园合伙人') ||
 		normalized.includes('共建者') ||
-		normalized.includes('合伙人') ||
-		normalized.includes('builder')
+		normalized.includes('校园大使') ||
+		normalized.includes('合伙人')
 	) {
-		return 'cobuilder'
+		return 'campus_partner'
 	}
 	return ''
 }
@@ -598,7 +1009,7 @@ function normalizeMembershipCardIntent(value) {
 }
 
 function buildMembershipCardRoute(cardType, intent) {
-	if (cardType === 'student') {
+	if (cardType === 'campus_score_ambassador') {
 		return GOAL_SETTING_ROUTE
 	}
 	if (intent === 'renew') {
@@ -697,7 +1108,12 @@ function normalizeToolCalls(toolCalls) {
 
 function normalizeToolCall(tool, index = 0) {
 	const name = normalizeText(tool && tool.name, '')
-	const label = normalizeText(tool && tool.label, name || '工具')
+	const label = resolveToolDisplayName(name, tool && tool.label)
+	const toolVariant = (() => {
+		if (isWebSearchTool(name, label)) return 'web-search'
+		if (isWebFetchTool(name, label)) return 'web-fetch'
+		return ''
+	})()
 	const params = tool && Object.prototype.hasOwnProperty.call(tool, 'params')
 		? tool.params
 		: tool && Object.prototype.hasOwnProperty.call(tool, 'input')
@@ -708,7 +1124,7 @@ function normalizeToolCall(tool, index = 0) {
 		: tool && Object.prototype.hasOwnProperty.call(tool, 'input')
 			? tool.input
 			: params
-	const inputPreview = clipInlineText(inputSource, 120)
+	const rawInputPreview = clipInlineText(inputSource, 120)
 	const rawDurationMs = tool && Object.prototype.hasOwnProperty.call(tool, 'durationMs')
 		? tool.durationMs
 		: tool && Object.prototype.hasOwnProperty.call(tool, 'duration')
@@ -726,22 +1142,48 @@ function normalizeToolCall(tool, index = 0) {
 		)
 	const webResearchPresentation = buildWebResearchPresentation(tool, typeof params === 'string' ? params : '')
 	const shouldHideParams = !!(webResearchPresentation && webResearchPresentation.resultText)
-	const summary = webResearchPresentation && webResearchPresentation.resultText
+	const normalizedState = normalizeText(tool && tool.state, '').toLowerCase()
+	const isLiveWebResearch =
+		!!toolVariant &&
+		!shouldHideParams &&
+		(normalizedState === 'executing' || normalizedState === 'running' || normalizedState === 'pending')
+	const livePreviewText = isLiveWebResearch
+		? extractWebResearchLivePreviewText(rawInputPreview)
+		: ''
+	const livePreviewFallback = isLiveWebResearch
+		? resolveWebResearchLoadingSegments(tool)[0]
+		: ''
+	const isProfileToolCall = isProfileTool(name, label)
+	const profileToolSummary = isProfileToolCall ? resolveProfileToolSummary(name, normalizedState) : ''
+	const inputPreview = isProfileToolCall
+		? profileToolSummary
+		: toolVariant === 'web-search' || toolVariant === 'web-fetch'
+		? extractWebResearchLivePreviewText(rawInputPreview) || livePreviewFallback
+		: rawInputPreview
+	const summary = isProfileToolCall
+		? profileToolSummary
+		: webResearchPresentation && webResearchPresentation.resultText
 		? webResearchPresentation.resultText
-		: clipInlineText(tool && tool.summary, 160)
+		: (livePreviewText || livePreviewFallback || clipInlineText(tool && tool.summary, 160))
 
 	return {
 		id: normalizeText(tool && tool.id, `${name || 'tool'}-${index}-${Date.now()}`),
 		name,
 		label,
 		params,
-		hasParams: shouldHideParams ? false : hasParams,
+		hasParams: isProfileToolCall ? false : (shouldHideParams ? false : hasParams),
 		inputPreview,
 		summary,
-		fullSummary: webResearchPresentation && webResearchPresentation.resultText
+		fullSummary: isProfileToolCall
+			? profileToolSummary
+			: webResearchPresentation && webResearchPresentation.resultText
 			? webResearchPresentation.resultText
 			: normalizeText(tool && tool.summary, ''),
-		previewSegments: webResearchPresentation ? webResearchPresentation.previewSegments : [],
+		previewSegments: isProfileToolCall
+			? [profileToolSummary]
+			: webResearchPresentation
+			? webResearchPresentation.previewSegments
+			: (livePreviewText ? splitToolPreviewSegments(livePreviewText, 34, 5) : []),
 		isWebResearchSummary: !!webResearchPresentation,
 		state: normalizeText(tool && tool.state, ''),
 		durationText: Number.isFinite(durationMs) && durationMs >= 0 ? `${durationMs}ms` : ''
@@ -816,8 +1258,8 @@ function normalizeArticleCards(articleCards = []) {
 	if (!Array.isArray(articleCards)) return []
 	return articleCards
 		.map((item, index) => {
-			const articleId = normalizeText(item && (item.articleId || item.article_id || item.id), '')
-			const title = clipInlineText(item && item.title, 40)
+			const articleId = normalizeText(item && (item.articleId || item.article_id || item.articleld || item.id || item._id), '')
+			const title = clipInlineText(item && (item.title || item.articleTitle || item.name), 40)
 			if (!articleId || !title) return null
 
 			const tags = Array.isArray(item && item.tags)
@@ -857,7 +1299,7 @@ function summarizeStreamEventPayload(eventData = {}) {
 	if (eventData.summary) return clipInlineText(eventData.summary, 80)
 	if (eventData.reply) return clipInlineText(eventData.reply, 80)
 	if (eventData.message) return clipInlineText(eventData.message, 80)
-	if (eventData.name) return clipInlineText(eventData.name, 80)
+	if (eventData.name) return clipInlineText(resolveToolDisplayName(eventData.name, eventData.label), 80)
 	return clipInlineText(safeJsonStringify(eventData), 80)
 }
 
@@ -928,10 +1370,8 @@ function setActiveAssistantSegment(ctx, kind = '', messageId = '') {
 
 function ensureAssistantStreamSegment(ctx, kind = 'text', initialContent = '') {
 	const normalizedKind = kind === 'tool' ? 'tool' : 'text'
-	if (
-		ctx.activeAssistantMessageId &&
-		ctx.activeAssistantSegmentKind === normalizedKind
-	) {
+	if (ctx.activeAssistantMessageId) {
+		setActiveAssistantSegment(ctx, normalizedKind, ctx.activeAssistantMessageId)
 		return ctx.activeAssistantMessageId
 	}
 
@@ -986,6 +1426,120 @@ function resolveAppendedAssistantText(fullText = '', messages = []) {
 	return normalizedFullText
 }
 
+function stripKnownReplyMetaTags(value = '') {
+	return String(value || '')
+		.replace(/<business(?:[_\s-]*card)(?:[_\s-]*meta)>[\s\S]*?<\/business(?:[_\s-]*card)(?:[_\s-]*meta)>/gi, '')
+		.replace(/<article(?:[_\s-]*card)(?:[_\s-]*meta)>[\s\S]*?<\/article(?:[_\s-]*card)(?:[_\s-]*meta)>/gi, '')
+		.replace(/<invite(?:[_\s-]*card)(?:[_\s-]*meta)>[\s\S]*?<\/invite(?:[_\s-]*card)(?:[_\s-]*meta)>/gi, '')
+		.replace(/<project(?:[_\s-]*card)(?:[_\s-]*meta)>[\s\S]*?<\/project(?:[_\s-]*card)(?:[_\s-]*meta)>/gi, '')
+		.replace(/<activity(?:[_\s-]*card)(?:[_\s-]*meta)>[\s\S]*?<\/activity(?:[_\s-]*card)(?:[_\s-]*meta)>/gi, '')
+		.replace(/<course(?:[_\s-]*card)(?:[_\s-]*meta)>[\s\S]*?<\/course(?:[_\s-]*card)(?:[_\s-]*meta)>/gi, '')
+		.replace(/<membership(?:[_\s-]*card)(?:[_\s-]*meta)>[\s\S]*?<\/membership(?:[_\s-]*card)(?:[_\s-]*meta)>/gi, '')
+		.replace(/<choice(?:[_\s-]*card)(?:[_\s-]*meta)>[\s\S]*?<\/choice(?:[_\s-]*card)(?:[_\s-]*meta)>/gi, '')
+		.replace(/<reply(?:[_\s-]*json)>[\s\S]*?<\/reply(?:[_\s-]*json)>/gi, '')
+		.trim()
+}
+
+function extractBracketedVisibleReplyText(value = '') {
+	return splitBracketedVisibleReplyText(value).visibleText
+}
+
+function splitBracketedVisibleReplyText(value = '') {
+	const source = stripKnownReplyMetaTags(value)
+	if (!source) {
+		return {
+			thinkingText: '',
+			visibleText: ''
+		}
+	}
+	const normalized = source
+		.replace(/｛/g, '{')
+		.replace(/｝/g, '}')
+		.replace(/［/g, '[')
+		.replace(/］/g, ']')
+		.replace(/＜/g, '<')
+		.replace(/＞/g, '>')
+	const replyOpen = '<reply>'
+	const replyClose = '</reply>'
+	const replyStartIndex = normalized.indexOf(replyOpen)
+	if (replyStartIndex >= 0) {
+		const innerStart = replyStartIndex + replyOpen.length
+		const replyEndIndex = normalized.indexOf(replyClose, innerStart)
+		const visibleSlice = replyEndIndex >= 0
+			? normalized.slice(innerStart, replyEndIndex)
+			: normalized.slice(innerStart)
+		return {
+			thinkingText: normalizeText(source.slice(0, replyStartIndex), ''),
+			visibleText: normalizeText(
+				stripVisibleFormattingMarkers(
+					stripMidBodyProtocolBrackets(
+						normalizeMidBodyProtocolLineBreaks(visibleSlice)
+					)
+				),
+				''
+			)
+		}
+	}
+	const dialectOpen = '<方言回复>'
+	const dialectClose = '</方言回复>'
+	const dialectStartIndex = normalized.indexOf(dialectOpen)
+	if (dialectStartIndex >= 0) {
+		const innerStart = dialectStartIndex + dialectOpen.length
+		const dialectEndIndex = normalized.indexOf(dialectClose, innerStart)
+		const visibleSlice = dialectEndIndex >= 0
+			? normalized.slice(innerStart, dialectEndIndex)
+			: normalized.slice(innerStart)
+		return {
+			thinkingText: normalizeText(source.slice(0, dialectStartIndex), ''),
+			visibleText: normalizeText(
+				stripVisibleFormattingMarkers(
+					stripMidBodyProtocolBrackets(
+						normalizeMidBodyProtocolLineBreaks(visibleSlice)
+					)
+				),
+				''
+			)
+		}
+	}
+	const pairs = [
+		{ open: '[', close: ']' },
+		{ open: '{', close: '}' }
+	]
+
+	for (const pair of pairs) {
+		const startIndex = normalized.indexOf(pair.open)
+		if (startIndex < 0) continue
+
+		let depth = 0
+		for (let index = startIndex; index < normalized.length; index += 1) {
+			const char = normalized[index]
+			if (char === pair.open) {
+				depth += 1
+				continue
+			}
+			if (char === pair.close) {
+				depth -= 1
+				if (depth === 0) {
+					return {
+						thinkingText: normalizeText(source.slice(0, startIndex), ''),
+						visibleText: normalizeText(normalized.slice(startIndex + 1, index), '')
+					}
+				}
+			}
+		}
+
+		return {
+			thinkingText: normalizeText(source.slice(0, startIndex), ''),
+			visibleText: normalizeText(normalized.slice(startIndex + 1), '')
+		}
+	}
+
+	return {
+		thinkingText: normalizeText(source, ''),
+		visibleText: ''
+	}
+}
+
 function extractRecoveredAssistantPayload(formattedMessages = []) {
 	if (!Array.isArray(formattedMessages) || !formattedMessages.length) return null
 	const messages = formattedMessages.filter(Boolean)
@@ -1003,6 +1557,7 @@ function extractRecoveredAssistantPayload(formattedMessages = []) {
 		if (!content && !toolCalls.length) continue
 		return {
 			content,
+			thinkingText: normalizeText(item.thinkingText || '', ''),
 			toolCalls,
 			timestamp: item.timestamp || ''
 		}
@@ -1034,7 +1589,7 @@ function resolveGaokaoStatusTextByTool(toolName = '', phase = '') {
 		name.includes('update_current_gaokao_consultation_state') ||
 		name.includes('update_current_user_intelligence')
 	) {
-		return 'AI 正在整理你的情况'
+		return 'AI 正在更新画像'
 	}
 
 	if (currentPhase === 'tool_running') {
@@ -1064,18 +1619,44 @@ export const chatPageMethods = {
 	},
 	async syncAccessState() {
 		syncCurrentUserProfile(this)
+		await this.refreshCurrentUserMembershipState()
 		await this.refreshAiPowerBalance({ silent: true, showDailyNotice: true })
 		await this.refreshAdmissionUnlockState({ silent: true })
+	},
+	async refreshCurrentUserMembershipState() {
+		syncCurrentUserProfile(this)
+		const token = await resolveActiveToken()
+		if (!token) {
+			return this.currentUserIsCampusPartner
+		}
+
+		try {
+			const userCenter = getHttpService('user-center')
+			const res = await userCenter.getUserInfo({ _token: token })
+			if (!res || res.code !== 0 || !res.data) {
+				return this.currentUserIsCampusPartner
+			}
+
+			const latestUser = normalizeUserInfo(Object.assign({}, getCurrentUserInfo(), res.data))
+			this.currentUserProfileInfo = latestUser
+			this.currentUserIsCampusPartner = hasCampusPartnerIdentity(latestUser)
+			return this.currentUserIsCampusPartner
+		} catch (error) {
+			console.warn('[ai-chat] refresh current user membership state failed:', error)
+			return this.currentUserIsCampusPartner
+		}
 	},
 	async refreshAdmissionUnlockState(options = {}) {
 		if (!this.requiresVolunteerUnlock) {
 			this.admissionUnlockStatus = normalizeUnlockStatus(this.admissionUnlockStatus || {})
+			this.unlockStatusInitialized = true
 			return this.admissionUnlockStatus
 		}
 
 		const token = await resolveActiveToken()
 		if (!token) {
 			this.admissionUnlockStatus = createDefaultUnlockStatus()
+			this.unlockStatusInitialized = true
 			return this.admissionUnlockStatus
 		}
 
@@ -1084,6 +1665,7 @@ export const chatPageMethods = {
 			const result = await fetchAdmissionUnlockStatus()
 			const nextStatus = normalizeUnlockStatus(result && result.data)
 			this.admissionUnlockStatus = nextStatus
+			this.unlockStatusInitialized = true
 			if (!nextStatus.unlocked) {
 				this.connectionText = '待解锁'
 			} else if (!this.showPowerPrompt) {
@@ -1093,6 +1675,7 @@ export const chatPageMethods = {
 		} catch (error) {
 			console.warn('[ai-chat] refresh admission unlock state failed:', error)
 			this.admissionUnlockStatus = createDefaultUnlockStatus()
+			this.unlockStatusInitialized = true
 			if (!options.silent) {
 				uni.showToast({
 					title: '解锁状态获取失败',
@@ -1144,6 +1727,22 @@ export const chatPageMethods = {
 				}
 				if (Array.isArray(data.introSuggestionPrompts) && data.introSuggestionPrompts.length) {
 					this.visualSuggestionPrompts = data.introSuggestionPrompts
+				}
+				try {
+					const fixedQaUrl = `${getApiBaseUrl()}/chat/agents/${encodeURIComponent(this.agentId)}/fixed-qa`
+					const fixedQaResponse = await requestJsonWithRefresh({
+						url: fixedQaUrl,
+						method: 'GET',
+						token
+					})
+					const fixedQaStatusCode = Number(fixedQaResponse && fixedQaResponse.statusCode) || 0
+					const fixedQaPayload = fixedQaResponse && fixedQaResponse.payload ? fixedQaResponse.payload : {}
+					const fixedQaData = unwrapPayloadData(fixedQaPayload)
+					if (fixedQaStatusCode === 200 && fixedQaData && Array.isArray(fixedQaData.entries) && fixedQaData.entries.length) {
+						this.applyFixedQaPrompts(fixedQaData.entries)
+					}
+				} catch (error) {
+					console.warn('[ai-chat] fixed qa load failed', error)
 				}
 				this.composerPlaceholderOverride = normalizeText(
 					data.composerPlaceholder,
@@ -1253,6 +1852,16 @@ export const chatPageMethods = {
 	clearAccessPrompt() {
 		this.chatAccessPromptType = ''
 	},
+	appendUserMessage(content) {
+		const text = normalizeText(content, '')
+		if (!text) return
+		this.messages = this.messages.concat([{
+			id: createMessageId(this, 'u'),
+			role: 'user',
+			content: text
+		}])
+		this.scrollToBottom()
+	},
 	appendAssistantMessage(content) {
 		const text = normalizeText(content, '')
 		if (!text) return
@@ -1263,8 +1872,32 @@ export const chatPageMethods = {
 		}])
 		this.scrollToBottom()
 	},
+	resolveFixedQaReply(item = {}) {
+		const replyMap = this.fixedQaReplyMap && typeof this.fixedQaReplyMap === 'object'
+			? this.fixedQaReplyMap
+			: {}
+		const answer = resolveFixedQaReplyFromMap(item, replyMap)
+		if (answer) return normalizeText(answer, '')
+		return normalizeText(item && (item.reply || item.fixedReply), '')
+	},
+	applyFixedQaPrompts(entries = []) {
+		const replyMap = buildFixedQaReplyMap(entries)
+		this.fixedQaEntries = Array.isArray(entries) ? entries : []
+		this.fixedQaReplyMap = replyMap
+		this.quickPrompts = enrichPromptCollectionWithReplies(this.quickPrompts, replyMap)
+		this.visualGuessPrompts = enrichPromptCollectionWithReplies(this.visualGuessPrompts, replyMap)
+		this.visualSuggestionPrompts = enrichPromptCollectionWithReplies(this.visualSuggestionPrompts, replyMap)
+		this.visualIntroTopics = enrichIntroTopicsWithReplies(this.visualIntroTopics, replyMap)
+	},
 	buildAssistantPayloadMessage(payload = {}, fixedId = '') {
-		let text = normalizeText(payload.content || payload.reply || payload.message, '')
+		const rawText = normalizeText(payload.content || payload.reply || payload.message, '')
+		const cleanedText = stripKnownReplyMetaTags(rawText)
+		const splitText = splitBracketedVisibleReplyText(cleanedText)
+		let text = splitText.visibleText || cleanedText
+		const thinkingText = normalizeText(
+			payload.thinkingText || (splitText.visibleText ? splitText.thinkingText : ''),
+			''
+		)
 		const toolCalls = normalizeToolCalls(payload.toolCalls || payload.tools)
 		const businessCards = normalizeBusinessCards(payload.businessCards)
 		const goalCards = normalizeGoalCards(payload.goalCards)
@@ -1274,7 +1907,7 @@ export const chatPageMethods = {
 		const schoolCards = normalizeSchoolCards(payload.schoolCards)
 		const inviteCards = Array.isArray(payload.inviteCards) ? payload.inviteCards : []
 		const choiceCards = this.normalizeChoiceCards(payload.choiceCards)
-		const membershipCards = this.normalizeMembershipCards(payload.membershipCards)
+		const membershipCards = this.currentUserIsCampusPartner ? [] : this.normalizeMembershipCards(payload.membershipCards)
 
 		if (
 			!text &&
@@ -1294,6 +1927,7 @@ export const chatPageMethods = {
 			id: fixedId || createMessageId(this, 'a'),
 			role: 'assistant',
 			content: text,
+			thinkingText,
 			toolCalls,
 			businessCards,
 			goalCards,
@@ -1332,6 +1966,9 @@ export const chatPageMethods = {
 				...previousMessage,
 				...message,
 				content: message.content || previousMessage.content || '',
+				thinkingText: hasOwn('thinkingText')
+					? message.thinkingText
+					: (normalizeText(previousMessage.thinkingText, '') || ''),
 				toolCalls: hasOwn('toolCalls') || hasOwn('tools')
 					? message.toolCalls
 					: (Array.isArray(previousMessage.toolCalls) ? previousMessage.toolCalls : []),
@@ -1376,6 +2013,48 @@ export const chatPageMethods = {
 		}
 		this.scrollToBottom()
 	},
+	replaceTrailingAssistantMessages(payload = {}) {
+		const messages = Array.isArray(this.messages) ? this.messages.slice() : []
+		const lastUserIndex = (() => {
+			for (let index = messages.length - 1; index >= 0; index -= 1) {
+				if (messages[index] && messages[index].role === 'user') return index
+			}
+			return -1
+		})()
+		const trailingAssistantMessages = messages
+			.slice(lastUserIndex + 1)
+			.filter((item) => item && item.role === 'assistant')
+		const longestThinkingText = trailingAssistantMessages
+			.map((item) => normalizeText(item && item.thinkingText, ''))
+			.sort((left, right) => right.length - left.length)[0] || ''
+		const mergedToolCalls = []
+		const seenToolCallIds = new Set()
+		trailingAssistantMessages.forEach((item) => {
+			const toolCalls = Array.isArray(item && item.toolCalls) ? item.toolCalls : []
+			toolCalls.forEach((tool) => {
+				const toolId = normalizeText(tool && tool.id, '')
+				const dedupeKey = toolId || `${normalizeText(tool && tool.name, '')}:${normalizeText(tool && tool.label, '')}`
+				if (!dedupeKey || seenToolCallIds.has(dedupeKey)) return
+				seenToolCallIds.add(dedupeKey)
+				mergedToolCalls.push(tool)
+			})
+		})
+		const finalMessage = this.buildAssistantPayloadMessage({
+			...payload,
+			thinkingText: normalizeText(payload && payload.thinkingText, '') || longestThinkingText,
+			toolCalls: Array.isArray(payload && payload.toolCalls)
+				? payload.toolCalls
+				: (Array.isArray(payload && payload.tools) ? payload.tools : mergedToolCalls)
+		}, trailingAssistantMessages[0] && trailingAssistantMessages[0].id)
+		if (!finalMessage) return
+		const preservedPrefix = messages.slice(0, lastUserIndex + 1)
+		this.messages = preservedPrefix.concat([finalMessage])
+		this.activeAssistantMessageId = finalMessage.id
+		this.activeAssistantSegmentKind = 'text'
+		this.activeAssistantSegmentText = normalizeText(finalMessage.content, '')
+		this.streamReplyStarted = !!(finalMessage.content || finalMessage.thinkingText)
+		this.scrollToBottom()
+	},
 	pushStreamDebugEvent(eventType = '', eventData = {}) {
 		const type = normalizeText(eventType, '')
 		if (!type) return
@@ -1407,9 +2086,21 @@ export const chatPageMethods = {
 			if (!item || item.id !== messageId) return item
 
 			const currentTools = Array.isArray(item.toolCalls) ? item.toolCalls.slice() : []
-			const existingIndex = currentTools.findIndex(
+			const semanticKey = resolveToolSemanticKey(normalizedTool)
+			const exactIndex = currentTools.findIndex(
 				(entry) => entry && String(entry.id || '') === normalizedTool.id
 			)
+			const fallbackIndex = exactIndex >= 0
+				? exactIndex
+				: currentTools.findIndex((entry) => {
+					if (!entry) return false
+					if (resolveToolSemanticKey(entry) !== semanticKey) return false
+					if (isPendingToolState(entry.state) || isProfileTool(normalizedTool.name, normalizedTool.label)) {
+						return true
+					}
+					return false
+				})
+			const existingIndex = fallbackIndex
 
 			if (existingIndex === -1) {
 				currentTools.push(normalizedTool)
@@ -1446,6 +2137,26 @@ export const chatPageMethods = {
 		this.streamReplyStarted = true
 		this.scrollToBottom()
 	},
+	upsertAssistantThinkingText(content = '') {
+		const nextContent = String(content || '')
+		const messageId = this.activeAssistantMessageId || this.beginAssistantStreamMessage('', 'text')
+		const nextMessages = this.messages.map((item) => {
+			if (!item || item.id !== messageId) return item
+			return {
+				...item,
+				thinkingText: nextContent
+			}
+		})
+		this.messages = nextMessages
+		this.runtimeDebugData = {
+			...this.runtimeDebugData,
+			liveThinkingText: nextContent
+		}
+		if (nextContent) {
+			this.streamReplyStarted = true
+		}
+		this.scrollToBottom()
+	},
 	beginAssistantStreamMessage(initialContent = '', segmentKind = 'text') {
 		const messageId = createMessageId(this, 'a')
 		setActiveAssistantSegment(this, segmentKind, messageId)
@@ -1455,6 +2166,7 @@ export const chatPageMethods = {
 			id: messageId,
 			role: 'assistant',
 			content: String(initialContent || ''),
+			thinkingText: '',
 			toolCalls: [],
 			businessCards: [],
 			goalCards: [],
@@ -1538,6 +2250,7 @@ export const chatPageMethods = {
 
 		this.appendAssistantPayloadMessage({
 			content: normalizeText(data && (data.reply || data.message), '收到，我继续帮你整理。'),
+			thinkingText: data && data.thinkingText,
 			toolCalls: data && (data.toolCalls || data.tools),
 			businessCards: data && data.businessCards,
 			goalCards: data && data.goalCards,
@@ -1562,7 +2275,9 @@ export const chatPageMethods = {
 		})
 		let streamedText = ''
 		let completedPayload = null
-		let currentTextSegment = ''
+		let streamThinkingText = ''
+		let streamFakeThinkingText = ''
+		const resolveLiveThinkingText = () => normalizeText(streamFakeThinkingText, '') || normalizeText(streamThinkingText, '')
 
 		const result = await createStreamRequest({
 			url,
@@ -1590,14 +2305,12 @@ export const chatPageMethods = {
 
 				if (eventType === 'thinking') {
 					markFirstReplyDebug(this, 'thinking', Date.now())
-					const nextThinkingText = `${String(this.runtimeDebugData.liveThinkingText || '')}${String(eventData.delta || '')}`
-					this.runtimeDebugData = {
-						...this.runtimeDebugData,
-						liveThinkingText: nextThinkingText
+					if (eventData.kind === 'fake') {
+						streamFakeThinkingText = `${streamFakeThinkingText}${String(eventData.delta || '')}`
+					} else {
+						streamThinkingText = `${streamThinkingText}${String(eventData.delta || '')}`
 					}
-					if (!streamedText) {
-						this.updateAssistantStreamText(nextThinkingText)
-					}
+					this.upsertAssistantThinkingText(resolveLiveThinkingText())
 					this.connectionText = this.visualMode === 'gaokao' ? 'AI 正在思考' : '思考中'
 					return
 				}
@@ -1627,18 +2340,18 @@ export const chatPageMethods = {
 				if (eventType === 'text') {
 					markFirstReplyDebug(this, 'text', Date.now())
 					streamedText += String(eventData.delta || '')
-					if (this.activeAssistantSegmentKind !== 'text') {
-						currentTextSegment = ''
+					this.upsertAssistantThinkingText(resolveLiveThinkingText())
+					this.runtimeDebugData = {
+						...this.runtimeDebugData,
+						liveThinkingText: resolveLiveThinkingText()
 					}
-					currentTextSegment += String(eventData.delta || '')
-					this.updateAssistantStreamText(currentTextSegment)
+					this.updateAssistantStreamText(streamedText)
 					this.connectionText = this.visualMode === 'gaokao' ? 'AI 正在整理建议' : '生成中'
 					return
 				}
 
 				if (eventType === 'tool_start') {
 					markFirstReplyDebug(this, 'tool_start', Date.now())
-					currentTextSegment = ''
 					this.connectionText = this.visualMode === 'gaokao'
 						? resolveGaokaoStatusTextByTool(eventData.name, 'tool_running')
 						: '调用工具中'
@@ -1674,7 +2387,6 @@ export const chatPageMethods = {
 
 				if (eventType === 'tool') {
 					markFirstReplyDebug(this, 'tool', Date.now())
-					currentTextSegment = ''
 					this.connectionText = this.visualMode === 'gaokao'
 						? resolveGaokaoStatusTextByTool(eventData.name, 'responding')
 						: '生成中'
@@ -1760,72 +2472,37 @@ export const chatPageMethods = {
 				completedPayload.reply,
 				streamedText || '收到，我继续帮你整理。'
 			)
-			const hasExistingToolSegment = hasToolMessageAfterLastUser(this.messages)
-			const completedToolCalls = hasExistingToolSegment ? [] : completedPayload.toolCalls
-			const shouldSplitFinalAssistantFromTool =
-				this.activeAssistantSegmentKind === 'tool' && !!completedText
+			const extractedCompletedText = extractBracketedVisibleReplyText(completedText)
+			const cleanedCompletedText = stripKnownReplyMetaTags(completedText)
 			const currentAssistantText = this.activeAssistantMessageId
 				? normalizeText(
 					((this.messages.find((item) => item && item.id === this.activeAssistantMessageId) || {}).content),
 					''
 				)
-				: ''
+			: ''
 			const appendedAssistantText = resolveAppendedAssistantText(completedText, this.messages)
-
-			if (shouldSplitFinalAssistantFromTool) {
-				const toolCalls = normalizeToolCalls(completedPayload.toolCalls)
-				if (toolCalls.length && this.activeAssistantMessageId) {
-					this.upsertAssistantPayloadMessage({
-						toolCalls,
-						runtimeDebug: completedPayload
-					}, this.activeAssistantMessageId)
-				}
-				if (
-					appendedAssistantText ||
-					(Array.isArray(completedPayload.businessCards) && completedPayload.businessCards.length) ||
-					(Array.isArray(completedPayload.goalCards) && completedPayload.goalCards.length) ||
-					(Array.isArray(completedPayload.articleCards) && completedPayload.articleCards.length) ||
-					(Array.isArray(completedPayload.projectCards) && completedPayload.projectCards.length) ||
-					(Array.isArray(completedPayload.activityCards) && completedPayload.activityCards.length) ||
-					(Array.isArray(completedPayload.schoolCards) && completedPayload.schoolCards.length) ||
-					(Array.isArray(completedPayload.inviteCards) && completedPayload.inviteCards.length) ||
-					(Array.isArray(completedPayload.choiceCards) && completedPayload.choiceCards.length) ||
-					(Array.isArray(completedPayload.membershipCards) && completedPayload.membershipCards.length)
-				) {
-					this.appendAssistantPayloadMessage({
-						content: appendedAssistantText,
-						businessCards: completedPayload.businessCards,
-						goalCards: completedPayload.goalCards,
-						articleCards: completedPayload.articleCards,
-						projectCards: completedPayload.projectCards,
-						activityCards: completedPayload.activityCards,
-						schoolCards: completedPayload.schoolCards,
-						inviteCards: completedPayload.inviteCards,
-						choiceCards: completedPayload.choiceCards,
-						membershipCards: completedPayload.membershipCards,
-						skillDebug: completedPayload.skillDebug,
-						runtimeDebug: completedPayload
-					})
-				}
-			} else {
-				this.upsertAssistantPayloadMessage({
-					content: hasExistingToolSegment && currentAssistantText
-						? currentAssistantText
-						: completedText,
-					toolCalls: completedToolCalls,
-					businessCards: completedPayload.businessCards,
-					goalCards: completedPayload.goalCards,
-					articleCards: completedPayload.articleCards,
-					projectCards: completedPayload.projectCards,
-					activityCards: completedPayload.activityCards,
-					schoolCards: completedPayload.schoolCards,
-					inviteCards: completedPayload.inviteCards,
-					choiceCards: completedPayload.choiceCards,
-					membershipCards: completedPayload.membershipCards,
-					skillDebug: completedPayload.skillDebug,
-					runtimeDebug: completedPayload
-				})
-			}
+			const finalVisibleText =
+				extractedCompletedText ||
+				cleanedCompletedText ||
+				appendedAssistantText ||
+				currentAssistantText ||
+				streamedText
+			this.replaceTrailingAssistantMessages({
+				content: finalVisibleText,
+				thinkingText: normalizeText(completedPayload.thinkingText, '') || resolveLiveThinkingText(),
+				toolCalls: completedPayload.toolCalls,
+				businessCards: completedPayload.businessCards,
+				goalCards: completedPayload.goalCards,
+				articleCards: completedPayload.articleCards,
+				projectCards: completedPayload.projectCards,
+				activityCards: completedPayload.activityCards,
+				schoolCards: completedPayload.schoolCards,
+				inviteCards: completedPayload.inviteCards,
+				choiceCards: completedPayload.choiceCards,
+				membershipCards: completedPayload.membershipCards,
+				skillDebug: completedPayload.skillDebug,
+				runtimeDebug: completedPayload
+			})
 			return true
 		}
 
@@ -1911,11 +2588,10 @@ export const chatPageMethods = {
 			}
 		})
 	},
-	handleSchoolCardTap(card = {}) {
+	buildSchoolCardRoute(card = {}) {
 		const institutionId = Number(card && card.institutionId)
 		if (!Number.isFinite(institutionId) || institutionId <= 0) {
-			uni.showToast({ title: '学校信息不完整', icon: 'none' })
-			return
+			return ''
 		}
 
 		const query = [`id=${encodeURIComponent(institutionId)}`]
@@ -1925,11 +2601,36 @@ export const chatPageMethods = {
 		if (card.subjectTrack) query.push(`subjectTrack=${encodeURIComponent(card.subjectTrack)}`)
 		if (card.majorCategory) query.push(`majorCategory=${encodeURIComponent(card.majorCategory)}`)
 		if (card.riskBucketParam) query.push(`riskBucket=${encodeURIComponent(card.riskBucketParam)}`)
+		return `/subpackages/volunteer/detail?${query.join('&')}`
+	},
+	handleSchoolCardTap(card = {}) {
+		const routeUrl = this.buildSchoolCardRoute(card)
+		if (!routeUrl) {
+			uni.showToast({ title: '学校信息不完整', icon: 'none' })
+			return
+		}
 
 		uni.navigateTo({
-			url: `/subpackages/volunteer/detail?${query.join('&')}`,
+			url: routeUrl,
 			fail: () => {
 				uni.showToast({ title: '页面打开失败', icon: 'none' })
+			}
+		})
+	},
+	handleSchoolCardCopy(card = {}) {
+		const routeUrl = this.buildSchoolCardRoute(card)
+		if (!routeUrl) {
+			uni.showToast({ title: '学校信息不完整', icon: 'none' })
+			return
+		}
+
+		uni.setClipboardData({
+			data: routeUrl,
+			success: () => {
+				uni.showToast({
+					title: '跳转 URL 已复制',
+					icon: 'none'
+				})
 			}
 		})
 	},
@@ -2162,10 +2863,12 @@ export const chatPageMethods = {
 		this.bootstrapPage()
 	},
 	handleQuickActionSelect(item) {
+		if (typeof this.applyPromptSelection === 'function' && this.applyPromptSelection(item)) {
+			return
+		}
 		const text = normalizeText(item && (item.label || item.action), '')
 		if (!text) return
 		this.draftText = text
-		this.sendMessage(text)
 	},
 	copyText(text) {
 		const content = normalizeText(text, '')
@@ -2383,6 +3086,7 @@ export const chatPageMethods = {
 			if (recovered) {
 				this.upsertAssistantPayloadMessage({
 					content: recovered.content,
+					thinkingText: recovered.thinkingText,
 					toolCalls: recovered.toolCalls,
 					runtimeDebug: this.runtimeDebugData.lastCompletedPayload || {
 						reply: recovered.content,

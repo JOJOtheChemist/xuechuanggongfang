@@ -19,7 +19,7 @@ const STORAGE_API_BASE_KEY = 'gaokao-web-api-base'
 const STORAGE_TOKEN_KEY = 'gaokao-web-token'
 const STORAGE_USER_KEY = 'gaokao-web-user'
 const VOLUNTEER_UNLOCK_REQUIRED_INVITE_COUNT = 6
-const VOLUNTEER_CUSTOMER_SERVICE_PHONE = '15087599770'
+const VOLUNTEER_CUSTOMER_SERVICE_PHONE = '19184057109'
 
 const samplePrompts = [
   '我云南物理类，520分，想学计算机，先帮我按冲稳保筛学校。',
@@ -350,6 +350,7 @@ function beginAssistantStream(panel) {
     role: 'assistant',
     content: '',
     streaming: true,
+    thinkingText: '',
     toolCalls: 0,
     tools: [],
   })
@@ -408,6 +409,41 @@ function upsertStreamingTool(panel, toolPatch) {
       ...message,
       tools: currentTools,
       toolCalls: currentTools.length,
+    }
+  })
+}
+
+function mergeCompletedTools(panel, completedTools = []) {
+  patchAssistantMessage(panel, (message) => {
+    const currentTools = Array.isArray(message.tools) ? [...message.tools] : []
+    const currentToolMap = new Map(
+      currentTools.map((tool, index) => [String(tool.id || `${tool.name || 'tool'}-${index}`), tool]),
+    )
+
+    const mergedTools = (Array.isArray(completedTools) ? completedTools : []).map((tool, index) => {
+      const id = String(tool.id || `${tool.name || 'tool'}-${index}`)
+      const liveTool = currentToolMap.get(id)
+      const output = liveTool && Object.prototype.hasOwnProperty.call(liveTool, 'output')
+        ? liveTool.output
+        : tool.output
+      const rawOutput = liveTool && Object.prototype.hasOwnProperty.call(liveTool, 'rawOutput')
+        ? liveTool.rawOutput
+        : output
+
+      return {
+        ...liveTool,
+        ...tool,
+        id,
+        output,
+        rawOutput,
+        summary: String(tool.summary || liveTool?.summary || '').trim(),
+      }
+    })
+
+    return {
+      ...message,
+      tools: mergedTools,
+      toolCalls: mergedTools.length,
     }
   })
 }
@@ -506,6 +542,8 @@ async function sendStreamRequest(panel, question) {
           params: eventData.input,
           hasParams: eventData.input !== undefined && eventData.input !== null,
           summary: '',
+          output: null,
+          rawOutput: null,
           state: 'running',
           durationMs: null,
         })
@@ -515,12 +553,9 @@ async function sendStreamRequest(panel, question) {
       if (event.type === 'tool_end') {
         markLatestToolState(panel, eventData.name, 'completed', {
           durationMs: Number.isFinite(Number(eventData.duration)) ? Number(eventData.duration) : null,
-          summary:
-            typeof eventData.output === 'string'
-              ? eventData.output
-              : eventData.output
-                ? JSON.stringify(eventData.output)
-                : '',
+          summary: String(eventData.summary || eventData.message || '').trim(),
+          output: eventData.output ?? null,
+          rawOutput: eventData.output ?? null,
         })
         continue
       }
@@ -532,12 +567,9 @@ async function sendStreamRequest(panel, question) {
           input: eventData.input,
           params: eventData.input,
           hasParams: eventData.input !== undefined && eventData.input !== null,
-          summary:
-            typeof eventData.output === 'string'
-              ? eventData.output
-              : eventData.output
-                ? JSON.stringify(eventData.output)
-                : '',
+          summary: String(eventData.summary || eventData.message || '').trim(),
+          output: eventData.output ?? null,
+          rawOutput: eventData.output ?? null,
           durationMs: Number.isFinite(Number(eventData.duration)) ? Number(eventData.duration) : null,
           state: eventData.state || 'completed',
         })
@@ -582,18 +614,17 @@ async function sendStreamRequest(panel, question) {
         params: eventData.input,
         hasParams: eventData.input !== undefined && eventData.input !== null,
         summary: '',
+        output: null,
+        rawOutput: null,
         state: 'running',
         durationMs: null,
       })
     } else if (event.type === 'tool_end') {
       markLatestToolState(panel, eventData.name, 'completed', {
         durationMs: Number.isFinite(Number(eventData.duration)) ? Number(eventData.duration) : null,
-        summary:
-          typeof eventData.output === 'string'
-            ? eventData.output
-            : eventData.output
-              ? JSON.stringify(eventData.output)
-              : '',
+        summary: String(eventData.summary || eventData.message || '').trim(),
+        output: eventData.output ?? null,
+        rawOutput: eventData.output ?? null,
       })
     } else if (event.type === 'tool') {
       upsertStreamingTool(panel, {
@@ -602,12 +633,9 @@ async function sendStreamRequest(panel, question) {
         input: eventData.input,
         params: eventData.input,
         hasParams: eventData.input !== undefined && eventData.input !== null,
-        summary:
-          typeof eventData.output === 'string'
-            ? eventData.output
-            : eventData.output
-              ? JSON.stringify(eventData.output)
-              : '',
+        summary: String(eventData.summary || eventData.message || '').trim(),
+        output: eventData.output ?? null,
+        rawOutput: eventData.output ?? null,
         durationMs: Number.isFinite(Number(eventData.duration)) ? Number(eventData.duration) : null,
         state: eventData.state || 'completed',
       })
@@ -629,9 +657,15 @@ async function sendStreamRequest(panel, question) {
   }
 
   if (completedPayload) {
+    mergeCompletedTools(panel, Array.isArray(completedPayload.toolCalls) ? completedPayload.toolCalls : [])
     finalizeAssistantStream(panel, completedPayload.reply || streamedText || '（空回复）', {
       toolCalls: Array.isArray(completedPayload.toolCalls) ? completedPayload.toolCalls.length : 0,
-      tools: Array.isArray(completedPayload.toolCalls) ? completedPayload.toolCalls : [],
+      tools: Array.isArray(panel.messages.find((message) => message.id === panel.activeMessageId)?.tools)
+        ? panel.messages.find((message) => message.id === panel.activeMessageId)?.tools
+        : Array.isArray(completedPayload.toolCalls)
+          ? completedPayload.toolCalls
+          : [],
+      thinkingText: String(completedPayload.thinkingText || '').trim(),
     })
     return completedPayload
   }

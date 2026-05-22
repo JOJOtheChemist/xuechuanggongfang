@@ -1,12 +1,33 @@
 import { getApiBaseUrl } from '@/utils/api-switch.js'
 import { getCurrentUserToken } from '@/utils/http-services.js'
 
-export const DEFAULT_AGENT_ID = 'yunnan-gaokao-volunteer-consultant'
+export const DEFAULT_AGENT_ID = 'gaokao-volunteer-consultant-sales-v13'
 export const DAILY_NOTICE_KEY_PREFIX = 'ai_chat_daily_notice_'
 export const CHAT_PATH = '/subpackages/ai-chat/index'
 const SILENT_WECHAT_LOGIN_RETRY_COOLDOWN_MS = 5 * 60 * 1000
+const AGENT_ID_ALIASES = {
+	'yunnan-gaokao-volunteer-consultant': DEFAULT_AGENT_ID,
+	'yunnan-gaokao-volunteer-consultant-v2': DEFAULT_AGENT_ID,
+	'yunnan-gaokao-volunteer-consultant-v3-2': DEFAULT_AGENT_ID,
+	'yunnan-gaokao-volunteer-consultant-v4': DEFAULT_AGENT_ID,
+	'yunnan-gaokao-volunteer-consultant-v5': DEFAULT_AGENT_ID,
+	'yunnan-gaokao-volunteer-consultant-v6': DEFAULT_AGENT_ID,
+	'yunnan-gaokao-volunteer-consultant-v7': DEFAULT_AGENT_ID,
+	'yunnan-gaokao-volunteer-consultant-v10': DEFAULT_AGENT_ID,
+	'yunnan-gaokao-volunteer-consultant-v12': DEFAULT_AGENT_ID,
+	'xiaochunlu-campus-startup-mentor': 'xiaochunlu-ai-v5',
+	'xiaochunlu-ai-v2': 'xiaochunlu-ai-v5',
+	'xiaochunlu-ai-v3': 'xiaochunlu-ai-v5',
+	'xiaochunlu-ai-v4': 'xiaochunlu-ai-v5'
+}
 
 let lastSilentWechatLoginFailedAt = 0
+
+export function resolveAiChatAgentId(agentId, fallback = DEFAULT_AGENT_ID) {
+	const normalizedAgentId = String(agentId || '').trim()
+	if (!normalizedAgentId) return fallback
+	return AGENT_ID_ALIASES[normalizedAgentId] || normalizedAgentId
+}
 
 export function createSessionId() {
 	const stamp = Date.now().toString(36)

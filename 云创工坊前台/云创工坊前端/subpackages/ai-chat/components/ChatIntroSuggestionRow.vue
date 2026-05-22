@@ -45,7 +45,9 @@ export default {
 					return {
 						key: `intro-suggestion-${index}`,
 						label: item,
-						action: item
+						action: item,
+						routeUrl: '',
+						reply: ''
 					}
 				}
 
@@ -53,7 +55,9 @@ export default {
 				return {
 					key: `intro-suggestion-${index}`,
 					label,
-					action: String(item.action || label).trim()
+					action: String(item.action || label).trim(),
+					routeUrl: String(item.routeUrl || '').trim(),
+					reply: String(item.reply || item.fixedReply || '').trim()
 				}
 			})
 		}

@@ -632,7 +632,8 @@ pre {
 .tool-state-chip {
   display: inline-flex;
   align-items: center;
-  padding: 3px 8px;
+  padding: 2px 8px;
+  line-height: 1.1;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
@@ -667,6 +668,13 @@ pre {
   overflow-wrap: anywhere;
 }
 
+.tool-summary-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
 .tool-card-side {
   display: flex;
   flex-direction: column;
@@ -681,7 +689,22 @@ pre {
   color: #6c7f97;
 }
 
+.tool-details {
+  margin-top: 10px;
+}
+
+.tool-details summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.tool-details summary::-webkit-details-marker {
+  display: none;
+}
+
 .tool-toggle {
+  display: inline-flex;
+  align-self: flex-start;
   border: 0;
   border-radius: 999px;
   padding: 6px 10px;
@@ -691,8 +714,19 @@ pre {
   font-weight: 700;
 }
 
-.tool-section {
+.tool-details[open] .tool-toggle {
+  background: #dfeaf8;
+}
+
+.tool-expand-body {
   margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tool-section {
+  margin-top: 0;
 }
 
 .tool-section-title {
@@ -711,6 +745,37 @@ pre {
   line-height: 1.55;
   overflow: auto;
   max-width: 100%;
+}
+
+.tool-section-markdown {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: #eef4fb;
+  border: 1px solid #d8e4f1;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #60748d;
+  overflow-wrap: anywhere;
+}
+
+.thinking-block {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: #eef4fb;
+  border: 1px solid #d8e4f1;
+}
+
+.thinking-title {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #2b4160;
+}
+
+.thinking-markdown {
+  font-size: 13px;
+  color: #51657e;
 }
 
 .panel-footer {

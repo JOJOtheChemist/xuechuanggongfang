@@ -94,7 +94,7 @@
       </view>
 
       <!-- 年龄（咨询类专用） -->
-      <view class="input-group" v-if="isConsult">
+      <view class="input-group" v-if="isConsult && !isGaokaoSignup">
         <view class="label-row">
           <text class="required">*</text>
           <text class="label">年龄</text>
@@ -128,7 +128,7 @@
 
 
       <!-- 学校 -->
-      <view class="input-group">
+      <view class="input-group" v-if="!isGaokaoSignup">
         <view class="label-row">
           <text class="required">*</text>
           <text class="label">学校</text>
@@ -144,7 +144,7 @@
       </view>
 
       <!-- 入学年份 -->
-      <view class="input-group">
+      <view class="input-group" v-if="!isGaokaoSignup">
         <view class="label-row">
           <text class="required">*</text>
           <text class="label">入学年份</text>
@@ -158,20 +158,20 @@
         </picker>
       </view>
 
-      <!-- 推荐人 UID（不可编辑） -->
+      <!-- 邀请人信息（不可编辑） -->
       <view class="input-group">
         <view class="label-row">
-          <text class="label">推荐人 UID</text>
+          <text class="label">{{ referrerFieldLabel }}</text>
         </view>
         <input
           class="input"
           type="text"
-          v-model="referrerUid"
+          :value="referrerDisplayValue"
           placeholder="暂无推荐人"
           placeholder-class="placeholder"
           disabled
         />
-        <text class="helper-text">如果是扫推荐码进来，会自动填充。该项不可修改。</text>
+        <text class="helper-text">{{ referrerFieldHint }}</text>
       </view>
     </view>
 
@@ -220,6 +220,7 @@ export default {
       submitting: false,
       category: '',
       signupWx: '',
+      entrySource: '',
       // 展示用推荐人（可以是姓名或备注）
       referrer: '',
       // 推荐人的 uid（用于后端统计和标记）
@@ -365,6 +366,10 @@ export default {
     isConsult() {
       return this.business && this.business.type === 'consult'
     },
+    // 升学业务单独简化表单
+    isGaokaoSignup() {
+      return String(this.businessId) === '15'
+    },
     // 是否需要支付
     isPaymentRequired() {
       return !!(this.business && this.business.type === 'signup' && this.signupPrice > 0)
@@ -390,9 +395,25 @@ export default {
         return '加载报名配置中...'
       }
       return this.isPaymentRequired ? `报名并支付（¥${this.formatPrice(this.signupPrice)}）` : '立即报名'
+    },
+    isAiChatPlanningEntry() {
+      return this.entrySource === 'ai_chat_business' && String(this.businessId) === '15'
+    },
+    referrerFieldLabel() {
+      return this.isAiChatPlanningEntry ? '注册邀请人' : '推荐人 UID'
+    },
+    referrerDisplayValue() {
+      return this.referrer || this.referrerUid
+    },
+    referrerFieldHint() {
+      if (this.isAiChatPlanningEntry) {
+        return '从当前账号的注册邀请关系自动带出，不可修改。'
+      }
+      return '如果是扫推荐码进来，会自动填充。该项不可修改。'
     }
   },
   onLoad(options) {
+		this.entrySource = String(options.source || '').trim()
 		// [NEW] 处理只读模式
 		if (options.mode === 'readonly') {
 			this.isReadonly = true
@@ -425,39 +446,6 @@ export default {
       this.category = decodeURIComponent(options.category)
     }
 
-    // [双重保险] 优先从 URL 获取邀请人 (支持 inviter_id 和老的 referrer 参数)
-    const inviterId = options.inviter_id || options.referrer ? decodeURIComponent(options.inviter_id || options.referrer) : ''
-    const refName = options.referrerName ? decodeURIComponent(options.referrerName) : ''
-    
-    if (inviterId) {
-      this.referrerUid = inviterId
-      this.referrer = refName || inviterId
-      this.signupWx = refName || ''
-      
-      // 同步到缓存 (双重保险)
-      uni.setStorageSync('pending_business_invite', {
-        inviter: inviterId,
-        businessId: String(this.businessId),
-        timestamp: Date.now(),
-        source: 'signup_url'
-      })
-      console.log('[signup] 从 URL 获取到邀请人并同步缓存:', inviterId)
-    } else {
-      // [双重保险] 兜底从缓存读取
-      const cached = uni.getStorageSync('pending_business_invite')
-      // 检查缓存是否存在，且业务 ID 匹配（或者是通用邀请）
-      if (cached && cached.inviter && (!cached.businessId || String(cached.businessId) === String(this.businessId))) {
-        this.referrerUid = cached.inviter
-        this.referrer = cached.inviter
-        console.log('[signup] 从缓存恢复业务推荐人:', this.referrerUid)
-      } else {
-        // [MOD] 移除兜底使用当前用户的逻辑：没有推荐人就是没有，保持为空
-        this.referrerUid = ''
-        this.referrer = ''
-      }
-      this.signupWx = ''
-    }
-
     const currentYear = new Date().getFullYear()
     const years = []
     for (let i = 0; i < 8; i++) {
@@ -471,14 +459,88 @@ export default {
 
 
     this.loadUserInfo()
-    
-    // [NEW] 立即记录业务邀请查看 (解决老用户已登录不触发 loginByWeixin 的问题)
-    this.recordBusinessInviteView()
+
+    this.initializeReferrerContext(options).finally(() => {
+      // [NEW] 立即记录业务邀请查看 (解决老用户已登录不触发 loginByWeixin 的问题)
+      this.recordBusinessInviteView()
+    })
   },
   onShow() {
     this.loadUserInfo()
   },
   methods: {
+    isRegisteredInviterScene(options = {}) {
+      const source = String(options.source || this.entrySource || '').trim()
+      const businessId = String(options.id || this.businessId || '').trim()
+      return source === 'ai_chat_business' && businessId === '15'
+    },
+    applyInviteContext(inviterUid = '', referrer = '', signupWx = '') {
+      this.referrerUid = inviterUid
+      this.referrer = referrer || inviterUid
+      this.signupWx = signupWx
+    },
+    applyInviteContextFromRouteOrCache(options = {}) {
+      const inviterId =
+        options.inviter_id || options.referrer
+          ? decodeURIComponent(options.inviter_id || options.referrer)
+          : ''
+      const refName = options.referrerName ? decodeURIComponent(options.referrerName) : ''
+
+      if (inviterId) {
+        this.applyInviteContext(inviterId, refName || inviterId, refName || '')
+
+        uni.setStorageSync('pending_business_invite', {
+          inviter: inviterId,
+          businessId: String(this.businessId),
+          timestamp: Date.now(),
+          source: 'signup_url'
+        })
+        console.log('[signup] 从 URL 获取到邀请人并同步缓存:', inviterId)
+        return
+      }
+
+      const cached = uni.getStorageSync('pending_business_invite')
+      if (cached && cached.inviter && (!cached.businessId || String(cached.businessId) === String(this.businessId))) {
+        this.applyInviteContext(cached.inviter, cached.inviter, '')
+        console.log('[signup] 从缓存恢复业务推荐人:', this.referrerUid)
+        return
+      }
+
+      this.applyInviteContext('', '', '')
+    },
+    async applyRegisteredInviterForAiChatEntry() {
+      const token = uni.getStorageSync('token')
+      if (!token) {
+        console.log('[signup] 当前未登录，暂不查询注册邀请人')
+        return
+      }
+
+      try {
+        const userCenter = getHttpService('user-center')
+        const res = await userCenter.getMyInviteContext({ _token: token })
+        const inviterUid = String(res?.data?.inviterUid || '').trim()
+        const inviterNickname = String(res?.data?.inviterNickname || '').trim()
+
+        if (!res || res.code !== 0 || !inviterUid) {
+          console.log('[signup] 未查询到注册邀请人，保留现有推荐人信息')
+          return
+        }
+
+        this.applyInviteContext(inviterUid, inviterNickname || inviterUid, inviterNickname || '')
+        console.log('[signup] 已应用注册邀请人:', inviterUid)
+      } catch (e) {
+        console.error('[signup] 查询注册邀请人失败:', e)
+      }
+    },
+    async initializeReferrerContext(options = {}) {
+      if (!this.isRegisteredInviterScene(options)) {
+        this.applyInviteContextFromRouteOrCache(options)
+        return
+      }
+
+      this.applyInviteContext('', '', '')
+      await this.applyRegisteredInviterForAiChatEntry()
+    },
     // 处理报名（包含支付流程）
     async handleSignup() {
       if (this.submitting || this.payProcessing) return
@@ -515,8 +577,7 @@ export default {
 
       // 根据业务类型区分校验逻辑
       if (this.isConsult) {
-        // 咨询类：必填 年龄、微信号
-        if (!this.form.age) {
+        if (!this.isGaokaoSignup && !this.form.age) {
           uni.showToast({ title: '请填写年龄', icon: 'none' })
           return false
         }
@@ -533,11 +594,11 @@ export default {
       }
 
       // 公共必填
-      if (!this.form.school) {
+      if (!this.isGaokaoSignup && !this.form.school) {
         uni.showToast({ title: '请选择学校', icon: 'none' })
         return false
       }
-      if (!this.form.entryYear) {
+      if (!this.isGaokaoSignup && !this.form.entryYear) {
         uni.showToast({ title: '请选择入学年份', icon: 'none' })
         return false
       }

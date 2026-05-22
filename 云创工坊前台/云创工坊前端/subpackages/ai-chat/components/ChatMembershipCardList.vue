@@ -1,5 +1,5 @@
 <template>
-	<view v-if="cards.length" class="membership-card-group">
+	<view v-if="cards.length && !hidden" class="membership-card-group">
 		<view
 			v-for="card in cards"
 			:key="card.id"
@@ -44,6 +44,10 @@ export default {
 		cards: {
 			type: Array,
 			default: () => []
+		},
+		hidden: {
+			type: Boolean,
+			default: false
 		}
 	},
 	methods: {

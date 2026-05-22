@@ -1,5 +1,4 @@
 import App from './App'
-import { getCurrentUserInfo } from './utils/http-services'
 import { normalizeAvatarUrl } from './utils/avatar'
 import {
   buildDefaultSharePayload,
@@ -8,6 +7,7 @@ import {
   isPageLikeOptions,
   showGlobalShareMenu
 } from './utils/share'
+import { readStorageSync } from './utils/storage-bridge'
 
 // #ifndef VUE3
 import Vue from 'vue'
@@ -39,7 +39,7 @@ Vue.mixin({
 
     this.__shareRoute = route
     this.__shareOptions = options
-    cacheIncomingInvite(options, route)
+    void cacheIncomingInvite(options, route)
   },
   data() {
     return {
@@ -52,6 +52,38 @@ Vue.mixin({
   methods: {
     normalizeAvatarUrl(url, fallback) {
       return normalizeAvatarUrl(url, fallback)
+    },
+    async refreshGlobalUserState() {
+      const storedUserInfo = (await readStorageSync('userInfo', {})) || {}
+      const storedUserId = await readStorageSync('userId', '')
+      const resolvedUserId =
+        storedUserInfo.uid ||
+        storedUserInfo.userId ||
+        storedUserInfo.user_id ||
+        storedUserInfo.id ||
+        storedUserId ||
+        ''
+
+      this.global_uid = resolvedUserId
+
+      // 2. 获取终身邀请人 (优先查标准字段，再查项目自定义字段)
+      this.global_lifetime_inviter =
+        storedUserInfo.inviter_uid ||
+        (storedUserInfo.partner_info && storedUserInfo.partner_info.inviter_id) ||
+        '未绑定'
+
+      // 3. 获取临时邀请人缓存
+      const pendingTeam = await readStorageSync('pending_team_invite', null)
+      this.global_team_inviter = pendingTeam?.inviter || '无'
+
+      // 4. 获取业务邀请人缓存
+      const pendingBusiness = await readStorageSync('pending_business_invite', null)
+      this.global_business_inviter = pendingBusiness?.inviter || '无'
+
+      // 简单日志，确认状态
+      if (this.global_uid) {
+        // console.log('[Global] Current Page UID:', this.global_uid)
+      }
     }
   },
   onShow() {
@@ -59,30 +91,7 @@ Vue.mixin({
       showGlobalShareMenu()
     }
 
-    // 每次页面显示时，自动获取最新的 UID
-    const userInfo = getCurrentUserInfo()
-    // 优先使用标准接口，如果没有（因项目自定义了storage key），则回退到本地缓存 'userId'
-    this.global_uid = userInfo.uid || uni.getStorageSync('userId')
-
-    // 2. 获取终身邀请人 (优先查标准字段，再查项目自定义字段)
-    const storageInfo = uni.getStorageSync('userInfo') || {}
-    this.global_lifetime_inviter = userInfo.inviter_uid ||
-      storageInfo.inviter_uid ||
-      (storageInfo.partner_info && storageInfo.partner_info.inviter_id) ||
-      '未绑定'
-
-    // 3. 获取临时邀请人缓存
-    const pendingTeam = uni.getStorageSync('pending_team_invite')
-    this.global_team_inviter = pendingTeam?.inviter || '无'
-
-    // 4. 获取业务邀请人缓存
-    const pendingBusiness = uni.getStorageSync('pending_business_invite')
-    this.global_business_inviter = pendingBusiness?.inviter || '无'
-
-    // 简单日志，确认状态
-    if (this.global_uid) {
-      // console.log('[Global] Current Page UID:', this.global_uid)
-    }
+    void this.refreshGlobalUserState()
   },
   onShareAppMessage() {
     if (!isPageLikeOptions(this.$options || {})) {

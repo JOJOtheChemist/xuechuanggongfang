@@ -10,6 +10,9 @@
         :src="directScoreTopHeroUrl"
         mode="widthFix"
       />
+      <view class="direct-score-hero-caption">
+        <text class="direct-score-hero-caption-text">云南本地数据，更懂当地录取规则</text>
+      </view>
     </view>
 
     <view class="filter-header">
@@ -24,13 +27,13 @@
         />
 
         <view class="score-input-shell">
-          <input
+          <volunteer-input-field
             v-model="scoreInput"
-            class="score-input"
+            input-class="score-input"
             type="digit"
             confirm-type="search"
             :disabled="!canEditScoreInput"
-            :placeholder="scoreInputPlaceholder"
+            :placeholder="canEditScoreInput ? '可不填分数，直接筛学校' : '分数已锁定'"
             placeholder-class="input-placeholder"
             @confirm="handleSearchAction"
           />
@@ -39,22 +42,26 @@
       </view>
 
       <view class="search-row">
-        <input
-          v-model="keyword"
-          class="search-input"
-          confirm-type="search"
-          placeholder="院校名称"
-          placeholder-class="input-placeholder"
-          @confirm="handleSearchAction"
-        />
-        <input
-          v-model="majorKeyword"
-          class="search-input"
-          confirm-type="search"
-          placeholder="专业关键词"
-          placeholder-class="input-placeholder"
-          @confirm="handleSearchAction"
-        />
+        <view class="search-input-shell">
+          <volunteer-input-field
+            v-model="keyword"
+            input-class="search-input"
+            confirm-type="search"
+            placeholder="院校名称"
+            placeholder-class="input-placeholder"
+            @confirm="handleSearchAction"
+          />
+        </view>
+        <view class="search-input-shell">
+          <volunteer-input-field
+            v-model="majorKeyword"
+            input-class="search-input"
+            confirm-type="search"
+            placeholder="专业关键词"
+            placeholder-class="input-placeholder"
+            @confirm="handleSearchAction"
+          />
+        </view>
         <view class="search-button" @tap="resetFilters">
           <image
             class="action-image-button action-image-button-reset"
@@ -65,48 +72,34 @@
         </view>
       </view>
 
-      <view class="row-basic">
-        <picker
-          class="basic-picker"
-          mode="selector"
-          :range="cityOptions"
-          range-key="label"
-          :value="selectedCityIndex"
-          @change="onCityChange"
-        >
-          <view class="basic-picker-trigger">
-            <text class="basic-picker-text">{{ selectedCityLabel }}</text>
-            <view class="basic-picker-arrow"></view>
-          </view>
-        </picker>
+      <view class="filter-condition-row">
+        <view class="filter-condition-stack">
+          <view class="row-basic">
+            <volunteer-category-dropdown
+              class="basic-dropdown"
+              :options="cityOptions"
+              :value="selectedCityIndex"
+              label-key="label"
+              @change="onCityChange"
+            />
 
-        <picker
-          class="basic-picker"
-          mode="selector"
-          :range="levelOptions"
-          range-key="label"
-          :value="selectedLevelIndex"
-          @change="onLevelChange"
-        >
-          <view class="basic-picker-trigger">
-            <text class="basic-picker-text">{{ selectedLevelLabel }}</text>
-            <view class="basic-picker-arrow"></view>
-          </view>
-        </picker>
+            <volunteer-category-dropdown
+              class="basic-dropdown"
+              :options="levelOptions"
+              :value="selectedLevelIndex"
+              label-key="label"
+              @change="onLevelChange"
+            />
 
-        <picker
-          class="basic-picker"
-          mode="selector"
-          :range="natureOptions"
-          range-key="label"
-          :value="selectedNatureIndex"
-          @change="onNatureChange"
-        >
-          <view class="basic-picker-trigger">
-            <text class="basic-picker-text">{{ selectedNatureLabel }}</text>
-            <view class="basic-picker-arrow"></view>
+            <volunteer-category-dropdown
+              class="basic-dropdown"
+              :options="natureOptions"
+              :value="selectedNatureIndex"
+              label-key="label"
+              @change="onNatureChange"
+            />
           </view>
-        </picker>
+        </view>
       </view>
 
       <view class="row-risk">
@@ -144,7 +137,16 @@
         <view class="query-action-stack">
           <view
             class="query-action-card"
-            :class="{ 'query-action-card-disabled': searchActionDisabled }"
+            :class="{
+              'query-action-card-disabled': searchActionDisabled,
+              'query-action-card-pressed': queryActionPressed
+            }"
+            @touchstart="beginSearchActionPress"
+            @touchend="endSearchActionPress"
+            @touchcancel="endSearchActionPress"
+            @mousedown="beginSearchActionPress"
+            @mouseup="endSearchActionPress"
+            @mouseleave="endSearchActionPress"
             @tap="handleSearchAction"
           >
             <view class="query-action-head">
@@ -152,7 +154,6 @@
               <text class="query-action-badge">{{ queryActionBadgeText }}</text>
             </view>
           </view>
-          <text class="query-action-subtitle">云南本地数据 更懂当地录取规则</text>
           <text class="query-action-subtitle query-action-subtitle-secondary">首次使用需要加载，二次使用会更顺畅</text>
         </view>
 
@@ -205,6 +206,22 @@
     >
       <view class="result-summary">
         <text>{{ resultSummaryText }}</text>
+        <text v-if="resultSummaryHintText" class="result-summary-hint">{{ resultSummaryHintText }}</text>
+      </view>
+
+      <view v-if="showInstitutionLoadingRow" class="institution-loading-row">
+        <image
+          class="institution-loading-mascot"
+          :src="directScoreLoadingMascotUrl"
+          mode="widthFix"
+          :webp="true"
+        />
+        <image
+          class="institution-loading-copy"
+          :src="directScoreLoadingCopyUrl"
+          mode="widthFix"
+          :webp="true"
+        />
       </view>
 
       <view v-if="loading || guestPreviewLoading" class="state-box">
@@ -290,7 +307,7 @@
       <view class="share-invite-sheet" @tap.stop>
         <text class="share-invite-sheet-title">分享查分链接</text>
         <text class="share-invite-sheet-desc">
-          这里会直接唤起微信分享，发到聊天里的会是当前查分页链接，不会再跳团队二维码。
+          分享{{ admissionUnlockStatus.requiredInviteCount || 3 }}人后计入解锁进度，发到聊天里的会是当前查分页链接，不会再跳团队二维码。
         </text>
         <button
           class="share-invite-sheet-primary"
@@ -313,6 +330,7 @@ import VolunteerAccessStatusUpsellBanners from '../../components/volunteer/Acces
 import BottomNav from './components/BottomNav.vue'
 import VolunteerCategoryDropdown from './components/CategoryDropdown.vue'
 import VolunteerDirectScoreResults from './components/DirectScoreSchoolResults.vue'
+import VolunteerInputField from './components/InputField.vue'
 import VolunteerSupportPhoneCard from './components/SupportPhoneCard.vue'
 import { getStaticAssetUrl } from '../../utils/cloud-static-assets'
 import { getCachedImageSync, resolveCachedImages } from '../../utils/remote-image-cache'
@@ -321,6 +339,8 @@ import { createVolunteerPageOptions } from '../../utils/volunteer-page-options'
 const DIRECT_SCORE_TOP_HERO_URL = getStaticAssetUrl('/static/volunteer-guide/direct-score-top-hero.jpg')
 const DIRECT_SCORE_RESET_BUTTON_URL = getStaticAssetUrl('/static/volunteer-guide/direct-score-reset-button.webp')
 const DIRECT_SCORE_REFRESH_BUTTON_URL = getStaticAssetUrl('/static/volunteer-guide/direct-score-refresh-button.webp')
+const DIRECT_SCORE_LOADING_MASCOT_URL = getStaticAssetUrl('/static/volunteer-guide/direct-score-loading-mascot.webp')
+const DIRECT_SCORE_LOADING_COPY_URL = getStaticAssetUrl('/static/volunteer-guide/direct-score-loading-copy.webp')
 const REMAINING_QUERY_BANNER_URL = getStaticAssetUrl('/static/volunteer-guide/remaining-query-banner.webp')
 const VIP_BANNER_URL = getStaticAssetUrl('/static/volunteer-guide/vip-banner-large.webp')
 const VOLUNTEER_HOME_PATH = '/subpackages/volunteer/guide-redirect'
@@ -340,6 +360,8 @@ const DIRECT_SCORE_STATIC_IMAGE_FIELDS = Object.freeze({
   directScoreTopHeroUrl: DIRECT_SCORE_TOP_HERO_URL,
   directScoreResetButtonUrl: DIRECT_SCORE_RESET_BUTTON_URL,
   directScoreRefreshButtonUrl: DIRECT_SCORE_REFRESH_BUTTON_URL,
+  directScoreLoadingMascotUrl: DIRECT_SCORE_LOADING_MASCOT_URL,
+  directScoreLoadingCopyUrl: DIRECT_SCORE_LOADING_COPY_URL,
   remainingQueryBannerUrl: REMAINING_QUERY_BANNER_URL,
   vipBannerUrl: VIP_BANNER_URL
 })
@@ -370,12 +392,32 @@ const originalOnReachBottom = baseVolunteerPageOptions.onReachBottom
 const originalOnShareAppMessage = baseVolunteerPageOptions.onShareAppMessage
 const originalOnUnload = baseVolunteerPageOptions.onUnload
 const baseComputed = baseVolunteerPageOptions.computed || {}
+const computed = Object.assign({}, baseComputed, {
+  loadedInstitutionCount() {
+    return Array.isArray(this.institutions) ? this.institutions.length : 0
+  },
+  institutionTotalCount() {
+    const total = Number(this.total || 0)
+    return Number.isFinite(total) && total > 0 ? total : 0
+  },
+  showInstitutionLoadingRow() {
+    if (!this.hasFullInstitutionAccess || this.loading || this.errorText) {
+      return false
+    }
+
+    return this.loadedInstitutionCount > 0 && (
+      this.loadingMore || this.institutionTotalCount > this.loadedInstitutionCount
+    )
+  }
+})
 
 const data = function data() {
   const baseData = Object.assign({}, originalData.call(this), {
     directScoreTopHeroUrl: getCachedStaticImage(DIRECT_SCORE_TOP_HERO_URL),
     directScoreResetButtonUrl: getCachedStaticImage(DIRECT_SCORE_RESET_BUTTON_URL),
     directScoreRefreshButtonUrl: getCachedStaticImage(DIRECT_SCORE_REFRESH_BUTTON_URL),
+    directScoreLoadingMascotUrl: getCachedStaticImage(DIRECT_SCORE_LOADING_MASCOT_URL),
+    directScoreLoadingCopyUrl: getCachedStaticImage(DIRECT_SCORE_LOADING_COPY_URL),
     remainingQueryBannerUrl: getCachedStaticImage(REMAINING_QUERY_BANNER_URL),
     vipBannerUrl: getCachedStaticImage(VIP_BANNER_URL)
   })
@@ -445,6 +487,26 @@ const methods = Object.assign({}, originalMethods, {
     uni.reLaunch({
       url: VOLUNTEER_HOME_PATH
     })
+  },
+  beginSearchActionPress() {
+    if (this.searchActionDisabled) return
+
+    if (this.searchActionPressTimer) {
+      clearTimeout(this.searchActionPressTimer)
+      this.searchActionPressTimer = null
+    }
+
+    this.queryActionPressed = true
+  },
+  endSearchActionPress() {
+    if (this.searchActionPressTimer) {
+      clearTimeout(this.searchActionPressTimer)
+    }
+
+    this.searchActionPressTimer = setTimeout(() => {
+      this.queryActionPressed = false
+      this.searchActionPressTimer = null
+    }, 120)
   }
 })
 
@@ -479,15 +541,16 @@ const onPullDownRefresh = function onPullDownRefresh(...args) {
 }
 
 export default {
-  components: {
-		VolunteerAccessStatusUpsellBanners,
-		BottomNav,
-		VolunteerCategoryDropdown,
-		VolunteerDirectScoreResults,
-		VolunteerSupportPhoneCard
-  },
+	  components: {
+			VolunteerAccessStatusUpsellBanners,
+			BottomNav,
+			VolunteerCategoryDropdown,
+			VolunteerDirectScoreResults,
+			VolunteerInputField,
+			VolunteerSupportPhoneCard
+	  },
   data,
-  computed: baseComputed,
+  computed,
   methods,
   onLoad,
   onShow,
@@ -504,6 +567,12 @@ export default {
     return {}
   },
   onUnload(...args) {
+    if (this.searchActionPressTimer) {
+      clearTimeout(this.searchActionPressTimer)
+      this.searchActionPressTimer = null
+    }
+    this.queryActionPressed = false
+
     if (typeof originalOnUnload === 'function') {
       return originalOnUnload.apply(this, args)
     }

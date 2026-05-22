@@ -5,7 +5,7 @@
 			:key="card.id"
 			class="school-card"
 			hover-class="school-card-hover"
-			@tap="handleSelect(card)"
+			@tap="openSchool(card)"
 		>
 			<view class="school-card-head">
 				<view class="school-card-brand">
@@ -42,7 +42,14 @@
 			</view>
 
 			<view class="school-card-footer">
-				<text class="school-card-footer-text">点击查看学校详情</text>
+				<view class="school-card-footer-actions">
+					<view class="school-card-copy-button" hover-class="school-card-copy-button-hover" @tap.stop="copySchoolRoute(card)">
+						<text class="school-card-copy-button-text">复制跳转 URL</text>
+					</view>
+					<view class="school-card-open-button" hover-class="school-card-open-button-hover" @tap.stop="openSchool(card)">
+						<text class="school-card-open-button-text">查看详情</text>
+					</view>
+				</view>
 			</view>
 		</view>
 	</view>
@@ -62,8 +69,55 @@ export default {
 		}
 	},
 	methods: {
-		handleSelect(card) {
-			this.$emit('select', card)
+		buildSchoolRoute(card = {}) {
+			const institutionId = Number(card && card.institutionId)
+			if (!Number.isFinite(institutionId) || institutionId <= 0) {
+				return ''
+			}
+
+			const query = [`id=${encodeURIComponent(institutionId)}`]
+			if (card.preview) query.push('preview=1')
+			if (card.title) query.push(`name=${encodeURIComponent(card.title)}`)
+			if (card.examType) query.push(`examType=${encodeURIComponent(card.examType)}`)
+			if (card.subjectTrack) query.push(`subjectTrack=${encodeURIComponent(card.subjectTrack)}`)
+			if (card.majorCategory) query.push(`majorCategory=${encodeURIComponent(card.majorCategory)}`)
+			if (card.riskBucketParam) query.push(`riskBucket=${encodeURIComponent(card.riskBucketParam)}`)
+			return `/subpackages/volunteer/detail?${query.join('&')}`
+		},
+		openSchool(card = {}) {
+			const routeUrl = this.buildSchoolRoute(card)
+			if (!routeUrl) {
+				uni.showToast({ title: '学校信息不完整', icon: 'none' })
+				return
+			}
+
+			uni.navigateTo({
+				url: routeUrl,
+				fail: (error) => {
+					console.warn('[ChatSchoolCardList] navigateTo failed:', error, routeUrl, card)
+					uni.redirectTo({
+						url: routeUrl,
+						fail: (redirectError) => {
+							console.warn('[ChatSchoolCardList] redirectTo failed:', redirectError, routeUrl, card)
+							uni.showToast({ title: '页面打开失败', icon: 'none' })
+						}
+					})
+				}
+			})
+		},
+		copySchoolRoute(card = {}) {
+			const routeUrl = this.buildSchoolRoute(card)
+			if (!routeUrl) {
+				uni.showToast({ title: '学校信息不完整', icon: 'none' })
+				return
+			}
+
+			uni.setClipboardData({
+				data: routeUrl,
+				success: () => {
+					uni.showToast({ title: '跳转 URL 已复制', icon: 'none' })
+				}
+			})
 		},
 		resolveInitial(title) {
 			const text = normalizeText(title).replace(/[()（）]/g, '')
@@ -220,9 +274,42 @@ export default {
 	justify-content: flex-end;
 }
 
-.school-card-footer-text {
+.school-card-footer-actions {
+	display: flex;
+	align-items: center;
+	gap: 12rpx;
+}
+
+.school-card-copy-button,
+.school-card-open-button {
+	padding: 12rpx 22rpx;
+	border-radius: 999rpx;
+}
+
+.school-card-copy-button {
+	background: rgba(255, 255, 255, 0.92);
+	border: 1rpx solid rgba(86, 119, 185, 0.18);
+}
+
+.school-card-open-button {
+	background: linear-gradient(135deg, #78a8ff, #5f82d8);
+	box-shadow: 0 10rpx 18rpx rgba(95, 130, 216, 0.18);
+}
+
+.school-card-copy-button-hover,
+.school-card-open-button-hover {
+	transform: translateY(2rpx) scale(0.99);
+}
+
+.school-card-copy-button-text {
 	font-size: 20rpx;
 	font-weight: 700;
 	color: #5677b9;
+}
+
+.school-card-open-button-text {
+	font-size: 20rpx;
+	font-weight: 700;
+	color: #ffffff;
 }
 </style>

@@ -19,6 +19,97 @@ function escapeAttribute(value) {
   return escapeHtml(value).replace(/`/g, '&#96;')
 }
 
+const MID_BODY_PROTOCOL_BRACKETS = new Set(['{', '}', '[', ']', '｛', '｝', '［', '］'])
+
+export function normalizeMidBodyProtocolLineBreaks(value) {
+  return String(value || '')
+    .replace(/[}｝]\s*[{｛]/g, '\n')
+    .replace(/[\]］]\s*[\[［]/g, '\n')
+}
+
+export function extractBracketedReplyText(value) {
+  const source = String(value || '')
+  if (!source) {
+    return ''
+  }
+
+  const normalized = source
+    .replace(/｛/g, '{')
+    .replace(/｝/g, '}')
+    .replace(/［/g, '[')
+    .replace(/］/g, ']')
+  const startIndex = normalized.indexOf('{')
+
+  if (startIndex === -1) {
+    return ''
+  }
+
+  const closeBraceIndex = normalized.lastIndexOf('}')
+  const closeBracketIndex = normalized.lastIndexOf(']')
+  const endIndex = Math.max(closeBraceIndex, closeBracketIndex)
+
+  if (endIndex > startIndex) {
+    return normalized.slice(startIndex + 1, endIndex).trim()
+  }
+
+  return normalized.slice(startIndex + 1).replace(/^\s+/, '')
+}
+
+function stripVisibleFormattingMarkers(value) {
+  return String(value || '').replace(/\*\*(.+?)\*\*/g, '$1')
+}
+
+export function stripMidBodyProtocolBrackets(value) {
+  const source = String(value || '')
+  if (!source) {
+    return ''
+  }
+
+  const chars = Array.from(source)
+  let firstVisibleIndex = 0
+  while (firstVisibleIndex < chars.length && /\s/.test(chars[firstVisibleIndex])) {
+    firstVisibleIndex += 1
+  }
+
+  let lastVisibleIndex = chars.length - 1
+  while (lastVisibleIndex >= 0 && /\s/.test(chars[lastVisibleIndex])) {
+    lastVisibleIndex -= 1
+  }
+
+  if (firstVisibleIndex >= lastVisibleIndex) {
+    return source
+  }
+
+  const cleaned = chars
+    .filter((char, index) => {
+      if (index <= firstVisibleIndex || index >= lastVisibleIndex) {
+        return true
+      }
+      return !MID_BODY_PROTOCOL_BRACKETS.has(char)
+    })
+    .join('')
+
+  return cleaned.replace(/^\s*[\[{｛［]\s*/, '').replace(/\s*[\]｝}］]\s*$/, '')
+}
+
+export function extractVisibleReplyText(value) {
+  const source = String(value || '')
+  if (!source) {
+    return ''
+  }
+
+  const extracted = extractBracketedReplyText(source)
+  if (extracted) {
+    return stripMidBodyProtocolBrackets(normalizeMidBodyProtocolLineBreaks(stripVisibleFormattingMarkers(extracted)))
+  }
+
+  if (!/[{}｛｝]/.test(source)) {
+    return stripMidBodyProtocolBrackets(normalizeMidBodyProtocolLineBreaks(stripVisibleFormattingMarkers(source)))
+  }
+
+  return ''
+}
+
 function protectCodeSpans(text) {
   const stash = []
   const content = String(text || '').replace(/`([^`\n]+)`/g, (_, code) => {

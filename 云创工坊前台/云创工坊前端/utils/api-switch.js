@@ -770,6 +770,7 @@ const SERVICE_ROUTES = {
 		getUserInfo: authRoute('GET', '/users/me'),
 		updateProfile: authRoute('PATCH', '/users/me'),
 		getMyStats: authRoute('GET', '/users/me/stats'),
+		getMyInviteContext: authRoute('GET', '/users/me/inviter'),
 		bindInviter: authRoute('POST', '/users/me/inviter'),
 		recordTeamInviteView: authRoute('POST', '/users/me/invite-views/team'),
 		recordBusinessInviteView: authRoute('POST', '/users/me/invite-views/business'),

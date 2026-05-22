@@ -87,8 +87,8 @@ export default {
     },
     shareUnlockTitle() {
       return this.normalizedRequiredInviteCount > 0
-        ? `分享 ${this.normalizedRequiredInviteCount} 人免费解锁`
-        : '分享邀请免费解锁'
+        ? `分享${this.normalizedRequiredInviteCount}人免费解锁`
+        : '分享3人免费解锁'
     },
     progressText() {
       if (this.normalizedRequiredInviteCount > 0) {
@@ -111,16 +111,16 @@ export default {
     description() {
       if (!this.userLoggedIn) {
         return this.normalizedRequiredInviteCount > 0
-          ? `登录后可选择分享 ${this.normalizedRequiredInviteCount} 人免费解锁，或支付 19.9 元立即解锁。`
-          : '登录后可选择分享邀请免费解锁，或支付 19.9 元立即解锁。'
+          ? `登录后可选择分享${this.normalizedRequiredInviteCount}人免费解锁，或支付 19.9 元立即解锁。`
+          : '登录后可选择分享3人免费解锁，或支付 19.9 元立即解锁。'
       }
 
       const remaining = Math.max(this.normalizedRequiredInviteCount - this.inviteCount, 0)
       if (remaining <= 0) {
-        return `${this.displayName}已满足分享解锁条件，可继续查看或直接支付解锁。`
+        return `${this.displayName}已满足分享${this.normalizedRequiredInviteCount}人解锁条件，可继续查看或直接支付解锁。`
       }
 
-      return `${this.displayName}距离分享解锁还差 ${remaining} 人，也可以直接支付 19.9 元立即解锁。`
+      return `${this.displayName}距离分享${this.normalizedRequiredInviteCount}人解锁还差 ${remaining} 人，也可以直接支付 19.9 元立即解锁。`
     }
   },
   methods: {

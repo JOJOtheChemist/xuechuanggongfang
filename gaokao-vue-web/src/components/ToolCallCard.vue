@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
+import { renderChatMarkdown } from '../utils/chat-format'
 
 const props = defineProps({
   tools: {
@@ -8,7 +9,7 @@ const props = defineProps({
   },
 })
 
-const expanded = ref({})
+const expandedToolIds = ref({})
 
 function stringifyParams(value) {
   if (value === null || value === undefined) return ''
@@ -20,8 +21,151 @@ function stringifyParams(value) {
   }
 }
 
+function stringifyOutput(value) {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return ''
+    if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+      try {
+        return JSON.stringify(JSON.parse(trimmed), null, 2)
+      } catch (error) {
+        return trimmed
+      }
+    }
+    return trimmed
+  }
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch (error) {
+    return String(value)
+  }
+}
+
 function compactText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim()
+}
+
+function parseJsonLikeToolPayload(value) {
+  if (typeof value !== 'string') return null
+  const text = String(value || '').trim()
+  if (!text) return null
+  if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
+    try {
+      return JSON.parse(text)
+    } catch (error) {
+      return null
+    }
+  }
+  return null
+}
+
+function resolveWebResearchLoadingText(tool = {}) {
+  const normalizedName = compactText(tool?.name).toLowerCase()
+  const normalizedLabel = compactText(tool?.label).toLowerCase()
+  const isWebSearch =
+    normalizedName === 'web_search' ||
+    normalizedLabel === 'web research summary' ||
+    normalizedLabel === '网页研究总结'
+  const isWebFetch =
+    normalizedName === 'web_fetch' ||
+    normalizedLabel === '网页正文抓取'
+
+  if (isWebSearch) return '正在搜索'
+  if (isWebFetch) return '正在抓取网页正文'
+  return '正在调用网页工具'
+}
+
+function extractTextCandidate(value) {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'string') return String(value).trim()
+  if (typeof value === 'object') {
+    const parsed = value
+    return String(
+      parsed.summary ||
+      parsed.content ||
+      parsed.body ||
+      parsed.text ||
+      parsed.message ||
+      '',
+    ).trim()
+  }
+  return String(value || '').trim()
+}
+
+function resolveWebResearchSummaryText(tool = {}) {
+  const candidates = [
+    tool.summary,
+    tool.output,
+    tool.rawOutput,
+  ]
+
+  for (const candidate of candidates) {
+    const text = extractTextCandidate(candidate)
+    if (text) return text
+  }
+
+  const outputText = stringifyOutput(
+    Object.prototype.hasOwnProperty.call(tool, 'rawOutput')
+      ? tool.rawOutput
+      : tool.output,
+  )
+  const parsed = parseJsonLikeToolPayload(outputText)
+  if (parsed && typeof parsed === 'object') {
+    return extractTextCandidate(parsed)
+  }
+
+  return ''
+}
+
+function resolveToolOutputText(tool = {}) {
+  return stringifyOutput(
+    Object.prototype.hasOwnProperty.call(tool, 'rawOutput')
+      ? tool.rawOutput
+      : tool.output,
+  )
+}
+
+function extractSafeWebResearchText(value) {
+  const text = compactText(value)
+  if (!text) return ''
+
+  const parsed = parseJsonLikeToolPayload(text)
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    return compactText(
+      parsed.summary ||
+      parsed.content ||
+      parsed.body ||
+      parsed.text ||
+      parsed.message ||
+      ''
+    )
+  }
+
+  if (
+    /^\s*\{/.test(text) ||
+    /^\s*"?\s*(query|url|link|href|keyword|keywords|search)\s*"?\s*:/i.test(text)
+  ) {
+    return ''
+  }
+
+  return text
+}
+
+function extractWebResearchPreviewText(tool = {}, fallback = '') {
+  const normalizedName = compactText(tool?.name).toLowerCase()
+  const normalizedLabel = compactText(tool?.label).toLowerCase()
+  const isWebSearch =
+    normalizedName === 'web_search' ||
+    normalizedLabel === 'web research summary' ||
+    normalizedLabel === '网页研究总结'
+  const isWebFetch =
+    normalizedName === 'web_fetch' ||
+    normalizedLabel === '网页正文抓取'
+
+  if (!isWebSearch && !isWebFetch) return compactText(fallback)
+
+  return extractSafeWebResearchText(fallback) || resolveWebResearchLoadingText(tool)
 }
 
 function hasParams(value) {
@@ -49,10 +193,60 @@ function resolveStateTone(state) {
   return 'neutral'
 }
 
-function toggle(id) {
-  expanded.value = {
-    ...expanded.value,
-    [id]: !expanded.value[id],
+function shouldHideStateChip(tool) {
+  const name = String(tool?.name || '').trim().toLowerCase()
+  const label = String(tool?.label || '').trim()
+  return name === 'web_search' || label === 'Web Research Summary'
+}
+
+function resolveToolVariant(tool = {}) {
+  const normalizedName = compactText(tool?.name).toLowerCase()
+  const normalizedLabel = compactText(tool?.label).toLowerCase()
+  if (
+    normalizedName === 'web_search' ||
+    normalizedLabel === 'web search' ||
+    normalizedLabel === 'web research summary' ||
+    normalizedLabel === '网页研究总结'
+  ) {
+    return 'web-search'
+  }
+  if (normalizedName === 'web_fetch' || normalizedLabel === '网页正文抓取') {
+    return 'web-fetch'
+  }
+  return ''
+}
+
+function buildPreviewText(text, maxLength = 120) {
+  const normalized = compactText(text)
+  if (!normalized) return ''
+  if (normalized.length <= maxLength) return normalized
+  return `${normalized.slice(0, maxLength).trim()}...`
+}
+
+function shouldShowRawOutput(toolVariant = '', outputText = '', summaryText = '') {
+  const normalizedOutput = compactText(outputText)
+  if (!normalizedOutput) return false
+
+  if (toolVariant !== 'web-search' && toolVariant !== 'web-fetch') {
+    return normalizedOutput !== compactText(summaryText)
+  }
+
+  if (!/^[\[{]/.test(normalizedOutput)) {
+    return normalizedOutput !== compactText(summaryText)
+  }
+
+  return true
+}
+
+function isExpanded(toolId) {
+  return Boolean(expandedToolIds.value[String(toolId)])
+}
+
+function toggleExpanded(toolId) {
+  const id = String(toolId)
+  expandedToolIds.value = {
+    ...expandedToolIds.value,
+    [id]: !expandedToolIds.value[id],
   }
 }
 
@@ -63,66 +257,88 @@ const normalizedTools = computed(() => {
       const id = String(tool.id || `${tool.name || 'tool'}-${index}`)
       const params = Object.prototype.hasOwnProperty.call(tool, 'params') ? tool.params : tool.input
       const paramText = stringifyParams(params)
+      const toolVariant = resolveToolVariant(tool)
+      const rawInputPreview = compactText(tool.input || paramText).slice(0, 120)
+      const richSummaryText = toolVariant === 'web-search' || toolVariant === 'web-fetch'
+        ? resolveWebResearchSummaryText(tool)
+        : ''
+      const summaryText = String(tool.summary || '').trim()
+      const summaryHtml = toolVariant === 'web-search' || toolVariant === 'web-fetch'
+        ? renderChatMarkdown(richSummaryText)
+        : ''
+      const outputText = resolveToolOutputText(tool)
+      const summaryPreview = toolVariant === 'web-search' || toolVariant === 'web-fetch'
+        ? buildPreviewText(richSummaryText || summaryText || rawInputPreview)
+        : summaryText
+      const inputPreview = (toolVariant === 'web-search' || toolVariant === 'web-fetch')
+        ? extractWebResearchPreviewText(tool, rawInputPreview).slice(0, 120)
+        : rawInputPreview
+      const showRawOutput = shouldShowRawOutput(toolVariant, outputText, richSummaryText || summaryText)
+      const canExpand = Boolean(summaryHtml) || showRawOutput
       const durationMs = Number(tool.durationMs)
       return {
         ...tool,
         id,
         label: String(tool.label || tool.name || '工具').trim(),
-        inputPreview: compactText(tool.input || paramText).slice(0, 120),
-        summary: compactText(tool.summary || ''),
+        inputPreview,
+        summary: summaryText,
+        summaryPreview,
+        summaryHtml,
+        outputText,
+        showRawOutput,
         hasParams: typeof tool.hasParams === 'boolean' ? tool.hasParams : hasParams(params),
         paramText,
+        canExpand,
         durationText: Number.isFinite(durationMs) && durationMs >= 0 ? `${durationMs}ms` : '',
         tone: resolveStateTone(tool.state),
         stateLabel: resolveStateLabel(tool.state),
+        showStateChip: !shouldHideStateChip(tool),
       }
     })
-    .filter((tool) => tool.label || tool.summary || tool.inputPreview || tool.hasParams)
+    .filter((tool) => tool.label || tool.summary || tool.inputPreview || tool.outputText || tool.hasParams)
 })
 
-const toolLabelSummary = computed(() => {
-  return Array.from(new Set(normalizedTools.value.map((tool) => tool.label).filter(Boolean)))
-    .slice(0, 3)
-    .join('、')
-})
 </script>
 
 <template>
   <div v-if="normalizedTools.length" class="tool-panel">
-    <div class="tool-panel-head">
-      <span class="tool-panel-title">本次调用工具 {{ normalizedTools.length }} 次</span>
-      <span v-if="toolLabelSummary" class="tool-panel-subtitle">{{ toolLabelSummary }}</span>
-    </div>
-
     <div class="tool-stack">
       <div v-for="tool in normalizedTools" :key="tool.id" class="tool-card">
         <div class="tool-card-head">
           <div class="tool-card-main">
             <div class="tool-title-row">
               <span class="tool-title">{{ tool.label }}</span>
-              <span class="tool-state-chip" :data-tone="tool.tone">{{ tool.stateLabel }}</span>
+              <span v-if="tool.showStateChip" class="tool-state-chip" :data-tone="tool.tone">{{ tool.stateLabel }}</span>
             </div>
-            <p v-if="tool.summary || tool.inputPreview" class="tool-summary">
-              {{ tool.summary || tool.inputPreview }}
+            <p
+              v-if="tool.summaryPreview || tool.inputPreview"
+              class="tool-summary"
+              :class="{ 'tool-summary-preview': tool.canExpand }"
+            >
+              {{ tool.summaryPreview || tool.inputPreview }}
             </p>
           </div>
 
           <div class="tool-card-side">
             <span v-if="tool.durationText" class="tool-duration">{{ tool.durationText }}</span>
-            <button v-if="tool.hasParams" class="tool-toggle" @click="toggle(tool.id)">
-              {{ expanded[tool.id] ? '收起 JSON' : '展开 JSON' }}
-            </button>
           </div>
         </div>
-
-        <div v-if="tool.hasParams && expanded[tool.id]" class="tool-section">
-          <div class="tool-section-title">调用参数</div>
-          <pre class="tool-code">{{ tool.paramText }}</pre>
-        </div>
-
-        <div v-if="tool.summary && expanded[tool.id]" class="tool-section">
-          <div class="tool-section-title">执行结果</div>
-          <p class="tool-section-text">{{ tool.summary }}</p>
+        <div v-if="tool.canExpand" class="tool-details">
+          <button type="button" class="tool-toggle" @click="toggleExpanded(tool.id)">
+            {{ isExpanded(tool.id)
+              ? (tool.label === '网页研究总结' ? '收起研究总结' : '收起完整内容')
+              : (tool.label === '网页研究总结' ? '查看完整研究总结' : '查看完整内容') }}
+          </button>
+          <div v-if="isExpanded(tool.id)" class="tool-expand-body">
+            <div v-if="tool.summaryHtml" class="tool-section">
+              <div class="tool-section-title">{{ tool.label === '网页研究总结' ? '完整研究总结' : '完整内容' }}</div>
+              <div class="message-markdown tool-section-markdown" v-html="tool.summaryHtml"></div>
+            </div>
+            <div v-if="tool.showRawOutput" class="tool-section">
+              <div class="tool-section-title">工具原始返回</div>
+              <pre class="tool-code">{{ tool.outputText }}</pre>
+            </div>
+          </div>
         </div>
       </div>
     </div>

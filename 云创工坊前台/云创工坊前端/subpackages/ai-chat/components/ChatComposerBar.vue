@@ -12,7 +12,7 @@
 			ref="composerInput"
 			class="composer-input"
 			:class="inputClassName"
-			:value="value"
+			:value="innerValue"
 			:disabled="inputDisabled"
 			:maxlength="500"
 			type="text"
@@ -77,6 +77,7 @@ export default {
 	},
 	data() {
 		return {
+			innerValue: String(this.value || ''),
 			isComposing: false,
 			lastCompositionEndAt: 0,
 			backgroundImageLoadFailed: false,
@@ -96,7 +97,7 @@ export default {
 	},
 	computed: {
 		trimmedValue() {
-			return String(this.value || '').trim()
+			return String(this.innerValue || '').trim()
 		},
 		inputDisabled() {
 			return !!(this.disabled || this.loading)
@@ -147,13 +148,21 @@ export default {
 		}
 	},
 	watch: {
+		value(nextValue) {
+			const normalizedValue = String(nextValue || '')
+			if (normalizedValue !== this.innerValue) {
+				this.innerValue = normalizedValue
+			}
+		},
 		backgroundImageUrl() {
 			this.backgroundImageLoadFailed = false
 		}
 	},
 	methods: {
 		handleInput(event) {
-			this.$emit('input', event && event.detail ? event.detail.value : '')
+			const nextValue = event && event.detail ? event.detail.value : ''
+			this.innerValue = String(nextValue || '')
+			this.$emit('input', this.innerValue)
 		},
 		handleFocus() {
 			this.isFocused = true

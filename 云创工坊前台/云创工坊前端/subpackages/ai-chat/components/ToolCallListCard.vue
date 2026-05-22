@@ -1,27 +1,16 @@
 <template>
 	<view v-if="normalizedTools.length" class="tool-call-panel">
-		<view class="tool-call-panel-head">
-			<text class="tool-call-panel-title">本次调用工具 {{ normalizedTools.length }} 次</text>
-			<text v-if="toolLabelSummary" class="tool-call-panel-subtitle">{{ toolLabelSummary }}</text>
-		</view>
-
 		<view class="tool-call-stack">
 			<view
 				v-for="tool in normalizedTools"
 				:key="tool.id"
 				class="tool-call-card"
+				:class="[tool.cardClass, { 'tool-call-card-open': isExpanded(tool) }]"
 			>
-				<view
-					class="tool-call-card-head"
-					:class="{ 'tool-call-card-head-expanded': isToolExpanded(tool.id) }"
-					@tap="handleToolHeadTap(tool)"
-				>
-					<view
-						class="tool-call-card-main"
-						:class="{ 'tool-call-card-main-collapsed': !isToolExpanded(tool.id) }"
-					>
+				<view class="tool-call-card-head">
+					<view class="tool-call-card-main">
 						<view class="tool-call-title-row">
-							<text class="tool-call-title">{{ tool.label || tool.name || '工具' }}</text>
+							<text class="tool-call-title">{{ tool.displayLabel }}</text>
 							<view
 								class="tool-call-state-chip"
 								:class="tool.stateClass"
@@ -32,60 +21,39 @@
 						<text
 							v-if="resolveCollapsedPreview(tool)"
 							class="tool-call-summary"
-							:class="{
-								'tool-call-summary-inline': !isToolExpanded(tool.id),
-								'tool-call-summary-animated': shouldAnimatePreview(tool)
-							}"
+							:class="{ 'tool-call-summary-animated': shouldAnimatePreview(tool) }"
 						>
 							{{ resolvePreviewText(tool) }}
 						</text>
 					</view>
 
-					<view
-						class="tool-call-card-side"
-						:class="{ 'tool-call-card-side-collapsed': !isToolExpanded(tool.id) }"
-					>
+					<view class="tool-call-card-side">
 						<text v-if="tool.durationText" class="tool-call-duration">{{ tool.durationText }}</text>
-						<text
-							v-if="canExpandTool(tool)"
+						<view
+							v-if="tool.canExpand"
 							class="tool-call-inline-toggle"
-							@tap.stop="toggleToolParams(tool)"
+							:class="tool.toggleClass"
+							@tap="toggleExpanded(tool)"
 						>
-							{{ resolveToggleLabel(tool) }}
-						</text>
-					</view>
-				</view>
-
-				<view v-if="tool.hasParams && isToolExpanded(tool.id)" class="tool-call-section">
-					<view class="tool-call-section-head">
-						<text class="tool-call-section-title">调用参数</text>
-						<view class="tool-call-section-actions">
-							<text
-								class="tool-call-copy-btn"
-								@tap.stop="copyToolParams(tool)"
-							>
-								复制 JSON
-							</text>
+							<text>{{ isExpanded(tool) ? '收起' : '展开' }}</text>
 						</view>
 					</view>
-					<view class="tool-call-code-shell">
-						<text
-							v-for="lineItem in tool.paramLineItems"
-							:key="lineItem.key"
-							class="tool-call-code-line"
-						>
-							{{ lineItem.text || ' ' }}
-						</text>
+				</view>
+
+				<view
+					v-if="tool.canExpand && isExpanded(tool)"
+					class="tool-call-section"
+					:class="tool.sectionClass"
+				>
+					<view class="tool-call-section-head">
+						<text class="tool-call-section-title">{{ tool.expandedTitle }}</text>
 					</view>
-				</view>
-
-				<view v-if="resolveExpandedSummary(tool) && isToolExpanded(tool.id)" class="tool-call-section">
-					<text class="tool-call-section-title">{{ tool.isWebResearchSummary ? '正文内容' : '执行结果' }}</text>
-					<text class="tool-call-section-text">{{ resolveExpandedSummary(tool) }}</text>
-				</view>
-
-				<view v-if="isToolExpanded(tool.id) && !resolveCollapsedPreview(tool)" class="tool-call-empty">
-					<text class="tool-call-empty-text">当前工具没有可展示的细节。</text>
+					<ChatRichText
+						v-if="tool.fullSummary"
+						:text="tool.fullSummary"
+						tone="assistant"
+					/>
+					<text v-else class="tool-call-section-text">{{ tool.summary || tool.inputPreview }}</text>
 				</view>
 			</view>
 		</view>
@@ -93,57 +61,102 @@
 </template>
 
 <script>
-function stringifyToolParams(value) {
-	if (value === null || value === undefined) {
-		return ''
-	}
-
-	if (typeof value === 'string') {
-		return value.trim()
-	}
-
-	try {
-		return JSON.stringify(value, null, 2)
-	} catch (error) {
-		return String(value)
-	}
-}
+import ChatRichText from './ChatRichText.vue'
 
 function compactToolText(value) {
 	return String(value || '')
+		.replace(/\{\s*query\s*\}/gi, '')
+		.replace(/(^|\n)\s*(query|url|link|href)\s*[:：]\s*/gi, '$1')
 		.replace(/\s+/g, ' ')
 		.trim()
 }
 
-function normalizeMultilineToolText(value) {
-	return String(value || '')
-		.replace(/\r\n/g, '\n')
-		.replace(/\n{3,}/g, '\n\n')
-		trim()
+function normalizeToolIdentity(value) {
+	return compactToolText(value).toLowerCase()
 }
 
-function hasToolParams(value) {
-	if (value === null || value === undefined) {
-		return false
+function resolveToolDisplayName(toolName = '', toolLabel = '') {
+	const name = String(toolName || '').trim()
+	const label = String(toolLabel || '').trim()
+	const normalizedName = name.toLowerCase()
+	const normalizedLabel = label.toLowerCase()
+
+	if (
+		normalizedName === 'web_search' ||
+		normalizedLabel === 'web search' ||
+		normalizedLabel === 'web research summary' ||
+		normalizedLabel === '网页研究总结'
+	) {
+		return '网页研究总结'
 	}
 
-	if (typeof value === 'string') {
-		return !!value.trim()
+	if (
+		normalizedName === 'web_fetch' ||
+		normalizedLabel === '网页正文抓取' ||
+		normalizedLabel === '网页正文提取'
+	) {
+		return '网页正文提取'
 	}
 
-	if (Array.isArray(value)) {
-		return value.length > 0
+	if (normalizedName.includes('update_current_user_intelligence')) {
+		return '更新用户画像'
 	}
 
-	if (typeof value === 'object') {
-		return Object.keys(value).length > 0
+	if (normalizedName.includes('get_current_user_profile_snapshot')) {
+		return '读取用户画像'
 	}
 
-	return true
+	if (normalizedName.includes('search_yunnan_admission_school_detail')) {
+		return '院校详情核验'
+	}
+
+	if (normalizedName.includes('search_yunnan_admission')) {
+		return '云南志愿检索'
+	}
+
+	if (normalizedName.includes('search_web_search_knowledge')) {
+		return '历史搜索知识库'
+	}
+
+	return label || name || '工具'
+}
+
+function isProfileReadTool(toolName = '', toolLabel = '') {
+	const name = String(toolName || '').trim().toLowerCase()
+	const label = String(toolLabel || '').trim().toLowerCase()
+	return name.includes('get_current_user_profile_snapshot') || label === '读取用户画像'
+}
+
+function isProfileWriteTool(toolName = '', toolLabel = '') {
+	const name = String(toolName || '').trim().toLowerCase()
+	const label = String(toolLabel || '').trim().toLowerCase()
+	return name.includes('update_current_user_intelligence') || label === '更新用户画像'
+}
+
+function resolveProfileToolPreview(tool = {}) {
+	const normalizedState = String(tool && tool.state || '').trim().toLowerCase()
+	if (isProfileReadTool(tool && tool.name, tool && tool.label)) {
+		if (normalizedState === 'failed' || normalizedState === 'error') return '读取用户画像失败'
+		if (normalizedState === 'executing' || normalizedState === 'running' || normalizedState === 'pending') {
+			return '正在读取当前用户画像'
+		}
+		return '已读取当前用户画像'
+	}
+	if (isProfileWriteTool(tool && tool.name, tool && tool.label)) {
+		if (normalizedState === 'failed' || normalizedState === 'error') return '更新用户画像失败'
+		if (normalizedState === 'executing' || normalizedState === 'running' || normalizedState === 'pending') {
+			return '正在更新当前用户画像'
+		}
+		return '已更新当前用户画像'
+	}
+	return ''
 }
 
 export default {
 	name: 'ToolCallListCard',
+	components: {
+		ChatRichText
+	},
 	props: {
 		tools: {
 			type: Array,
@@ -152,9 +165,9 @@ export default {
 	},
 	data() {
 		return {
-			expandedToolIds: {},
 			previewTick: 0,
-			previewTimer: null
+			previewTimer: null,
+			expandedToolIds: {}
 		}
 	},
 	computed: {
@@ -163,42 +176,28 @@ export default {
 				.filter(Boolean)
 				.map((tool, index) => {
 					const id = String(tool && tool.id ? tool.id : `tool-${index}`)
-					const params = tool && Object.prototype.hasOwnProperty.call(tool, 'params')
-						? tool.params
-						: tool && tool.inputPreview
-					const paramText = stringifyToolParams(params)
-					const paramLines = paramText ? paramText.split('\n') : []
+					const toolVariant = this.resolveToolVariant(tool)
 
 					return {
 						...tool,
 						id,
-						inputPreview: String((tool && (tool.inputPreview || tool.input)) || '').trim(),
-						hasParams: typeof (tool && tool.hasParams) === 'boolean' ? tool.hasParams : hasToolParams(params),
-						paramText,
-						compactParamText: compactToolText(paramText),
+						displayLabel: this.resolveToolDisplayLabel(tool, toolVariant),
+						inputPreview: compactToolText((tool && (tool.inputPreview || tool.input)) || ''),
 						fullSummary: String((tool && tool.fullSummary) || (tool && tool.summary) || '').trim(),
 						previewSegments: Array.isArray(tool && tool.previewSegments)
 							? tool.previewSegments.map((item) => compactToolText(item)).filter(Boolean)
 							: [],
 						isWebResearchSummary: !!(tool && tool.isWebResearchSummary),
-						paramLineItems: paramLines.map((line, lineIndex) => ({
-							key: `${id}-line-${lineIndex}`,
-							text: line
-						})),
-						stateClass: `tool-call-state-chip-${this.resolveStateTone(tool && tool.state)}`
+						toolVariant,
+						cardClass: toolVariant ? `tool-call-card-${toolVariant}` : '',
+						stateClass: `tool-call-state-chip-${this.resolveStateTone(tool && tool.state)}`,
+						toggleClass: toolVariant ? `tool-call-inline-toggle-${toolVariant}` : '',
+						sectionClass: toolVariant ? `tool-call-section-${toolVariant}` : '',
+						canExpand: this.canExpandTool(tool, toolVariant),
+						expandedTitle: this.resolveExpandedTitle(tool, toolVariant)
 					}
 				})
 		},
-		toolLabelSummary() {
-			const labels = Array.from(
-				new Set(
-					this.normalizedTools
-						.map((tool) => String((tool && (tool.label || tool.name)) || '').trim())
-						.filter(Boolean)
-				)
-			)
-			return labels.slice(0, 3).join('、')
-		}
 	},
 	mounted() {
 		this.startPreviewTicker()
@@ -219,36 +218,33 @@ export default {
 				this.previewTimer = null
 			}
 		},
-		isToolExpanded(toolId = '') {
-			return !!this.expandedToolIds[String(toolId || '')]
-		},
-		canExpandTool(tool = {}) {
-			return !!(tool.hasParams || this.resolveExpandedSummary(tool))
-		},
-		handleToolHeadTap(tool = {}) {
-			if (!this.canExpandTool(tool)) return
-			this.toggleToolParams(tool)
-		},
-		toggleToolParams(tool = {}) {
-			const toolId = String(tool.id || '').trim()
-			if (!toolId) return
-			this.expandedToolIds = {
-				...this.expandedToolIds,
-				[toolId]: !this.expandedToolIds[toolId]
+		resolveToolVariant(tool = {}) {
+			const name = normalizeToolIdentity(tool && tool.name)
+			const label = normalizeToolIdentity(resolveToolDisplayName(tool && tool.name, tool && tool.label))
+
+			if (
+				name === 'web_search' ||
+				label === 'web search' ||
+				label === 'web research summary' ||
+				label === '网页研究总结'
+			) {
+				return 'web-search'
 			}
-		},
-		copyToolParams(tool = {}) {
-			const content = String(tool.paramText || '').trim()
-			if (!content) {
-				uni.showToast({ title: '没有可复制的参数', icon: 'none' })
-				return
+
+			if (name === 'web_fetch' || label === '网页正文抓取' || label === '网页正文提取') {
+				return 'web-fetch'
 			}
-			uni.setClipboardData({
-				data: content,
-				success: () => {
-					uni.showToast({ title: '参数已复制', icon: 'none' })
-				}
-			})
+
+			if (tool && tool.isWebResearchSummary) {
+				return 'web-summary'
+			}
+
+			return ''
+		},
+		resolveToolDisplayLabel(tool = {}, toolVariant = '') {
+			if (toolVariant === 'web-search') return '网页研究总结'
+			if (toolVariant === 'web-fetch') return '网页正文提取'
+			return resolveToolDisplayName(tool && tool.name, tool && tool.label)
 		},
 		resolveStateLabel(state) {
 			const normalized = String(state || '').trim().toLowerCase()
@@ -265,13 +261,8 @@ export default {
 			if (normalized === 'executing' || normalized === 'running' || normalized === 'pending') return 'pending'
 			return 'neutral'
 		},
-		resolveToggleLabel(tool = {}) {
-			if (this.isToolExpanded(tool.id)) return '收起详情'
-			if (tool.isWebResearchSummary) return '展开正文'
-			return '展开详情'
-		},
 		shouldAnimatePreview(tool = {}) {
-			return !this.isToolExpanded(tool.id) && Array.isArray(tool.previewSegments) && tool.previewSegments.length > 1
+			return Array.isArray(tool.previewSegments) && tool.previewSegments.length > 1
 		},
 		resolvePreviewText(tool = {}) {
 			if (this.shouldAnimatePreview(tool)) {
@@ -283,16 +274,40 @@ export default {
 			}
 			return this.resolveCollapsedPreview(tool)
 		},
-		resolveExpandedSummary(tool = {}) {
-			return normalizeMultilineToolText(tool.fullSummary || tool.summary || '')
-		},
 		resolveCollapsedPreview(tool = {}) {
+			const profileToolPreview = resolveProfileToolPreview(tool)
+			if (profileToolPreview) {
+				return profileToolPreview
+			}
 			return compactToolText(
 				tool.fullSummary ||
 				tool.summary ||
-				tool.inputPreview ||
-				tool.compactParamText
+				tool.inputPreview
 			)
+		},
+		canExpandTool(tool = {}, toolVariant = '') {
+			const fullSummary = compactToolText(tool && tool.fullSummary)
+			if (!fullSummary) return false
+			if (tool && tool.isWebResearchSummary) return true
+			if (toolVariant === 'web-search' || toolVariant === 'web-fetch') return true
+			return fullSummary.length > 120
+		},
+		resolveExpandedTitle(tool = {}, toolVariant = '') {
+			if (tool && tool.isWebResearchSummary) return '完整网页研究总结'
+			if (toolVariant === 'web-fetch') return '完整网页正文提取'
+			return '完整内容'
+		},
+		isExpanded(tool = {}) {
+			const id = String(tool && tool.id ? tool.id : '')
+			return !!this.expandedToolIds[id]
+		},
+		toggleExpanded(tool = {}) {
+			const id = String(tool && tool.id ? tool.id : '')
+			if (!id) return
+			this.expandedToolIds = {
+				...this.expandedToolIds,
+				[id]: !this.expandedToolIds[id]
+			}
 		}
 	}
 }
@@ -308,29 +323,6 @@ export default {
 	max-width: 100%;
 	min-width: 0;
 	box-sizing: border-box;
-}
-
-.tool-call-panel-head {
-	display: flex;
-	flex-direction: column;
-	gap: 6rpx;
-	min-width: 0;
-}
-
-.tool-call-panel-title {
-	font-size: 24rpx;
-	font-weight: 700;
-	color: #2b3657;
-}
-
-.tool-call-panel-subtitle {
-	min-width: 0;
-	font-size: 20rpx;
-	line-height: 1.4;
-	color: rgba(43, 54, 87, 0.6);
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
 }
 
 .tool-call-stack {
@@ -352,6 +344,19 @@ export default {
 	border: 1rpx solid rgba(133, 161, 219, 0.18);
 	box-shadow: 0 10rpx 24rpx rgba(81, 103, 151, 0.06);
 	box-sizing: border-box;
+}
+
+.tool-call-card-web-search {
+	background: linear-gradient(180deg, #f7fbff 0%, #eef6ff 100%);
+	border-color: rgba(59, 130, 246, 0.18);
+	box-shadow: 0 14rpx 32rpx rgba(59, 130, 246, 0.08);
+}
+
+.tool-call-card-web-fetch,
+.tool-call-card-web-summary {
+	background: linear-gradient(180deg, #f8fcff 0%, #eef8ff 100%);
+	border-color: rgba(14, 165, 233, 0.18);
+	box-shadow: 0 14rpx 32rpx rgba(14, 165, 233, 0.08);
 }
 
 .tool-call-card-head {
@@ -418,10 +423,22 @@ export default {
 	text-overflow: ellipsis;
 }
 
+.tool-call-card-web-search .tool-call-title {
+	color: #194b91;
+}
+
+.tool-call-card-web-fetch .tool-call-title,
+.tool-call-card-web-summary .tool-call-title {
+	color: #155e75;
+}
+
 .tool-call-state-chip {
+	display: inline-flex;
+	align-items: center;
 	flex-shrink: 0;
-	padding: 4rpx 12rpx;
+	padding: 2rpx 12rpx;
 	border-radius: 999rpx;
+	line-height: 1.1;
 }
 
 .tool-call-state-chip-success {
@@ -465,6 +482,18 @@ export default {
 	white-space: pre-wrap;
 }
 
+.tool-call-card-web-search .tool-call-summary,
+.tool-call-card-web-search .tool-call-section-text {
+	color: rgba(25, 75, 145, 0.84);
+}
+
+.tool-call-card-web-fetch .tool-call-summary,
+.tool-call-card-web-fetch .tool-call-section-text,
+.tool-call-card-web-summary .tool-call-summary,
+.tool-call-card-web-summary .tool-call-section-text {
+	color: rgba(21, 94, 117, 0.84);
+}
+
 .tool-call-summary {
 	white-space: nowrap;
 	overflow: hidden;
@@ -502,12 +531,32 @@ export default {
 	text-overflow: ellipsis;
 }
 
+.tool-call-inline-toggle-web-search {
+	color: #1d4ed8;
+	background: rgba(37, 99, 235, 0.12);
+}
+
+.tool-call-inline-toggle-web-fetch,
+.tool-call-inline-toggle-web-summary {
+	color: #0f766e;
+	background: rgba(13, 148, 136, 0.12);
+}
+
 .tool-call-section {
 	display: flex;
 	flex-direction: column;
 	gap: 10rpx;
 	margin-top: 16rpx;
 	min-width: 0;
+}
+
+.tool-call-section-web-search,
+.tool-call-section-web-fetch,
+.tool-call-section-web-summary {
+	padding: 4rpx 0 0;
+	border-radius: 0;
+	background: transparent;
+	border: 0;
 }
 
 .tool-call-section-head {
@@ -529,6 +578,15 @@ export default {
 	font-size: 20rpx;
 	font-weight: 700;
 	color: #314264;
+}
+
+.tool-call-card-web-search .tool-call-section-title {
+	color: #1d4ed8;
+}
+
+.tool-call-card-web-fetch .tool-call-section-title,
+.tool-call-card-web-summary .tool-call-section-title {
+	color: #0f766e;
 }
 
 .tool-call-copy-btn {

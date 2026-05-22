@@ -101,7 +101,7 @@ const progressText = computed(() => `已邀请 ${normalizedInvite.value}/${norma
           {{ paymentLoading ? '处理中...' : '查看付费说明' }}
         </button>
         <button class="ghost unlock-contact" @click="emit('contact')">
-          客服 {{ phone || '15087599770' }}
+          客服 {{ phone || '19184057109' }}
         </button>
       </div>
     </div>

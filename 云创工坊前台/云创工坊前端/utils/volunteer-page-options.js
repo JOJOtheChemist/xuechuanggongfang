@@ -1011,23 +1011,16 @@ export function createVolunteerPageOptions() {
         return '首次加载会稍慢一点，后续查分会更顺畅。'
       },
       institutionLoadingText() {
-        const baseText = this.institutionLoadProgressText || '正在加载院校数据'
         const loadedCount = Array.isArray(this.institutions) ? this.institutions.length : 0
 
         if (this.loading && loadedCount === 0) {
-          return `${baseText}，首次加载会稍慢一点`
+          return '首次加载院校数据，请稍等'
         }
 
-        return baseText
+        return this.institutionLoadProgressText || '正在加载院校数据'
       },
       institutionLoadingHintText() {
-        const loadedCount = Array.isArray(this.institutions) ? this.institutions.length : 0
-
-        if (this.loading && loadedCount === 0) {
-          return '首次正在整理院校库，请稍等；后续查分会更快。'
-        }
-
-        return '如果长时间停在这里，可以点下面按钮直接切换普通加载。'
+        return ''
       },
       emptyInstitutionStateText() {
         if (this.scoreValue === null) {
@@ -1056,17 +1049,6 @@ export function createVolunteerPageOptions() {
       },
       hasGuestHiddenInstitutions() {
         return !this.userLoggedIn
-      },
-      loadMoreText() {
-        if (this.loadingMore) {
-          return this.institutionLoadProgressText || '正在加载更多院校...'
-        }
-
-        if (this.hasMore) {
-          return '下滑到底自动加载更多院校'
-        }
-
-        return '已经到底了'
       },
       lockedInviteCount() {
         const value = Number(this.admissionUnlockStatus && this.admissionUnlockStatus.inviteCount)
@@ -1149,6 +1131,18 @@ export function createVolunteerPageOptions() {
         return !this.userLoggedIn
       },
       showLoading() {
+        if (!this.hasFullInstitutionAccess) {
+          return this.loading || this.guestPreviewLoading
+        }
+
+        const loadedCount = Array.isArray(this.institutions) ? this.institutions.length : 0
+        const totalCount = Math.max(0, Number(this.total || 0) || 0)
+        const hasCompleteFullSnapshot = totalCount > 0 && loadedCount >= totalCount
+
+        if (hasCompleteFullSnapshot) {
+          return false
+        }
+
         return this.loading
       },
       showError() {
@@ -1216,9 +1210,7 @@ export function createVolunteerPageOptions() {
 	      uni.stopPullDownRefresh()
 	    })
 	  },
-    onReachBottom() {
-      this.loadMore()
-    },
+    onReachBottom() {},
     onShareAppMessage() {
       this.shareInviteSheetVisible = false
       const inviterName = this.resolveShareNickname()
@@ -1256,6 +1248,22 @@ export function createVolunteerPageOptions() {
     },
 	  methods: {
       ...volunteerInstitutionLoaderMethods,
+      flushDraftInputs() {
+        const inputRefs = [
+          this.$refs && this.$refs.scoreInputField,
+          this.$refs && this.$refs.keywordInputField,
+          this.$refs && this.$refs.majorKeywordInputField
+        ]
+
+        inputRefs.forEach((ref) => {
+          if (!ref) return
+
+          const target = Array.isArray(ref) ? ref[0] : ref
+          if (target && typeof target.commitValue === 'function') {
+            target.commitValue()
+          }
+        })
+      },
       syncScoreInputFromStatus(status, options = {}) {
         const normalizedStatus = normalizeUnlockStatus(status || {})
         const savedScoreText = formatScoreText(normalizedStatus.score && normalizedStatus.score.value)
@@ -1810,12 +1818,7 @@ export function createVolunteerPageOptions() {
         const loadedInstitutionTotal = Number(this.total || 0)
         const hasIncompleteInstitutionResults =
           loadedInstitutionCount > 0 &&
-          (
-            loadedInstitutionTotal <= 0 ||
-            loadedInstitutionTotal > loadedInstitutionCount ||
-            this.loadingMore ||
-            Boolean(this.institutionLoadProgressText)
-          )
+          loadedInstitutionTotal > loadedInstitutionCount
         const shouldReloadInstitutions =
           options.reloadInstitutions === true ||
           loadedInstitutionCount === 0 ||
@@ -2058,7 +2061,7 @@ export function createVolunteerPageOptions() {
             content: buildVolunteerPaymentConfirmText({
               paymentAmount: VOLUNTEER_UNLOCK_PAYMENT_AMOUNT
             }),
-            confirmText: '创建订单',
+            confirmText: '立即开通',
             success: (res) => resolve(Boolean(res && res.confirm)),
             fail: () => resolve(false)
           })
@@ -2149,6 +2152,8 @@ export function createVolunteerPageOptions() {
       },
       handlePhoneCopied() {},
       async handleSearchAction() {
+        this.flushDraftInputs()
+
         const hasLocalInstitutions =
           (Array.isArray(this.institutions) && this.institutions.length > 0) ||
           (Array.isArray(this.guestPreviewInstitutions) && this.guestPreviewInstitutions.length > 0)
@@ -2157,6 +2162,9 @@ export function createVolunteerPageOptions() {
           this.closeDropdown()
           this.applyDraftFilters()
           this.errorText = ''
+          this.loading = false
+          this.loadingMore = false
+          this.institutionLoadProgressText = ''
           return
         }
 
@@ -2218,6 +2226,9 @@ export function createVolunteerPageOptions() {
         }
 
         this.errorText = ''
+        this.loading = false
+        this.loadingMore = false
+        this.institutionLoadProgressText = ''
       },
       toggleDropdown(key) {
         this.activeDropdownKey = this.activeDropdownKey === key ? '' : key
@@ -2268,6 +2279,8 @@ export function createVolunteerPageOptions() {
 	      this.handleFilterChange()
 	    },
 	    handleRiskFilterSelect(value) {
+	      this.flushDraftInputs()
+
 	      if (this.draftScoreValue === null) {
 	        uni.showToast({
 	          title: '请先输入分数',
@@ -2372,7 +2385,6 @@ export function createVolunteerPageOptions() {
         this.appliedNatureIndex = 0
 	      this.selectedRiskFilterKey = ''
         this.appliedRiskFilterKey = ''
-	      this.scheduleInstitutionReload(true, { immediate: true })
 	    },
 	    resolveReferenceScore(item) {
 	      return resolveAdmissionReferenceScore(item)

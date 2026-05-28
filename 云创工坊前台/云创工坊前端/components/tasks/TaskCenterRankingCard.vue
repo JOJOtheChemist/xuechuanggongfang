@@ -189,6 +189,7 @@ export default {
 	align-self: stretch;
 	padding-top: 15rpx;
 	box-sizing: border-box;
+	transform: translateY(-8rpx);
 }
 
 .task-center-ranking-main {

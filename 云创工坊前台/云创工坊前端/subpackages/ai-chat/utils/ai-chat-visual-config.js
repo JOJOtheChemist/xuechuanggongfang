@@ -8,6 +8,7 @@ const AI_CHAT_AGENT_ID_ALIASES = {
 	'xiaochunlu-ai-v4': XIAOCHUNLU_PRIMARY_AGENT_ID,
 	'xiaochunlu-ai-v5': XIAOCHUNLU_PRIMARY_AGENT_ID,
 	'gaokao-volunteer-consultant-sales-v13': DEFAULT_AGENT_ID,
+	'gaokao-volunteer-consultant-sales-v14': DEFAULT_AGENT_ID,
 	'yunnan-gaokao-volunteer-consultant': DEFAULT_AGENT_ID,
 	'yunnan-gaokao-volunteer-consultant-v2': DEFAULT_AGENT_ID,
 	'yunnan-gaokao-volunteer-consultant-v3-2': DEFAULT_AGENT_ID,

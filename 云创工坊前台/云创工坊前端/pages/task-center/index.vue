@@ -9,10 +9,11 @@
 				</view>
 			</view>
 			<scroll-view class="app-main" scroll-y="true">
-				<view class="top-hero">
-					<image class="top-hero-image" :src="heroBackgroundUrl" mode="widthFix" />
-					<task-center-hero-overlay ref="heroOverlay" :banners="banners" />
-				</view>
+				<task-center-hero-overlay
+					ref="heroOverlay"
+					:top-background-url="heroBackgroundUrl"
+					:banners="banners"
+				/>
 			</scroll-view>
 
 			<ai-entry-fab
@@ -25,12 +26,11 @@
 
 <script>
 import { getHttpService } from '@/utils/http-services'
-import { getCachedImageSync, resolveCachedImage } from '@/utils/remote-image-cache'
 import AiEntryFab from '@/components/common/AiEntryFab.vue'
 import TaskCenterHeroOverlay from '@/components/tasks/TaskCenterHeroOverlay.vue'
 import { AI_CHAT_STARTUP_MENTOR_NAVIGATE_URL } from '@/utils/ai-chat-float-config'
 
-const STARTUP_HERO_BACKGROUND_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/home/startup/home-startup-top-bg-v7.jpg'
+const STARTUP_HERO_BACKGROUND_URL = 'https://xuechuang.xyz/oss/share-assets/admission/admin/images/0/2026/05/26/6477e222-1ec1-40f7-9b00-a7ed2e385fa4.webp'
 export default {
 	components: {
 		AiEntryFab,
@@ -41,7 +41,7 @@ export default {
 			userAvatar: 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png',
 			userNickname: '',
 			userUid: '',
-			heroBackgroundUrl: getCachedImageSync(STARTUP_HERO_BACKGROUND_URL),
+			heroBackgroundUrl: STARTUP_HERO_BACKGROUND_URL,
 			startupMentorNavigateUrl: AI_CHAT_STARTUP_MENTOR_NAVIGATE_URL,
 			showOrderManagementCard: false,
 			showCheckInCard: false,
@@ -50,7 +50,6 @@ export default {
 		}
 	},
 	onShow() {
-		this.syncHeroBackgroundImage()
 		const shouldRefreshChildren = this.hasInitialized
 		this.hasInitialized = true
 		this.loadUserInfo()
@@ -60,7 +59,7 @@ export default {
 				this.$refs.heroOverlay.loadLeaderboardData()
 			}
 			if (this.$refs.heroOverlay && this.$refs.heroOverlay.refreshPartnerDynamics) {
-				this.$refs.heroOverlay.refreshPartnerDynamics(false)
+				this.$refs.heroOverlay.refreshPartnerDynamics(true)
 			}
 			if (this.$refs.heroOverlay && this.$refs.heroOverlay.refreshTaskProgress) {
 				this.$refs.heroOverlay.refreshTaskProgress()
@@ -75,7 +74,7 @@ export default {
 					this.$refs.heroOverlay.loadLeaderboardData()
 				}
 				if (this.$refs.heroOverlay && this.$refs.heroOverlay.refreshPartnerDynamics) {
-					this.$refs.heroOverlay.refreshPartnerDynamics(false)
+					this.$refs.heroOverlay.refreshPartnerDynamics(true)
 				}
 				if (this.$refs.heroOverlay && this.$refs.heroOverlay.refreshTaskProgress) {
 					this.$refs.heroOverlay.refreshTaskProgress()
@@ -97,15 +96,8 @@ export default {
 		}
 	},
 	methods: {
-		async syncHeroBackgroundImage() {
-			try {
-				const cachedUrl = await resolveCachedImage(STARTUP_HERO_BACKGROUND_URL)
-				if (cachedUrl) {
-					this.heroBackgroundUrl = cachedUrl
-				}
-			} catch (error) {
-				console.warn('[task-center] 顶部图缓存失败', error)
-			}
+		normalizeAvatarUrl(url) {
+			return String(url || '').trim() || this.userAvatar
 		},
 		loadUserInfo() {
 			const cached = uni.getStorageSync('userInfo') || {}
@@ -196,20 +188,6 @@ export default {
 	flex-direction: column;
 }
 
-.top-hero {
-	position: relative;
-	padding-top: 0;
-	padding-bottom: 1120rpx;
-	overflow: visible;
-	background: #ffffff;
-}
-
-.top-hero-image {
-	width: 100%;
-	height: auto;
-	display: block;
-}
-
 .user-header {
 	padding: 24rpx 40rpx 8rpx;
 	display: flex;
@@ -248,6 +226,7 @@ export default {
 	flex: 1;
 	position: relative;
 	z-index: 2;
+	background: #ffffff;
 }
 
 </style>

@@ -122,60 +122,12 @@
 <template>
 	<view class="team-section">
 		<view v-if="hasTeam" class="team-card-wrapper">
-			<view class="team-card-main-content">
-				<view class="team-info-left">
-					<view class="label-row">
-						<text class="card-label">校园合伙人</text>
-						<view class="team-level-badge">
-							<text>💎 {{ teamInfo.team_level || '普通团队' }}</text>
-						</view>
-					</view>
-					<view class="team-name">{{ teamInfo.team_name || (teamDetail && teamDetail.team_name) || '未命名团队' }}</view>
-					<view class="team-stats-mini-row">
-						<view class="mini-stat">
-							<text class="mini-stat-label">组员</text>
-							<text class="mini-stat-value">{{ teamDetail.member_count || 0 }}</text>
-						</view>
-						<view class="mini-stat-divider"></view>
-						<view class="mini-stat">
-							<text class="mini-stat-label">今日</text>
-							<text class="mini-stat-value">+{{ todayNewMembers || 0 }}</text>
-						</view>
-						<view class="mini-stat-divider"></view>
-						<view class="mini-stat highlight">
-							<text class="mini-stat-label">已邀</text>
-							<text class="mini-stat-value">{{ inviteStats.invitedCount || 0 }}</text>
-						</view>
-					</view>
-					
-					<view class="action-group-inline">
-						<button class="action-btn btn-invite" @tap="showInviteQrcode">
-							<text class="btn-icon-text">+</text> 邀请
-						</button>
-						<button class="action-btn btn-view" @tap="viewTeamMembers">
-							查看
-						</button>
-					</view>
-				</view>
-
-				<view class="team-qr-right">
-					<view class="qr-container-small" @tap="showInviteQrcode">
-						<image v-if="inviteQrcodeUrl" class="qr-image-small" :src="inviteQrcodeUrl" mode="aspectFit" />
-						<view v-else class="qr-placeholder-small">
-							<text class="qr-placeholder-text-small">点击生成</text>
-						</view>
-						<view v-if="inviteQrcodeUrl" class="scan-line-small" />
-					</view>
-					<text class="qr-hint-small">点击展示大码</text>
-				</view>
-			</view>
-
-			<!-- [NEW] Joined State Hint -->
-			<view class="privilege-tip-row">
-				<text class="privilege-icon">🏆</text>
-				<text class="privilege-text">您已成为校园合伙人，享有直推拉新固定 5 积分奖励荣誉权限</text>
-			</view>
-
+			<team-summary-card
+				:team="teamSummaryCardData"
+				:crown-icon-url="crownIconUrl"
+				:member-icon-url="memberIconUrl"
+				:coin-icon-url="coinIconUrl"
+			/>
 		</view>
 		
 		<!-- 未加入团队 (Keep existing) -->
@@ -213,8 +165,19 @@
 
 <script>
 import { getHttpService } from '@/utils/http-services'
+import TeamSummaryCard from './TeamSummaryCard.vue'
+
+const TEAM_DEFAULT_AVATAR_URLS = Object.freeze([
+	'https://xuechuang.xyz/oss/share-assets/xuechuang/team/avatars/default/team-avatar-default-1-v1.webp',
+	'https://xuechuang.xyz/oss/share-assets/xuechuang/team/avatars/default/team-avatar-default-2-v1.webp',
+	'https://xuechuang.xyz/oss/share-assets/xuechuang/team/avatars/default/team-avatar-default-3-v1.webp'
+])
+
 export default {
 	name: 'TeamCard',
+	components: {
+		TeamSummaryCard
+	},
 	data() {
 		return {
 			hasTeam: false,
@@ -229,10 +192,75 @@ export default {
 			inviteStats: {
 				invitedCount: 0
 			},
-			defaultAvatar: 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png'
+			defaultAvatar: 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png',
+			crownIconUrl: '/pages/extra/static/team/team-crown.png',
+			memberIconUrl: '/pages/extra/static/team/team-members.png',
+			coinIconUrl: '/pages/extra/static/team/team-coin.png'
+		}
+	},
+	computed: {
+		isLeader() {
+			return !!(
+				this.teamInfo.role_code === 'leader' ||
+				this.teamInfo.position === '队长' ||
+				(this.teamInfo.access && this.teamInfo.access.isLeader)
+			)
+		},
+		teamSummaryCardData() {
+			const mergedTeam = Object.assign({}, this.teamInfo || {}, this.teamDetail || {})
+			const rawTeamId = this.getTeamId(mergedTeam)
+			const resolvedAvatar = this.resolveTeamAvatar(mergedTeam)
+
+			return {
+				team_name: this.teamInfo.team_name || this.teamDetail.team_name || '未命名团队',
+				member_count: this.teamDetail.member_count || this.teamInfo.member_count || 0,
+				team_year_income:
+					this.teamDetail.team_year_income ||
+					this.teamInfo.team_year_income ||
+					this.teamDetail.month_team_sales ||
+					this.teamInfo.month_team_sales ||
+					0,
+				avatar: this.normalizeAvatarUrl(mergedTeam.avatar || mergedTeam.avatar_url, ''),
+				avatar_url: this.normalizeAvatarUrl(mergedTeam.avatar_url || mergedTeam.avatar, ''),
+				resolvedAvatar,
+				default_avatar_url: this.getDefaultTeamAvatar(Object.assign({}, mergedTeam, { team_id: rawTeamId }))
+			}
 		}
 	},
 	methods: {
+		getTeamId(team) {
+			if (!team || typeof team !== 'object') return ''
+			return String(team.team_id || team.teamId || team.id || team._id || '').trim()
+		},
+		normalizeAvatarUrl(url, fallback = '') {
+			const normalized = String(url || '').trim()
+			return normalized || fallback
+		},
+		getDefaultTeamAvatar(team = {}) {
+			const teamId = this.getTeamId(team)
+			const explicitDefault = this.normalizeAvatarUrl(team.default_avatar_url, '')
+			if (explicitDefault) {
+				return explicitDefault
+			}
+
+			const numericTeamId = Number(teamId)
+			if (Number.isInteger(numericTeamId) && numericTeamId > 0) {
+				return TEAM_DEFAULT_AVATAR_URLS[(numericTeamId - 1) % TEAM_DEFAULT_AVATAR_URLS.length]
+			}
+
+			const raw = String(teamId || team.team_name || '').trim()
+			let hash = 0
+			for (let index = 0; index < raw.length; index += 1) {
+				hash = (hash * 31 + raw.charCodeAt(index)) >>> 0
+			}
+			return TEAM_DEFAULT_AVATAR_URLS[hash % TEAM_DEFAULT_AVATAR_URLS.length]
+		},
+		resolveTeamAvatar(team = {}) {
+			return this.normalizeAvatarUrl(
+				team.resolvedAvatar || team.avatar || team.avatar_url,
+				this.getDefaultTeamAvatar(team)
+			)
+		},
 		// New helper methods for the template
 		isAdmin(member) {
 			const roleList = Array.isArray(member.role) ? member.role : []
@@ -455,17 +483,13 @@ export default {
    1. 团队卡片 (整合版)
    ========================================= */
 .team-card-wrapper {
-	background: #ffffff;
-	border-radius: 48rpx;
-	padding: 32rpx 40rpx;
-	box-shadow: 0 20rpx 60rpx rgba(139, 92, 246, 0.08);
-	position: relative;
-	overflow: hidden;
-	background: linear-gradient(to bottom, #ffffff 40%, #F5F3FF 100%);
-	margin-bottom: 24rpx;
+	padding: 0;
+	box-shadow: none;
+	background: transparent;
+	border-radius: 0;
 	display: flex;
 	flex-direction: column;
-	gap: 24rpx;
+	gap: 16rpx;
 }
 
 .team-card-header {
@@ -591,6 +615,15 @@ export default {
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+}
+
+.leader-tip {
+	font-size: 22rpx;
+	line-height: 1.6;
+	color: #8a5a00;
+	background: rgba(251, 191, 36, 0.14);
+	border-radius: 18rpx;
+	padding: 14rpx 18rpx;
 }
 
 .member-count {
@@ -723,14 +756,14 @@ export default {
 	display: flex;
 	flex-direction: row;
 	gap: 16rpx;
-	margin-top: 12rpx;
 }
 
 .action-btn {
 	border: none;
-	padding: 12rpx 28rpx;
+	padding: 0 28rpx;
+	height: 76rpx;
 	border-radius: 999rpx;
-	font-size: 22rpx;
+	font-size: 24rpx;
 	font-weight: 600;
 	display: flex;
 	align-items: center;
@@ -755,6 +788,37 @@ export default {
 .btn-icon-text {
 	font-size: 24rpx;
 	font-weight: 700;
+}
+
+.team-stats-inline-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 16rpx;
+}
+
+.team-stat-pill {
+	flex: 1;
+	min-width: 180rpx;
+	padding: 18rpx 20rpx;
+	border-radius: 22rpx;
+	background: linear-gradient(180deg, #f8fbff 0%, #f2f7ff 100%);
+	border: 2rpx solid #e6eefb;
+	display: flex;
+	flex-direction: column;
+}
+
+.team-stat-pill-label {
+	font-size: 20rpx;
+	line-height: 1.4;
+	color: #7c8aa5;
+}
+
+.team-stat-pill-value {
+	margin-top: 6rpx;
+	font-size: 28rpx;
+	line-height: 1.3;
+	font-weight: 700;
+	color: #22324d;
 }
 
 /* =========================================

@@ -18,7 +18,7 @@ const PROD_API_BASE = 'https://xuechuang.xyz/api/v1'
 const STORAGE_API_BASE_KEY = 'gaokao-web-api-base'
 const STORAGE_TOKEN_KEY = 'gaokao-web-token'
 const STORAGE_USER_KEY = 'gaokao-web-user'
-const VOLUNTEER_UNLOCK_REQUIRED_INVITE_COUNT = 6
+const VOLUNTEER_UNLOCK_REQUIRED_INVITE_COUNT = 3
 const VOLUNTEER_CUSTOMER_SERVICE_PHONE = '19184057109'
 
 const samplePrompts = [

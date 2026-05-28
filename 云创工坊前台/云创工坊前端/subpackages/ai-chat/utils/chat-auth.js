@@ -1,11 +1,14 @@
 import { getApiBaseUrl } from '@/utils/api-switch.js'
 import { getCurrentUserToken } from '@/utils/http-services.js'
 
-export const DEFAULT_AGENT_ID = 'gaokao-volunteer-consultant-sales-v13'
+export const CURRENT_GAOKAO_AGENT_ID = 'gaokao-volunteer-consultant-sales-v14'
+export const DEFAULT_AGENT_ID = CURRENT_GAOKAO_AGENT_ID
 export const DAILY_NOTICE_KEY_PREFIX = 'ai_chat_daily_notice_'
 export const CHAT_PATH = '/subpackages/ai-chat/index'
 const SILENT_WECHAT_LOGIN_RETRY_COOLDOWN_MS = 5 * 60 * 1000
 const AGENT_ID_ALIASES = {
+	'gaokao-volunteer-consultant-sales-v13': DEFAULT_AGENT_ID,
+	'gaokao-volunteer-consultant-sales-v14': DEFAULT_AGENT_ID,
 	'yunnan-gaokao-volunteer-consultant': DEFAULT_AGENT_ID,
 	'yunnan-gaokao-volunteer-consultant-v2': DEFAULT_AGENT_ID,
 	'yunnan-gaokao-volunteer-consultant-v3-2': DEFAULT_AGENT_ID,

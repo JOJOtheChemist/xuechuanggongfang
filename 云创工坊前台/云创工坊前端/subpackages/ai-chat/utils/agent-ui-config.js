@@ -1,12 +1,12 @@
 import { DEFAULT_AGENT_ID } from './chat-auth.js'
 import gaokaoConsultantAvatarUrl from '../static/gaokao-consultant-avatar.png'
 
-const GAOKAO_CONSULTANT_AVATAR_URL = gaokaoConsultantAvatarUrl
-const XIAOCHUNLU_AVATAR_URL =
+export const GAOKAO_CONSULTANT_AVATAR_URL = gaokaoConsultantAvatarUrl
+export const XIAOCHUNLU_AVATAR_URL =
 	'https://xuechuang.xyz/oss/share-assets/xuechuang/ai-chat/avatars/xiaochunlu-chat-avatar-v1.png'
 const XIAOCHUNLU_TOPIC_IMAGE_ROOT =
 	'https://xuechuang.xyz/oss/share-assets/xuechuang/ai-chat/topics'
-const XIAOCHUNLU_TOPIC_IMAGE_URLS = {
+export const XIAOCHUNLU_TOPIC_IMAGE_URLS = {
 	article: `${XIAOCHUNLU_TOPIC_IMAGE_ROOT}/xiaochunlu-topic-academic-planning-v1.webp`,
 	business: `${XIAOCHUNLU_TOPIC_IMAGE_ROOT}/xiaochunlu-topic-employment-guidance-v1.webp`
 }
@@ -81,6 +81,7 @@ const AGENT_UI_ID_ALIASES = {
 	'xiaochunlu-ai-v4': 'xiaochunlu-ai-v5',
 	'xiaochunlu-ai-v5': 'xiaochunlu-ai-v5',
 	'gaokao-volunteer-consultant-sales-v13': DEFAULT_AGENT_ID,
+	'gaokao-volunteer-consultant-sales-v14': DEFAULT_AGENT_ID,
 	'yunnan-gaokao-volunteer-consultant': DEFAULT_AGENT_ID,
 	'yunnan-gaokao-volunteer-consultant-v2': DEFAULT_AGENT_ID,
 	'yunnan-gaokao-volunteer-consultant-v3-2': DEFAULT_AGENT_ID,

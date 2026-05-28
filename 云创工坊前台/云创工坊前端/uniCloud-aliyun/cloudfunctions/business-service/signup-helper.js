@@ -77,6 +77,79 @@ async function grantInviteRewardPoints({
     return { rewarded: true, points: INVITE_REWARD_POINTS }
 }
 
+async function resolveVisibleOrderScope(db, uid) {
+    const userRes = await db.collection('uni-id-users')
+        .doc(uid)
+        .field({ team_info: true })
+        .get()
+
+    const user = userRes.data[0] || {}
+    const teamInfo = user.team_info || {}
+    const teamId = teamInfo.team_id || ''
+    let resolvedTeamId = teamId
+
+    let isLeader = teamInfo.position === '队长'
+    let memberIds = [uid]
+
+    if (!resolvedTeamId) {
+        try {
+            const leaderRes = await db.collection('teams')
+                .where({
+                    leader_id: uid,
+                    status: 'active'
+                })
+                .limit(1)
+                .get()
+            const leaderTeam = leaderRes.data[0] || {}
+            if (leaderTeam._id) {
+                resolvedTeamId = leaderTeam._id
+                isLeader = true
+            }
+        } catch (e) {
+            console.warn('[signup-helper] 兜底查询团长团队失败', e)
+        }
+    }
+
+    if (resolvedTeamId) {
+        try {
+            const teamRes = await db.collection('teams')
+                .doc(resolvedTeamId)
+                .field({ leader_id: true })
+                .get()
+            const team = teamRes.data[0] || {}
+            if (team.leader_id === uid) {
+                isLeader = true
+            }
+        } catch (e) {
+            console.warn('[signup-helper] 获取团队信息失败', e)
+        }
+
+        if (isLeader) {
+            try {
+                const membersRes = await db.collection('uni-id-users')
+                    .where({
+                        'team_info.team_id': resolvedTeamId,
+                        'team_info.status': 'active'
+                    })
+                    .field({ _id: true })
+                    .get()
+
+                memberIds = Array.from(new Set(
+                    [uid].concat((membersRes.data || []).map(item => item._id).filter(Boolean))
+                ))
+            } catch (e) {
+                console.warn('[signup-helper] 获取团队成员失败', e)
+                memberIds = [uid]
+            }
+        }
+    }
+
+    return {
+        isLeader,
+        memberIds
+    }
+}
+
 /**
  * 提交业务报名
  * @param {string} uid - 用户ID
@@ -246,7 +319,6 @@ async function getSignupDetail(uid, signupId) {
     if (!signupId) throw new Error('参数错误')
 
     const db = uniCloud.database()
-    const dbCmd = db.command
 
     try {
         // 1. 获取报名记录
@@ -260,6 +332,16 @@ async function getSignupDetail(uid, signupId) {
         // a. 本人查看 或 订单直推人查看
         if (record.user_id === uid || record.referrer_uid === uid) {
             return { code: 0, message: '获取成功', data: record }
+        }
+
+        // b. 团长可查看本团队全部团员订单
+        try {
+            const scope = await resolveVisibleOrderScope(db, uid)
+            if (scope.isLeader && scope.memberIds.includes(record.user_id)) {
+                return { code: 0, message: '获取成功', data: record }
+            }
+        } catch (e) {
+            console.warn('[signup-helper] 校验团队权限失败', e)
         }
 
         // b. 关系链直推人查看 (即：用户关系是我的直推，但订单推荐人可能填了别人或空)
@@ -282,7 +364,7 @@ async function getSignupDetail(uid, signupId) {
         }
 
         // c. 其他人 -> 无权限
-        return { code: -403, message: '无权限查看详情（仅直推可见详情）', data: null }
+        return { code: -403, message: '无权限查看详情（仅本人、直推或团长可见详情）', data: null }
 
     } catch (e) {
         console.error('[signup-helper] 获取详情失败:', e)

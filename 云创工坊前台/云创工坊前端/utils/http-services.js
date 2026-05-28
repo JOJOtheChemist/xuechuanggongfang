@@ -7,8 +7,12 @@ const HTTP_AUTH_STORAGE_KEYS = [
 	'accessToken',
 	'refreshToken',
 	'uni_id_token',
-	'uni_id_token_expired'
+	'uni_id_token_expired',
+	'userInfo',
+	'userId'
 ]
+
+const API_BASE_URL_STORAGE_KEY = 'xuechuang_api_base_url'
 
 function getStorageValue(key, fallback) {
 	try {
@@ -27,6 +31,14 @@ function removeStorageValue(key) {
 	}
 }
 
+export function clearCurrentUserSession(options = {}) {
+	const resetApiBaseUrl = options && options.resetApiBaseUrl === true
+	HTTP_AUTH_STORAGE_KEYS.forEach(removeStorageValue)
+	if (resetApiBaseUrl) {
+		removeStorageValue(API_BASE_URL_STORAGE_KEY)
+	}
+}
+
 export function isJwtLikeToken(token) {
 	return typeof token === 'string' && token.split('.').length === 3
 }
@@ -38,7 +50,7 @@ function isHttpAuthTokenCompatible(token) {
 }
 
 function clearInvalidHttpTokens() {
-	HTTP_AUTH_STORAGE_KEYS.forEach(removeStorageValue)
+	clearCurrentUserSession()
 }
 
 export function getCurrentUserToken() {

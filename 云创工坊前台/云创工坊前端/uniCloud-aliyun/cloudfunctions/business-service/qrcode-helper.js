@@ -2,6 +2,7 @@
  * QRCode Helper - 二维码生成与邀请码解析
  * 包含业务板块拉新二维码生成、短邀请码解析等功能
  */
+const { getWechatMiniprogramConfig } = require('../common/wechat-config')
 
 /**
  * 生成业务板块拉新专属二维码
@@ -78,8 +79,7 @@ async function generateBusinessInviteQrcode(uid, { businessId } = {}) {
         const scene = `b=${bizKey},c=${inviteCode}`
 
         // 1. 获取 access_token（沿用 user-center / team-service 中的配置）
-        const APPID = 'wxd7918f6ffc6e4234'
-        const SECRET = '607588d26e9df050892c321579063f8e'
+        const { appId: APPID, appSecret: SECRET } = getWechatMiniprogramConfig()
 
         const tokenRes = await uniCloud.httpclient.request(
             `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${APPID}&secret=${SECRET}`,

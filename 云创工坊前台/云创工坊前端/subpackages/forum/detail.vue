@@ -49,6 +49,9 @@
               <text>💬 评论</text>
               <text class="stat-num">{{ post.comment_count || 0 }}</text>
             </view>
+            <button class="stat-btn share-stat-btn" open-type="share" hover-class="none" :data-post-id="post.id" @tap.stop="prepareShare">
+              <text>↗ 转发</text>
+            </button>
             <view class="stat-btn">
               <text>👀 浏览</text>
               <text class="stat-num">{{ post.view_count || 0 }}</text>
@@ -118,7 +121,8 @@
 </template>
 
 <script>
-import { getHttpService } from '@/utils/http-services'
+import { getCurrentUserInfo, getHttpService } from '@/utils/http-services'
+import { buildDefaultSharePayload, buildDefaultTimelinePayload } from '@/utils/share'
 import ForumContentSafetyNotice from './components/ForumContentSafetyNotice.vue'
 import {
   CONTENT_SECURITY_SERVICE_UNAVAILABLE_MESSAGE,
@@ -154,7 +158,8 @@ export default {
       likeActiveIcon: FORUM_LIKE_ACTIVE_ICON_URL,
       safetyNoticeVisible: false,
       safetyNoticeMessage: '',
-      lastError: ''
+      lastError: '',
+      shareTargetPost: null
     }
   },
   computed: {
@@ -207,9 +212,22 @@ export default {
     this.loadDetail()
     this.resetComments()
   },
+  onShareAppMessage(res = {}) {
+    const dataset = (res && res.target && res.target.dataset) || {}
+    const postId = String(dataset.postId || this.postId || '').trim()
+    const cachedShare = uni.getStorageSync('forum_share_post_context') || {}
+    const post = this.shareTargetPost || (postId && this.post && String(this.post.id || '') === postId ? this.post : null) || (cachedShare && cachedShare.postId ? cachedShare : null)
+    return this.buildPostSharePayload(post)
+  },
+  onShareTimeline() {
+    return buildDefaultTimelinePayload(this)
+  },
   methods: {
     getToken() {
       return uni.getStorageSync('token') || ''
+    },
+    prepareShare() {
+      this.shareTargetPost = this.post || null
     },
     async loadDetail() {
       this.loading = true
@@ -232,6 +250,35 @@ export default {
         uni.showToast({ title: error.message || '加载失败', icon: 'none' })
       } finally {
         this.loading = false
+      }
+    },
+    buildPostSharePayload(post) {
+      const currentUser = getCurrentUserInfo()
+      const inviterId = String((currentUser && currentUser.uid) || this.global_uid || '').trim()
+      const inviterName = String(
+        (currentUser && (currentUser.nickname || currentUser.username)) ||
+        '你的好友'
+      ).trim() || '你的好友'
+      const cachedShare = post && post.postId ? post : (uni.getStorageSync('forum_share_post_context') || {})
+      const rawTitle = String((post && post.title) || cachedShare.title || '').trim()
+      const rawContent = String((post && post.content) || cachedShare.content || '').trim().replace(/\s+/g, ' ')
+      const summary = rawTitle || (rawContent ? (rawContent.length > 20 ? `${rawContent.slice(0, 20)}...` : rawContent) : '')
+      const schoolName = String((post && post.school) || cachedShare.school || '').trim() || '校园'
+      const title = (post && (post.id || post.postId)) || cachedShare.postId
+        ? `${inviterName}邀请你看${schoolName}的这个动态${summary ? `：${summary}` : ''}`
+        : buildDefaultSharePayload(this).title
+      const imageUrl = post && Array.isArray(post.images) && post.images.length > 0
+        ? String(post.images[0] || '').trim()
+        : String(cachedShare.imageUrl || '').trim()
+      const resolvedPostId = String((post && post.id) || cachedShare.postId || this.postId || '').trim()
+      const path = resolvedPostId
+        ? `/subpackages/forum/detail?id=${encodeURIComponent(resolvedPostId)}${inviterId ? `&inviter_id=${encodeURIComponent(inviterId)}` : ''}`
+        : buildDefaultSharePayload(this).path
+
+      return {
+        title,
+        path,
+        imageUrl: imageUrl || buildDefaultSharePayload(this).imageUrl
       }
     },
     detectPostImageModes() {
@@ -409,10 +456,11 @@ export default {
           throw new Error((res && res.message) || '评论失败')
         }
 
-        const createdComment = Object.assign({}, res.data)
+        const nextCommentCount = Number(this.post.comment_count || 0) + 1
         this.commentText = ''
-        this.comments = [createdComment].concat(Array.isArray(this.comments) ? this.comments : [])
-        this.post.comment_count = Number(this.post.comment_count || 0) + 1
+        this.commentsPage = 1
+        await this.loadComments(true)
+        this.post.comment_count = nextCommentCount
         uni.$emit('forum-post-commented', {
           id: this.post.id,
           comment_count: this.post.comment_count
@@ -594,6 +642,14 @@ export default {
   align-items: center;
   justify-content: center;
   column-gap: 8rpx;
+}
+
+.share-stat-btn {
+  padding: 0;
+}
+
+.share-stat-btn::after {
+  border: none;
 }
 
 .stat-btn:last-child {

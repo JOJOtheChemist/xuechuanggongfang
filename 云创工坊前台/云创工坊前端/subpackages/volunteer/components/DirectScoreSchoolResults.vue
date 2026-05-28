@@ -10,16 +10,6 @@
       >
         <view class="school-preview-head">
           <view class="school-preview-head-main">
-            <view class="school-preview-badge">
-              <image
-                v-if="shouldShowSchoolThumb(school)"
-                class="school-preview-badge-image"
-                :src="school.thumbUrl"
-                mode="aspectFill"
-                @error.stop="handleSchoolThumbError(school)"
-              />
-              <text v-else class="school-preview-badge-text">{{ school.badge || '院校' }}</text>
-            </view>
             <view class="school-preview-meta">
               <text class="school-preview-name">{{ school.name }}</text>
               <text class="school-preview-subtitle">
@@ -28,8 +18,8 @@
             </view>
           </view>
           <view class="school-preview-retention">
-            <text class="school-preview-retention-label">保研率</text>
-            <text class="school-preview-retention-value">{{ school.retentionRateText }}</text>
+            <text class="school-preview-retention-label">保研率：</text>
+            <text class="school-preview-retention-value">{{ school.retentionRateText || '-' }}</text>
           </view>
         </view>
 
@@ -65,7 +55,13 @@
               </view>
               <block v-else>
                 <view class="school-preview-major-title-row">
-                  <text class="school-preview-major-title">{{ major.label }}</text>
+                  <view class="school-preview-major-title-main">
+                    <text class="school-preview-major-title">{{ major.label }}</text>
+                    <major-inline-meta
+                      :subject-requirement="major.subjectRequirement"
+                      :retention-rate="major.retentionRate"
+                    />
+                  </view>
                 </view>
                 <view v-if="major.scoreRows && major.scoreRows.length" class="school-preview-score-table-scroll">
                   <view class="school-preview-score-table">
@@ -119,7 +115,13 @@
             </view>
             <block v-else>
               <view class="school-preview-major-title-row">
-                <text class="school-preview-major-title">{{ major.label }}</text>
+                <view class="school-preview-major-title-main">
+                  <text class="school-preview-major-title">{{ major.label }}</text>
+                  <major-inline-meta
+                    :subject-requirement="major.subjectRequirement"
+                    :retention-rate="major.retentionRate"
+                  />
+                </view>
               </view>
               <view v-if="major.scoreRows && major.scoreRows.length" class="school-preview-score-table-scroll">
                 <view class="school-preview-score-table">
@@ -171,6 +173,7 @@
 
 <script>
 import { getCachedImageSync, resolveCachedImages } from '../../../utils/remote-image-cache'
+import MajorInlineMeta from './MajorInlineMeta.vue'
 
 function normalizeNature(value) {
   if (value === 'public') return '公办'
@@ -184,6 +187,10 @@ function normalizeMajorCategory(value) {
 
 function normalizeSubjectTrack(value) {
   return String(value || '').trim()
+}
+
+function normalizeSearchText(value) {
+  return String(value || '').trim().toLowerCase()
 }
 
 function badgeFromName(name) {
@@ -208,6 +215,22 @@ function formatScoreDisplayValue(value) {
   return Number.isInteger(numeric) ? `${numeric}分` : `${numeric.toFixed(1).replace(/\.0$/, '')}分`
 }
 
+function pickFirstText(...values) {
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index]
+    if (typeof value !== 'string') continue
+    const text = value.trim()
+    if (text) return text
+  }
+
+  return ''
+}
+
+function isPlaceholderRetentionRateText(text) {
+  const normalized = String(text || '').trim()
+  return !normalized || ['-', '—', '--', '/'].includes(normalized)
+}
+
 const SCORE_TABLE_COLUMNS = Object.freeze([
   { key: 'year', label: '年份' },
   { key: 'minScore', label: '最低分' },
@@ -215,13 +238,15 @@ const SCORE_TABLE_COLUMNS = Object.freeze([
   { key: 'groupMinScore', label: '专业组最低分' },
   { key: 'groupMinRank', label: '专业组最低位次' }
 ])
-
 const MAX_PREVIEW_MAJORS = 3
 const INITIAL_RENDER_BATCH = 24
 const RENDER_BATCH_STEP = 24
 
 export default {
   name: 'VolunteerDirectScoreResults',
+  components: {
+    MajorInlineMeta
+  },
   props: {
     institutions: {
       type: Array,
@@ -237,9 +262,17 @@ export default {
       type: String,
       default: ''
     },
+    majorKeywordFilter: {
+      type: String,
+      default: ''
+    },
     subjectTrackFilter: {
       type: String,
       default: ''
+    },
+    suspendRendering: {
+      type: Boolean,
+      default: false
     },
     loadingMore: {
       type: Boolean,
@@ -259,7 +292,10 @@ export default {
       renderedSchoolCount: 0,
       schoolHydrationTimer: null,
       schoolHydrationTaskToken: 0,
-      hydratedSchoolMap: {}
+      hydratedSchoolMap: {},
+      pendingSchoolHydrations: [],
+      nextSchoolHydrationStartIndex: 0,
+      pendingThumbRefresh: false
     }
   },
   watch: {
@@ -275,9 +311,26 @@ export default {
       this.resetRenderedSchoolCount()
       this.scheduleSchoolHydration()
     },
+    majorKeywordFilter() {
+      this.resetRenderedSchoolCount()
+      this.scheduleSchoolHydration()
+    },
     subjectTrackFilter() {
       this.resetRenderedSchoolCount()
       this.scheduleSchoolHydration()
+    },
+    suspendRendering(nextValue) {
+      if (nextValue) {
+        this.clearSchoolHydrationTimer()
+        return
+      }
+
+      if (this.pendingThumbRefresh) {
+        this.pendingThumbRefresh = false
+        this.refreshRenderedSchoolThumbs()
+      }
+
+      this.resumeSchoolHydration()
     }
   },
   beforeDestroy() {
@@ -287,6 +340,9 @@ export default {
   computed: {
     normalizedMajorCategoryFilter() {
       return normalizeMajorCategory(this.majorCategoryFilter)
+    },
+    normalizedMajorKeywordFilter() {
+      return normalizeSearchText(this.majorKeywordFilter)
     },
     normalizedSubjectTrackFilter() {
       return normalizeSubjectTrack(this.subjectTrackFilter)
@@ -396,6 +452,11 @@ export default {
         return
       }
 
+      if (this.suspendRendering) {
+        this.pendingThumbRefresh = true
+        return
+      }
+
       const nextItems = this.schoolItems.map((school) => {
         if (!school || !school.thumbSourceUrl) return school
 
@@ -411,9 +472,82 @@ export default {
 
       this.schoolItems = nextItems
     },
+    resumeSchoolHydration() {
+      if (this.suspendRendering) {
+        return
+      }
+
+      if (!Array.isArray(this.pendingSchoolHydrations) || !this.pendingSchoolHydrations.length) {
+        return
+      }
+
+      if (this.nextSchoolHydrationStartIndex >= this.pendingSchoolHydrations.length) {
+        this.pendingSchoolHydrations = []
+        this.nextSchoolHydrationStartIndex = 0
+        return
+      }
+
+      this.clearSchoolHydrationTimer()
+      this.hydrateSchoolBatch(this.nextSchoolHydrationStartIndex, this.schoolHydrationTaskToken)
+    },
+    hydrateSchoolBatch(startIndex, taskToken) {
+      if (taskToken !== this.schoolHydrationTaskToken) {
+        return
+      }
+
+      if (this.suspendRendering) {
+        this.nextSchoolHydrationStartIndex = startIndex
+        this.schoolHydrationTimer = null
+        return
+      }
+
+      const pendingHydrations = Array.isArray(this.pendingSchoolHydrations) ? this.pendingSchoolHydrations : []
+      if (!pendingHydrations.length || startIndex >= pendingHydrations.length) {
+        this.pendingSchoolHydrations = []
+        this.nextSchoolHydrationStartIndex = 0
+        this.schoolHydrationTimer = null
+        return
+      }
+
+      const nextItems = this.schoolItems.slice()
+      const batchSize = startIndex === 0 ? 4 : 3
+      const batch = pendingHydrations.slice(startIndex, startIndex + batchSize)
+      let changed = false
+
+      batch.forEach((entry) => {
+        const hydratedSchool = this.mapInstitutionToSchool(entry.item, entry.index)
+        if (!hydratedSchool) {
+          return
+        }
+
+        this.hydratedSchoolMap[entry.hydratedCacheKey] = hydratedSchool
+        nextItems[entry.listIndex] = this.withSchoolRenderKeys(hydratedSchool, entry.renderKey)
+        changed = true
+      })
+
+      if (changed) {
+        this.schoolItems = nextItems
+      }
+
+      const nextStartIndex = startIndex + batch.length
+      this.nextSchoolHydrationStartIndex = nextStartIndex
+
+      if (nextStartIndex >= pendingHydrations.length) {
+        this.pendingSchoolHydrations = []
+        this.nextSchoolHydrationStartIndex = 0
+        this.schoolHydrationTimer = null
+        return
+      }
+
+      this.schoolHydrationTimer = setTimeout(() => {
+        this.hydrateSchoolBatch(nextStartIndex, taskToken)
+      }, 16)
+    },
     scheduleSchoolHydration() {
       this.clearSchoolHydrationTimer()
       this._rawSchoolMap = Object.create(null)
+      this.pendingSchoolHydrations = []
+      this.nextSchoolHydrationStartIndex = 0
 
       const source = Array.isArray(this.institutions) ? this.institutions.slice() : []
       const keyCount = {}
@@ -458,49 +592,19 @@ export default {
 
       const taskToken = this.schoolHydrationTaskToken + 1
       this.schoolHydrationTaskToken = taskToken
+      this.pendingSchoolHydrations = pendingHydrations
 
-      const hydrateBatch = (startIndex) => {
-        if (taskToken !== this.schoolHydrationTaskToken) {
-          return
-        }
-
-        const nextItems = this.schoolItems.slice()
-        const batchSize = startIndex === 0 ? 4 : 3
-        const batch = pendingHydrations.slice(startIndex, startIndex + batchSize)
-        let changed = false
-
-        batch.forEach((entry) => {
-          const hydratedSchool = this.mapInstitutionToSchool(entry.item, entry.index)
-          if (!hydratedSchool) {
-            return
-          }
-
-          this.hydratedSchoolMap[entry.hydratedCacheKey] = hydratedSchool
-          nextItems[entry.listIndex] = this.withSchoolRenderKeys(hydratedSchool, entry.renderKey)
-          changed = true
-        })
-
-        if (changed) {
-          this.schoolItems = nextItems
-        }
-
-        const nextStartIndex = startIndex + batch.length
-        if (nextStartIndex >= pendingHydrations.length) {
-          this.schoolHydrationTimer = null
-          return
-        }
-
-        this.schoolHydrationTimer = setTimeout(() => {
-          hydrateBatch(nextStartIndex)
-        }, 16)
+      if (this.suspendRendering) {
+        return
       }
 
-      hydrateBatch(0)
+      this.hydrateSchoolBatch(0, taskToken)
     },
     buildHydratedSchoolCacheKey(item, index) {
       return [
         this.resolveInstitutionStableId(item, index),
         this.normalizedMajorCategoryFilter,
+        this.normalizedMajorKeywordFilter,
         this.normalizedSubjectTrackFilter
       ].join('::')
     },
@@ -582,8 +686,27 @@ export default {
 
       return 0
     },
+    filterMajorsByKeyword(majors) {
+      const normalizedKeyword = this.normalizedMajorKeywordFilter
+      const source = Array.isArray(majors) ? majors : []
+
+      if (!normalizedKeyword) {
+        return source
+      }
+
+      return source.filter((major) => {
+        const majorName = normalizeSearchText(
+          major && (major.majorName || major.major_name)
+        )
+        const majorCategory = normalizeSearchText(
+          major && (major.majorCategory || major.major_category)
+        )
+
+        return majorName.includes(normalizedKeyword) || majorCategory.includes(normalizedKeyword)
+      })
+    },
     resolveVisibleMajorPreviews(item) {
-      const previewMajors = this.getPreviewMajors(item)
+      const previewMajors = this.filterMajorsByKeyword(this.getPreviewMajors(item))
       const categoryFilteredMajors = this.filterMajorsByCategory(previewMajors)
         .map((major) => {
           const subjectTrack = this.resolveMajorSubjectTrack(major) || this.normalizedSubjectTrackFilter
@@ -603,12 +726,7 @@ export default {
         return categoryFilteredMajors
       }
 
-      return previewMajors.map((major) => {
-        const subjectTrack = this.resolveMajorSubjectTrack(major) || this.normalizedSubjectTrackFilter
-        return Object.assign({}, major, {
-          subjectTrack
-        })
-      })
+      return []
     },
     filterMajorsByCategory(majors) {
       const normalizedFilter = this.normalizedMajorCategoryFilter
@@ -641,6 +759,59 @@ export default {
           : {}
 
       return normalizeSubjectTrack(extraPayload.subjectTrack || extraPayload.subject_track)
+    },
+    resolveMajorSubjectRequirement(major) {
+      const extraPayload = major && major.extraPayload && typeof major.extraPayload === 'object'
+        ? major.extraPayload
+        : major && major.extra_payload && typeof major.extra_payload === 'object'
+          ? major.extra_payload
+          : {}
+
+      return pickFirstText(
+        major && major.subjectRequirement,
+        major && major.subject_requirement,
+        extraPayload.subjectRequirement,
+        extraPayload.subject_requirement,
+        extraPayload['选科要求'],
+        extraPayload['选考要求'],
+        extraPayload['选科'],
+        extraPayload.raw && extraPayload.raw['选科要求'],
+        extraPayload.raw && extraPayload.raw['选考要求'],
+        extraPayload.raw && extraPayload.raw['选科']
+      )
+    },
+    resolveMajorRetentionRate(major) {
+      const extraPayload = major && major.extraPayload && typeof major.extraPayload === 'object'
+        ? major.extraPayload
+        : major && major.extra_payload && typeof major.extra_payload === 'object'
+          ? major.extra_payload
+          : {}
+
+      return pickFirstText(
+        major && major.retentionRate,
+        major && major.retention_rate,
+        extraPayload.retentionRate,
+        extraPayload.retention_rate,
+        extraPayload['保研率'],
+        extraPayload.raw && extraPayload.raw['保研率']
+      )
+    },
+    normalizeRetentionRateDisplay(value) {
+      const text = String(value || '').trim()
+      if (isPlaceholderRetentionRateText(text)) {
+        return ''
+      }
+
+      if (/%$/.test(text)) {
+        return text
+      }
+
+      const numeric = Number(text)
+      if (Number.isFinite(numeric) && numeric >= 0) {
+        return `${String(numeric).replace(/\.0$/, '')}%`
+      }
+
+      return text
     },
     resolveMajorScoreRows(major) {
       const extraPayload = major && major.extraPayload && typeof major.extraPayload === 'object'
@@ -726,7 +897,7 @@ export default {
       return this.resolveSchoolThumb(item)
     },
     resolveVisibleMajors(item) {
-      const previewMajors = this.getPreviewMajors(item)
+      const previewMajors = this.filterMajorsByKeyword(this.getPreviewMajors(item))
       const categoryFilteredMajors = this.filterMajorsByCategory(previewMajors)
         .map((major) => {
           const scoreRows = this.resolveMajorScoreRows(major)
@@ -752,23 +923,14 @@ export default {
         return categoryFilteredMajors
       }
 
-      return previewMajors
-        .map((major) => {
-          const scoreRows = this.resolveMajorScoreRows(major)
-          const subjectTrack = this.resolveMajorSubjectTrack(major) || this.normalizedSubjectTrackFilter
-          return Object.assign({}, major, {
-            subjectTrack,
-            scoreRows
-          })
-        })
+      return []
     },
     formatMajorName(major) {
       const majorName = String((major && (major.majorName || major.major_name)) || '').trim()
       if (!majorName) return ''
 
       const majorCategory = String((major && (major.majorCategory || major.major_category)) || '').trim()
-      const subjectTrack = this.resolveMajorSubjectTrack(major) || this.normalizedSubjectTrackFilter
-      const suffix = [majorCategory, subjectTrack].filter(Boolean).join(' · ')
+      const suffix = [majorCategory].filter(Boolean).join(' · ')
       return suffix ? `${majorName} · ${suffix}` : majorName
     },
     normalizeScoreRows(scoreRows) {
@@ -790,8 +952,30 @@ export default {
         .filter(Boolean)
         .sort((left, right) => Number(right.year) - Number(left.year))
     },
-    buildRetentionRateText() {
-      return '-'
+    buildRetentionRateText(item) {
+      const directRetentionRate = this.normalizeRetentionRateDisplay(
+        pickFirstText(
+          item && item.retentionRate,
+          item && item.retention_rate,
+          item && item.extraPayload && item.extraPayload.retentionRate,
+          item && item.extraPayload && item.extraPayload.retention_rate,
+          item && item.extraPayload && item.extraPayload['保研率'],
+          item && item.extraPayload && item.extraPayload.raw && item.extraPayload.raw['保研率']
+        )
+      )
+
+      if (directRetentionRate) {
+        return directRetentionRate
+      }
+
+      const previewMajors = Array.isArray(item && item.majorPreview)
+        ? item.majorPreview
+        : Array.isArray(item && item.major_preview)
+          ? item.major_preview
+          : []
+      const firstMajor = previewMajors[0]
+
+      return firstMajor ? this.normalizeRetentionRateDisplay(this.resolveMajorRetentionRate(firstMajor)) : ''
     },
     buildSchoolMeta(item) {
       return [
@@ -858,7 +1042,7 @@ export default {
         nature,
         subtitle: [city, level, nature].filter(Boolean).join(' · '),
         category: item.schoolType || item.school_type || '类型待补充',
-        retentionRateText: this.buildRetentionRateText(),
+        retentionRateText: this.buildRetentionRateText(item),
         metaTags: schoolMeta.map((tag, tagIndex) => ({
           label: tag,
           renderKey: `${renderKey}-tag-${tagIndex}`
@@ -867,6 +1051,8 @@ export default {
           const label = this.formatMajorName(major)
           return {
             label,
+            subjectRequirement: this.resolveMajorSubjectRequirement(major),
+            retentionRate: this.resolveMajorRetentionRate(major),
             scoreRows: [],
             scoreText: '待补充',
             scoreLabel: '参考分',
@@ -914,6 +1100,8 @@ export default {
 
           return {
             label,
+            subjectRequirement: this.resolveMajorSubjectRequirement(major),
+            retentionRate: this.resolveMajorRetentionRate(major),
             scoreRows: realScoreRows,
             scoreText: formatScoreDisplayValue(resolvedScoreValue),
             scoreLabel: '参考分',
@@ -955,7 +1143,7 @@ export default {
         nature,
         subtitle: [city, level, nature].filter(Boolean).join(' · '),
         category: item.schoolType || item.school_type || '类型待补充',
-        retentionRateText: this.buildRetentionRateText(),
+        retentionRateText: this.buildRetentionRateText(item),
         metaTags: schoolMeta.map((tag, tagIndex) => ({
           label: tag,
           renderKey: `${renderKey}-tag-${tagIndex}`
@@ -1015,59 +1203,31 @@ export default {
   align-items: center;
 }
 
-.school-preview-badge {
-  width: 88rpx;
-  height: 88rpx;
-  border-radius: 50%;
-  background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%);
-  color: #17337e;
-  border: 1rpx solid rgba(191, 219, 254, 0.9);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  overflow: hidden;
-}
-
-.school-preview-badge-text {
-  font-size: 22rpx;
-  font-weight: 700;
-}
-
-.school-preview-badge-image {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
 .school-preview-meta {
   flex: 1;
   min-width: 0;
-  margin-left: 18rpx;
+  margin-left: 0;
 }
 
 .school-preview-retention {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 10rpx;
-  padding: 10rpx 16rpx;
-  border-radius: 16rpx;
-  background: #f9f9fd;
-  border: 1rpx solid #d4d4d8;
+  gap: 6rpx;
+  padding: 0;
   box-sizing: border-box;
 }
 
 .school-preview-retention-label {
   display: inline;
-  font-size: 28rpx;
+  font-size: 24rpx;
   line-height: 1.4;
   color: rgb(91, 89, 124);
 }
 
 .school-preview-retention-value {
   display: inline;
-  font-size: 30rpx;
+  font-size: 24rpx;
   font-weight: 600;
   line-height: 1.4;
   color: rgb(106, 127, 171);
@@ -1153,9 +1313,16 @@ export default {
 
 .school-preview-major-title-row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: flex-start;
   gap: 12rpx;
+}
+
+.school-preview-major-title-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  min-width: 0;
 }
 
 .school-preview-major-title {

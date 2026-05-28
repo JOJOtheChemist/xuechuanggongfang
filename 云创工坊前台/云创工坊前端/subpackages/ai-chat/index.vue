@@ -90,6 +90,7 @@
 				:scroll-into-view-target="scrollIntoViewTarget"
 				:bottom-space-rpx="messagePanelBottomSpaceRpx"
 				@membership-action="handleMembershipCardAction"
+				@shortcut-select="handleAgentShortcutSelect"
 				@school-card-tap="handleSchoolCardTap"
 				@school-card-copy="handleSchoolCardCopy"
 				@choice-select="handleChoiceCardSelect"
@@ -232,7 +233,7 @@
 			<view class="share-invite-sheet" @tap.stop>
 				<text class="share-invite-sheet-title">分享高考 AI / 查分链接</text>
 				<text class="share-invite-sheet-desc">
-					分享{{ admissionUnlockStatus.requiredInviteCount || 3 }}人登录成功才会计入解锁进度，AI 高考对话和直接查分共用这套权限。
+					分享{{ normalizedRequiredInviteCount }}人登录成功才会计入解锁进度，AI 高考对话和直接查分共用这套权限。
 				</text>
 				<button
 					class="share-invite-sheet-primary"
@@ -259,21 +260,26 @@ import ChatMessageScrollContainer from './components/ChatMessageScrollContainer.
 import ChatPageShell from './components/ChatPageShell.vue'
 import VolunteerAccessStatusUpsellBanners from '../../components/volunteer/AccessStatusUpsellBanners.vue'
 import VolunteerUnlockGateCard from '../../components/volunteer/UnlockGateCard.vue'
+import { openArticleDetail } from '@/utils/article-navigation'
 import { getStaticAssetUrl } from '@/utils/cloud-static-assets'
 import { getCachedImageSync, resolveCachedImages } from '@/utils/remote-image-cache'
 import { getCurrentUserInfo } from '@/utils/http-services'
 import {
 	VOLUNTEER_CUSTOMER_SERVICE_PHONE,
+	VOLUNTEER_UNLOCK_REQUIRED_INVITE_COUNT,
 	createDefaultUnlockStatus
 } from '@/utils/volunteer-local-admission.js'
 import {
 	DEFAULT_AGENT_ID,
+	CHAT_PATH,
 	createSessionId,
 	extractDisplayUserInfo,
 	normalizeText,
 	resolveAiChatAgentId,
 } from './utils/chat-auth.js'
-import { getAgentUiConfig } from './utils/agent-ui-config.js'
+import {
+	getAgentUiConfig
+} from './utils/agent-ui-config.js'
 import { getAiChatVisualConfig } from './utils/ai-chat-visual-config.js'
 import { chatPageMethods } from './utils/chat-page-methods.js'
 import {
@@ -543,6 +549,10 @@ export default {
 		hasVolunteerAccess() {
 			return !this.requiresVolunteerUnlock || Boolean(this.admissionUnlockStatus && this.admissionUnlockStatus.unlocked)
 		},
+		normalizedRequiredInviteCount() {
+			const value = Number(this.admissionUnlockStatus && this.admissionUnlockStatus.requiredInviteCount)
+			return Number.isFinite(value) && value > 0 ? value : VOLUNTEER_UNLOCK_REQUIRED_INVITE_COUNT
+		},
 		showVolunteerUnlockPrompt() {
 			return this.requiresVolunteerUnlock
 				&& this.unlockStatusInitialized
@@ -593,12 +603,12 @@ export default {
 			}
 			return 50
 		},
-		showVisualIntroInHead() {
-			return this.showVisualIntro && !this.showScrollableIntroPanel
-		},
-		resolvedVisualTopImageUrl() {
-			return resolveVisualImageUrl(this.visualTopImageUrl, this.cachedVisualTopImageUrl)
-		},
+			showVisualIntroInHead() {
+				return this.showVisualIntro && !this.showScrollableIntroPanel
+			},
+			resolvedVisualTopImageUrl() {
+				return resolveVisualImageUrl(this.visualTopImageUrl, this.cachedVisualTopImageUrl)
+			},
 		resolvedVisualIntroSectionImageUrls() {
 			return resolveVisualIntroSectionImageUrls(
 				this.visualIntroSectionImageUrls,
@@ -706,16 +716,16 @@ export default {
 				normalizeText(this.assistantName, '') === '小春鹿'
 			)
 		},
-		shouldRenderMessagePanel() {
-			if (!this.messages.length && !this.isSending) return false
-			if ((this.visualMode === 'xiaochunlu' || this.visualMode === 'gaokao') && !this.hasUserSentMessage && !this.isSending) {
-				return false
-			}
-			return true
-		},
-		composerPlaceholder() {
-			if (this.showLoginPrompt) return '登录后发送'
-			if (this.showPowerPrompt) return '算力不足，暂不可发送'
+			shouldRenderMessagePanel() {
+				if (!this.messages.length && !this.isSending) return false
+				if ((this.visualMode === 'xiaochunlu' || this.visualMode === 'gaokao') && !this.hasUserSentMessage && !this.isSending) {
+					return false
+				}
+				return true
+			},
+			composerPlaceholder() {
+				if (this.showLoginPrompt) return '登录后发送'
+				if (this.showPowerPrompt) return '算力不足，暂不可发送'
 			if (this.requiresVolunteerUnlock && !this.unlockStatusInitialized && this.unlockStatusLoading) {
 				return '正在确认查分权限...'
 			}
@@ -963,6 +973,28 @@ export default {
 		},
 		handleIntroPromptSelect(item) {
 			this.applyPromptSelection(item)
+		},
+		handleAgentShortcutSelect(card) {
+			const actionType = normalizeText(card && card.actionType, '')
+			if (actionType === 'article') {
+				openArticleDetail({ id: card && card.articleId }, '文章数据已失效')
+				return
+			}
+			if (actionType === 'switch-agent') {
+				const targetAgentId = resolveAiChatAgentId(card && card.agentId, DEFAULT_AGENT_ID)
+				uni.redirectTo({
+					url: `${CHAT_PATH}?agentId=${encodeURIComponent(targetAgentId)}&sessionId=${encodeURIComponent(createSessionId())}`,
+					fail: () => {
+						uni.showToast({ title: '页面打开失败', icon: 'none' })
+					}
+				})
+				return
+			}
+
+			const routeUrl = normalizeText(card && card.routeUrl, '')
+			if (routeUrl) {
+				this.openPromptRoute(routeUrl)
+			}
 		},
 		async syncVisualImages() {
 			const topSource = String(this.visualTopImageUrl || '').trim()

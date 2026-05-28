@@ -812,6 +812,32 @@
   max-width: 72%;
 }
 
+.institution-continue-action {
+  margin: 0 0 18rpx;
+  min-height: 74rpx;
+  padding: 0 26rpx;
+  border-radius: 999rpx;
+  background: linear-gradient(135deg, #17337e 0%, #2853c7 100%);
+  color: #ffffff;
+  font-size: 26rpx;
+  font-weight: 700;
+  display: inline-flex;
+  position: relative;
+  left: 50%;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 14rpx 28rpx rgba(23, 51, 126, 0.18);
+  box-sizing: border-box;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  will-change: transform;
+  transform: translateX(-50%);
+}
+
+.institution-continue-action-pressed {
+  transform: translateX(-50%) translateY(2rpx) scale(0.975);
+  box-shadow: 0 10rpx 20rpx rgba(23, 51, 126, 0.18);
+}
+
 @keyframes direct-score-loading-bob {
   0%, 100% {
     transform: translateY(0);
@@ -1253,6 +1279,12 @@
   align-items: flex-start;
   justify-content: flex-start;
   box-sizing: border-box;
+}
+
+.state-action-secondary {
+  margin-top: 14rpx;
+  color: #17337e;
+  font-weight: 700;
 }
 
 .volunteer-card-list {

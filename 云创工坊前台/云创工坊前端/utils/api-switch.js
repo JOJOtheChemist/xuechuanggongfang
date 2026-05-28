@@ -5,8 +5,6 @@ const API_BASE_URL_STORAGE_KEY = 'xuechuang_api_base_url'
 
 const DEFAULT_API_BASE_URL = 'https://xuechuang.xyz/api/v1'
 const LEGACY_DEVTOOLS_API_BASE_URL = 'http://127.0.0.1:3001/api/v1'
-const DEFAULT_STUDY_ARTICLE_COVER_URL =
-	'https://xuechuang.xyz/oss/share-assets/admission/admin/images/0/2026/05/12/a7391291-a94d-41e5-82ee-83b75f64ef0b.jpg'
 const AUTH_PROMPT_INTERVAL = 2500
 const AUTH_REFRESH_RETRY_COOLDOWN_MS = 5 * 60 * 1000
 const AUTH_STORAGE_KEYS = [
@@ -586,16 +584,16 @@ function normalizeArticle(article) {
 	if (!isPlainObject(article)) return article
 	const next = Object.assign({}, article)
 	const category = isPlainObject(article.category) ? article.category : {}
+	const normalizedCoverImage =
+		typeof (next.cover_image || next.coverImageUrl || next.cover_image_url || '') === 'string'
+			? String(next.cover_image || next.coverImageUrl || next.cover_image_url || '').trim()
+			: ''
 
 	next.category_id = next.category_id || next.categoryId || category.id || category.legacyId
-	next.cover_image =
-		next.cover_image ||
-		next.coverImageUrl ||
-		next.cover_image_url ||
-		DEFAULT_STUDY_ARTICLE_COVER_URL
-	next.cover_url = next.cover_url || next.coverImageUrl || next.cover_image
-	next.coverImageUrl = next.coverImageUrl || next.cover_image
-	next.image = next.image || next.cover_image
+	next.cover_image = normalizedCoverImage || ''
+	next.cover_url = next.cover_url || normalizedCoverImage || ''
+	next.coverImageUrl = normalizedCoverImage || ''
+	next.image = next.image || normalizedCoverImage || ''
 	next.author_name = next.author_name || next.authorName || ''
 	next.price_points = next.price_points !== undefined ? next.price_points : next.pricePoints
 	next.publish_time = next.publish_time || next.publishedAt || next.createdAt || ''
@@ -724,6 +722,15 @@ function normalizeForumComment(comment) {
 	return next
 }
 
+function normalizeForumNotification(notification) {
+	if (!isPlainObject(notification)) return notification
+	const next = Object.assign({}, notification)
+	next.create_date = next.create_date || toTimestamp(notification.created_at || notification.createdAt)
+	next.read_date = next.read_date || toTimestamp(notification.read_at || notification.readAt)
+	next.is_read = next.is_read !== undefined ? !!next.is_read : !!notification.isRead
+	return next
+}
+
 function transformForumPostResponse(response) {
 	const data = response && response.data
 	if (!data) return response
@@ -764,12 +771,33 @@ function transformForumCommentResponse(response) {
 	return response
 }
 
+function transformForumNotificationResponse(response) {
+	const data = response && response.data
+	if (!data) return response
+
+	if (Array.isArray(data.list)) {
+		response.data = Object.assign({}, data, {
+			list: data.list.map(normalizeForumNotification)
+		})
+		return response
+	}
+
+	if (Array.isArray(data)) {
+		response.data = data.map(normalizeForumNotification)
+		return response
+	}
+
+	response.data = normalizeForumNotification(data)
+	return response
+}
+
 const SERVICE_ROUTES = {
 	'user-center': {
 		loginByWeixin: route('POST', '/auth/wechat-login'),
 		getUserInfo: authRoute('GET', '/users/me'),
 		updateProfile: authRoute('PATCH', '/users/me'),
 		getMyStats: authRoute('GET', '/users/me/stats'),
+		getMyInviteMembers: authRoute('GET', '/users/me/invite-members'),
 		getMyInviteContext: authRoute('GET', '/users/me/inviter'),
 		bindInviter: authRoute('POST', '/users/me/inviter'),
 		recordTeamInviteView: authRoute('POST', '/users/me/invite-views/team'),
@@ -813,11 +841,23 @@ const SERVICE_ROUTES = {
 
 	'team-service': {
 		getTeamList: route('GET', '/team'),
+		createTeam: authRoute('POST', '/team'),
 		getTeamDetail: route('GET', (payload, args) => `/team/${encodedId(payload, args, ['teamId', 'team_id', 'id'], 'teamId')}`, {
 			query: () => ({})
 		}),
-		getTeamMembers: route('GET', (payload, args) => `/team/${encodedId(payload, args, ['teamId', 'team_id'], 'teamId')}/members`),
+		getTeamMembers: optionalAuthRoute('GET', (payload, args) => `/team/${encodedId(payload, args, ['teamId', 'team_id'], 'teamId')}/members`),
+		getTeamMemberContact: authRoute('GET', (payload, args) => `/team/${encodedId(payload, args, ['teamId', 'team_id'], 'teamId')}/members/${encodedId(payload, args, ['memberUserId', 'member_user_id', 'userId', 'user_id'], 'memberUserId')}/contact`, {
+			query: () => ({})
+		}),
+		setTeamLeader: authRoute('PATCH', (payload, args) => `/team/${encodedId(payload, args, ['teamId', 'team_id'], 'teamId')}/leader`),
+		removeTeamMember: authRoute('DELETE', (payload, args) => `/team/${encodedId(payload, args, ['teamId', 'team_id'], 'teamId')}/members/${encodedId(payload, args, ['memberUserId', 'member_user_id', 'userId', 'user_id'], 'memberUserId')}`, {
+			query: () => ({})
+		}),
 		applyJoinTeam: authRoute('POST', (payload, args) => `/team/${encodedId(payload, args, ['teamId', 'team_id'], 'teamId')}/join`),
+		exitTeam: authRoute('POST', (payload, args) => `/team/${encodedId(payload, args, ['teamId', 'team_id'], 'teamId')}/exit`),
+		deleteTeam: authRoute('DELETE', (payload, args) => `/team/${encodedId(payload, args, ['teamId', 'team_id'], 'teamId')}`, {
+			query: () => ({})
+		}),
 		getMyTeam: authRoute('GET', '/team/mine'),
 		getInviteStats: authRoute('GET', '/team/invite-stats'),
 		getTeamInfoByInviter: route('GET', (payload, args) => `/team/inviter/${encodedId(payload, args, ['inviterId', 'inviter_id'], 'inviterId')}`, {
@@ -829,6 +869,7 @@ const SERVICE_ROUTES = {
 	'dashboard-service': {
 		getStatsCard: optionalAuthRoute('GET', '/ops/stats-card'),
 		getTeamDynamics: authRoute('GET', '/ops/team-dynamics'),
+		getTeamMembersOrders: authRoute('GET', '/ops/team-member-orders'),
 		getBanners: route('GET', '/ops/banners'),
 		getAdminBanners: authRoute('GET', '/ops/admin/banners'),
 		createBanner: authRoute('POST', '/ops/admin/banners'),
@@ -856,7 +897,15 @@ const SERVICE_ROUTES = {
 			}),
 			toggleLike: authRoute('POST', (payload, args) => `/forum/posts/${encodedId(payload, args, ['postId', 'post_id', 'id'], 'postId')}/like`),
 			getCommentList: route('GET', (payload, args) => `/forum/posts/${encodedId(payload, args, ['postId', 'post_id'], 'postId')}/comments`, { transform: transformForumCommentResponse }),
-			createComment: authRoute('POST', (payload, args) => `/forum/posts/${encodedId(payload, args, ['postId', 'post_id'], 'postId')}/comments`, { transform: transformForumCommentResponse })
+			createComment: authRoute('POST', (payload, args) => `/forum/posts/${encodedId(payload, args, ['postId', 'post_id'], 'postId')}/comments`, { transform: transformForumCommentResponse }),
+			getCommentNotifications: authRoute('GET', '/forum/notifications/comments', { transform: transformForumNotificationResponse }),
+			getCommentNotificationUnreadCount: authRoute('GET', '/forum/notifications/comments/unread-count'),
+			markCommentNotificationRead: authRoute('POST', (payload, args) => `/forum/notifications/comments/${encodedId(payload, args, ['notificationId', 'notification_id', 'id'], 'notificationId')}/read`, {
+				body: () => ({})
+			}),
+			markAllCommentNotificationsRead: authRoute('POST', '/forum/notifications/comments/read-all', {
+				body: () => ({})
+			})
 		},
 
 	'goal-service': {

@@ -9,26 +9,36 @@
       <view class="tabs">
         <view
           class="tab-item"
-          :class="{ active: activeTab === 'local' }"
+          :class="{ active: !mineOnly && activeTab === 'local' }"
           @tap="$emit('change-tab', 'local')"
         >
           <text>本校</text>
         </view>
         <view
           class="tab-item"
-          :class="{ active: activeTab === 'hot' }"
+          :class="{ active: !mineOnly && activeTab === 'hot' }"
           @tap="$emit('change-tab', 'hot')"
         >
           <text>7天内热门</text>
         </view>
+        <forum-filter-tag
+          label="我的"
+          :selected="mineOnly"
+          @select="$emit('toggle-mine')"
+        />
       </view>
     </view>
   </view>
 </template>
 
 <script>
+import ForumFilterTag from './ForumFilterTag.vue'
+
 export default {
   name: 'ForumHeader',
+  components: {
+    ForumFilterTag
+  },
   props: {
     activeTab: {
       type: String,
@@ -37,6 +47,10 @@ export default {
     currentSchool: {
       type: String,
       default: ''
+    },
+    mineOnly: {
+      type: Boolean,
+      default: false
     }
   },
   computed: {
@@ -97,6 +111,7 @@ export default {
   position: absolute;
   top: 105rpx;
   left: 24rpx;
+  min-width: 0;
   display: flex;
   align-items: center;
   column-gap: 14rpx;

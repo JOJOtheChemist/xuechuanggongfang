@@ -14,13 +14,19 @@
 						<text class="article-name">{{ article.title }}</text>
 					</view>
 					<text class="article-summary">{{ article.summary }}</text>
+					<article-tag-row :team-name="resolveTeamName(article)" :tags="article.tags" />
 					<text v-if="article.unlocked" class="article-price free">已解锁</text>
 					<text v-else-if="article.pricePoints && article.pricePoints > 0" class="article-price">
 						{{ article.pricePoints }} 积分解锁
 					</text>
 					<text v-else class="article-price free">免费</text>
 				</view>
-				<image class="article-thumb" :src="article.image || article.cover_image || article.cover_url" mode="aspectFill" />
+				<image
+					v-if="resolveCoverImage(article)"
+					class="article-thumb"
+					:src="resolveCoverImage(article)"
+					mode="aspectFill"
+				/>
 			</view>
 		</view>
 
@@ -41,8 +47,12 @@
 <script>
 import { getHttpService } from '@/utils/http-services'
 import { extractArticleId, openArticleDetail } from '@/utils/article-navigation'
+import ArticleTagRow from './ArticleTagRow.vue'
 export default {
 	name: 'ArticleList',
+	components: {
+		ArticleTagRow
+	},
 	props: {
 		articles: {
 			type: Array,
@@ -139,6 +149,26 @@ export default {
 			} else {
 				this.selectedTag = tag
 			}
+		},
+		resolveTeamName(article) {
+			const payload = article && typeof article === 'object' ? article : {}
+			const directTeamArticle = payload.teamArticle && typeof payload.teamArticle === 'object' ? payload.teamArticle : null
+			const extraPayload = payload.extraPayload && typeof payload.extraPayload === 'object'
+				? payload.extraPayload
+				: (payload.extra_payload && typeof payload.extra_payload === 'object' ? payload.extra_payload : null)
+			const payloadTeamArticle = extraPayload && extraPayload.teamArticle && typeof extraPayload.teamArticle === 'object'
+				? extraPayload.teamArticle
+				: (extraPayload && extraPayload.team_article && typeof extraPayload.team_article === 'object' ? extraPayload.team_article : null)
+			const teamName = directTeamArticle?.teamName ||
+				directTeamArticle?.team_name ||
+				payloadTeamArticle?.teamName ||
+				payloadTeamArticle?.team_name ||
+				''
+			return typeof teamName === 'string' ? teamName.trim() : ''
+		},
+		resolveCoverImage(article) {
+			const raw = article?.image || article?.coverImageUrl || article?.cover_image || article?.cover_url || ''
+			return typeof raw === 'string' ? raw.trim() : ''
 		},
 		handleArticleClick(article) {
 			openArticleDetail(article)

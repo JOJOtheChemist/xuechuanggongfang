@@ -107,6 +107,7 @@ import {
 	getHttpService,
 	getCurrentUserInfo,
 	getCurrentUserToken,
+	clearCurrentUserSession,
 	normalizeUserInfo
 } from '@/utils/http-services'
 import { getCachedImageSync, resolveCachedImages } from '@/utils/remote-image-cache'
@@ -161,6 +162,26 @@ export default {
 		isLoggedIn() {
 			return this.hasSession
 		},
+		teamPositionLabel() {
+			const metrics = this.teamMetrics || {}
+			const rawPosition = String(metrics.teamPosition || metrics.position || '').trim()
+			if (rawPosition === '队长') {
+				return '队长'
+			}
+			if (rawPosition === '组员' || rawPosition === '队员') {
+				return '队员'
+			}
+
+			const roleCode = String(metrics.roleCode || metrics.role_code || '').trim().toLowerCase()
+			if (roleCode === 'leader') {
+				return '队长'
+			}
+			if (roleCode === 'member') {
+				return '队员'
+			}
+
+			return ''
+		},
 		avatarUrl() {
 			return this.normalizeAvatarUrl(this.userInfo && this.userInfo.avatar, this.defaultAvatar)
 		},
@@ -184,15 +205,14 @@ export default {
 				if (roles.includes('team_member')) return '团队成员'
 			}
 			if (this.teamMetrics && this.teamMetrics.hasTeam) {
-				const level = String((this.teamMetrics && this.teamMetrics.teamLevel) || '').trim()
-				return level || '校园合伙人'
+				return this.teamPositionLabel || '队员'
 			}
 			if (this.isLoggedIn) return '已登录'
 			return '游客'
 		},
 		showDisplayRoleTag() {
 			const role = String(this.displayRole || '').trim()
-			return !!role && role !== '已登录' && role !== '初级'
+			return !!role && role !== '已登录' && role !== '初级' && role !== '高级' && role !== '团队成员'
 		},
 		showCampusPartnerBadge() {
 			const partnerInfo = this.userInfo && this.userInfo.partner_info
@@ -248,9 +268,8 @@ export default {
 			return '未加入团队，申请加入'
 		},
 		overlayTeamLevel() {
-			const rawLevel = this.teamMetrics && this.teamMetrics.teamLevel
-			if (this.teamMetrics && this.teamMetrics.hasTeam && rawLevel) {
-				return String(rawLevel)
+			if (this.teamMetrics && this.teamMetrics.hasTeam && this.teamPositionLabel) {
+				return this.teamPositionLabel
 			}
 			return '-'
 		},
@@ -350,13 +369,7 @@ export default {
 				content: '确定要退出登录吗？',
 				success: (res) => {
 					if (res.confirm) {
-						// 清除缓存
-						uni.removeStorageSync('token')
-						uni.removeStorageSync('accessToken')
-						uni.removeStorageSync('userInfo')
-						uni.removeStorageSync('userId') // Ensure userId is also cleared
-						uni.removeStorageSync('uni_id_token')
-						uni.removeStorageSync('uni_id_token_expired')
+						clearCurrentUserSession()
 						
 						// 更新状态
 						this.userInfo = null

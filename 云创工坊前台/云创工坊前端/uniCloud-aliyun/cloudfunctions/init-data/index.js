@@ -363,6 +363,30 @@ exports.main = async (event, context) => {
         "status": "active",
         "create_date": now,
         "update_date": now
+      },
+      {
+        "_id": "team_006",
+        "team_name": "青藤校园",
+        "team_level": "中级",
+        "leader_id": "",
+        "leader_name": "",
+        "member_count": 0,
+        "description": "向上生长，向下扎根。毅如青藤，怀攀援向上的韧劲，深耕校园市场沃土；以学生视角扎根一线，懂校园更懂青年。",
+        "status": "active",
+        "create_date": now,
+        "update_date": now
+      },
+      {
+        "_id": "team_007",
+        "team_name": "柏云生团队",
+        "team_level": "高级",
+        "leader_id": "",
+        "leader_name": "",
+        "member_count": 71,
+        "description": "柏云生团队始创于 2023 年，是专注校园便民经济的学生创业团队。团队规模稳步发展更迭，2023年初始成员24人，2024年扩充至80人，2025年发展到115人，2026年现有成员71人。团队聚焦学生日常刚需，打造多元化校园服务体系。业务主要涵盖三大类目，对接移动、联通、电信三大运营商，提供优惠校园卡办理服务以及售后维护；售卖被褥、插排等宿舍刚需日用品，物美价廉，产品质量保障；承接正规驾校招生对接，提供学车咨询与报名服务；其次还有数码产品、劳务派遣等相关业务。团队始终坚守诚信服务宗旨，贴合校园生活需求，一站式解决师生通讯、生活、学车相关问题，稳步深耕校园服务领域。团队宗旨：选择只是开始，服务才是终点。团队氛围：携手共赢，百纳海川。",
+        "status": "active",
+        "create_date": now,
+        "update_date": now
       }
     ]
 

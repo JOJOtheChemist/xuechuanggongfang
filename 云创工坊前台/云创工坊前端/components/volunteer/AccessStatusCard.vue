@@ -40,6 +40,8 @@
 </template>
 
 <script>
+import { VOLUNTEER_UNLOCK_REQUIRED_INVITE_COUNT } from '../../utils/volunteer-local-admission'
+
 export default {
   name: 'VolunteerAccessStatusCard',
   props: {
@@ -68,9 +70,10 @@ export default {
 
       if (this.status.unlocked) {
         const requiredCount = Number(this.status.requiredInviteCount)
-        return Number.isFinite(requiredCount) && requiredCount > 0
-          ? `分享${requiredCount}人解锁已生效`
-          : '分享3人解锁已生效'
+        const normalizedRequiredCount = Number.isFinite(requiredCount) && requiredCount > 0
+          ? requiredCount
+          : VOLUNTEER_UNLOCK_REQUIRED_INVITE_COUNT
+        return `分享${normalizedRequiredCount}人解锁已生效`
       }
 
       return '暂未解锁'

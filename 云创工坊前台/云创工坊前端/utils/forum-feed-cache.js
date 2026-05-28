@@ -53,6 +53,22 @@ function normalizeSchool(value) {
 	return normalizeText(value)
 }
 
+function normalizeMineOnly(value) {
+	if (value === true || value === 'true' || value === 1 || value === '1') return true
+	return false
+}
+
+function getMineOnlyValue(source = {}) {
+	if (!isObject(source)) return false
+	if (Object.prototype.hasOwnProperty.call(source, 'mineOnly')) {
+		return normalizeMineOnly(source.mineOnly)
+	}
+	if (Object.prototype.hasOwnProperty.call(source, 'mine_only')) {
+		return normalizeMineOnly(source.mine_only)
+	}
+	return false
+}
+
 function getFeedStateCacheKey() {
 	return `${FORUM_FEED_STATE_CACHE_KEY}:${resolveCurrentUserScope()}`
 }
@@ -61,8 +77,9 @@ function getFeedListCacheKey(options = {}) {
 	const config = isObject(options) ? options : {}
 	const tab = normalizeTab(config.activeTab || config.tab)
 	const school = tab === 'local' ? normalizeSchool(config.currentSchool || config.school) : 'all'
+	const mineOnly = getMineOnlyValue(config)
 	const pageSize = Math.max(1, Number(config.pageSize || config.page_size || 10) || 10)
-	return `${FORUM_FEED_CACHE_PREFIX}:${resolveCurrentUserScope()}:${tab}:${school || 'all'}:${pageSize}`
+	return `${FORUM_FEED_CACHE_PREFIX}:${resolveCurrentUserScope()}:${tab}:${school || 'all'}:${mineOnly ? 'mine' : 'all'}:${pageSize}`
 }
 
 function normalizeFeedState(rawState) {
@@ -72,6 +89,7 @@ function normalizeFeedState(rawState) {
 	return {
 		activeTab,
 		currentSchool: activeTab === 'local' ? normalizeSchool(rawState.currentSchool || rawState.school) : '',
+		mineOnly: getMineOnlyValue(rawState),
 		updatedAt: normalizeText(rawState.updatedAt || rawState.updated_at)
 	}
 }
@@ -89,6 +107,7 @@ function normalizeFeedListPayload(rawPayload) {
 		list: listSource.filter(item => item && typeof item === 'object'),
 		activeTab,
 		currentSchool: activeTab === 'local' ? normalizeSchool(rawPayload.currentSchool || rawPayload.school) : '',
+		mineOnly: getMineOnlyValue(rawPayload),
 		page: Math.max(1, Number(rawPayload.page || 1) || 1),
 		pageSize: Math.max(1, Number(rawPayload.pageSize || rawPayload.page_size || listSource.length || 10) || 10),
 		hasMore: Boolean(rawPayload.hasMore ?? rawPayload.has_more),
@@ -104,10 +123,12 @@ export function saveCachedForumFeedState(state = {}) {
 	const config = isObject(state) ? state : {}
 	const activeTab = normalizeTab(config.activeTab || config.tab)
 	const currentSchool = activeTab === 'local' ? normalizeSchool(config.currentSchool || config.school) : ''
+	const mineOnly = getMineOnlyValue(config)
 
 	return writeStorage(getFeedStateCacheKey(), {
 		activeTab,
 		currentSchool,
+		mineOnly,
 		updatedAt: new Date().toISOString()
 	})
 }
@@ -120,6 +141,7 @@ export function saveCachedForumPostList(list = [], options = {}) {
 	const config = isObject(options) ? options : {}
 	const activeTab = normalizeTab(config.activeTab || config.tab)
 	const currentSchool = activeTab === 'local' ? normalizeSchool(config.currentSchool || config.school) : ''
+	const mineOnly = getMineOnlyValue(config)
 	const normalizedList = Array.isArray(list)
 		? list.filter(item => item && typeof item === 'object')
 		: []
@@ -128,6 +150,7 @@ export function saveCachedForumPostList(list = [], options = {}) {
 		list: normalizedList,
 		activeTab,
 		currentSchool,
+		mine_only: mineOnly,
 		page: Math.max(1, Number(config.page || 1) || 1),
 		pageSize: Math.max(1, Number(config.pageSize || config.page_size || normalizedList.length || 10) || 10),
 		has_more: Boolean(config.hasMore),

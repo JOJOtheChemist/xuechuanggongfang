@@ -176,7 +176,7 @@ const STATIC_BUSINESS_ITEMS = [
 		short: '棉被',
 		bgColor: '#fce7f3',
 		desc: '精选优质新生棉被，厂家直供，舒适保暖，支持送货到寝，让你的校园生活更温暖。',
-		hasArticles: false,
+		hasArticles: true,
 		type: 'consult'
 	},
 	{
@@ -185,7 +185,7 @@ const STATIC_BUSINESS_ITEMS = [
 		short: '驾校',
 		bgColor: '#dcfce7',
 		desc: '提供专业驾考咨询服务，在学创工坊报名咨询，省心报考，高效拿证。',
-		hasArticles: false,
+		hasArticles: true,
 		type: 'signup'
 	},
 	{
@@ -260,6 +260,8 @@ const STATIC_BUSINESS_ITEMS = [
                 4: 'cat_004', // 考研
                 5: 'cat_005', // 专升本
                 6: 'cat_006', // 教资
+                14: 'cat_016', // 棉被
+                3: 'cat_003', // 驾校
                 10: 'cat_010', // 动态
                 15: 'cat_015',  // 升学
                 9: 'cat_013',  // 就业
@@ -542,14 +544,22 @@ const STATIC_BUSINESS_ITEMS = [
 							: []
 
 					const mapped = rawList
-						.map(a => ({
-						id: a.id || '',
-						title: a.title,
-						summary: a.summary || a.desc || '',
-						image: a.image || a.cover_image || a.cover || a.cover_url || a.thumb || '',
-						pricePoints: typeof a.price_points === 'number' ? a.price_points : 5,
-						unlocked: a.unlocked || false
-					}))
+						.map(a => {
+							const extraPayload = a.extraPayload || a.extra_payload || {}
+							return {
+								id: a.id || '',
+								title: a.title,
+								summary: a.summary || a.desc || '',
+								image: a.image || a.coverImageUrl || a.cover_image || a.cover || a.cover_url || a.thumb || '',
+								pricePoints: typeof a.pricePoints === 'number'
+									? a.pricePoints
+									: (typeof a.price_points === 'number' ? a.price_points : 5),
+								unlocked: a.unlocked || false,
+								tags: Array.isArray(a.tags) ? a.tags : [],
+								teamArticle: a.teamArticle || extraPayload.teamArticle || extraPayload.team_article || null,
+								extraPayload
+							}
+						})
 						.filter(item => item.id !== '' && item.id !== null && item.id !== undefined)
 
 					this.$set(this.businessItems[idx], 'articles', mapped)

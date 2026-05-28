@@ -71,11 +71,20 @@ export default {
     adjustPosition: {
       type: Boolean,
       default: false
+    },
+    lazyModel: {
+      type: Boolean,
+      default: false
+    },
+    commitOnBlur: {
+      type: Boolean,
+      default: true
     }
   },
   data() {
     return {
-      innerValue: this.resolveInitialValue()
+      innerValue: this.resolveInitialValue(),
+      lastCommittedValue: this.resolveInitialValue()
     }
   },
   computed: {
@@ -99,23 +108,43 @@ export default {
     },
     syncInnerValueFromProps() {
       const nextValue = this.resolveInitialValue()
+      this.lastCommittedValue = nextValue
       if (nextValue !== this.innerValue) {
         this.innerValue = nextValue
       }
     },
+    emitValue(value, force = false) {
+      if (!force && value === this.lastCommittedValue) {
+        return
+      }
+
+      this.lastCommittedValue = value
+      this.$emit('update:modelValue', value)
+      this.$emit('input', value)
+    },
+    commitValue(force = false) {
+      this.emitValue(this.innerValue, force)
+    },
     handleInput(event) {
       const value = event && event.detail ? event.detail.value : ''
       this.innerValue = value
-      this.$emit('update:modelValue', value)
-      this.$emit('input', value)
+      if (!this.lazyModel) {
+        this.emitValue(value)
+      }
     },
     handleFocus(event) {
       this.$emit('focus', event)
     },
     handleBlur(event) {
+      if (this.lazyModel && this.commitOnBlur) {
+        this.commitValue()
+      }
       this.$emit('blur', event)
     },
     handleConfirm(event) {
+      if (this.lazyModel) {
+        this.commitValue()
+      }
       this.$emit('confirm', event)
     }
   }

@@ -33,6 +33,7 @@
 					:card-disabled="isSending"
 					:display-mode="displayMode"
 					@membership-action="$emit('membership-action', $event)"
+					@shortcut-select="$emit('shortcut-select', $event)"
 					@school-card-tap="$emit('school-card-tap', $event)"
 					@school-card-copy="$emit('school-card-copy', $event)"
 					@choice-select="$emit('choice-select', $event)"
@@ -137,7 +138,7 @@ export default {
 			default: 'default'
 		}
 	},
-	emits: ['membership-action', 'school-card-tap', 'school-card-copy', 'choice-select'],
+	emits: ['membership-action', 'shortcut-select', 'school-card-tap', 'school-card-copy', 'choice-select'],
 	computed: {
 		displayModeClass() {
 			return this.isVisualImageMode ? 'message-panel-xiaochunlu' : ''

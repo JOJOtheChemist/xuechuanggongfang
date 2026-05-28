@@ -19,7 +19,11 @@
 						<view class="task-center-dynamics-topline">
 							<view class="task-center-dynamics-name-row">
 								<text class="task-center-dynamics-name">{{ item.name }}</text>
-								<text v-if="item.levelLabel" class="task-center-dynamics-level">{{ item.levelLabel }}</text>
+								<text
+									v-if="item.levelLabel"
+									class="task-center-dynamics-level"
+									:class="item.levelClass"
+								>{{ item.levelLabel }}</text>
 							</view>
 						</view>
 						<text class="task-center-dynamics-content">{{ item.content }}</text>
@@ -34,14 +38,14 @@
 					<text class="task-center-dynamics-empty-text">加载中...</text>
 				</view>
 				<view v-else-if="!loading && !previewDynamicsList.length" class="task-center-dynamics-empty">
-					<text class="task-center-dynamics-empty-text">{{ hasToken ? '暂无伙伴动态' : '登录后查看伙伴动态' }}</text>
+					<text class="task-center-dynamics-empty-text">{{ hasToken ? '暂无多级直推动态' : '登录后查看多级直推动态' }}</text>
 				</view>
 			</view>
 	</view>
 </template>
 
 <script>
-import { getHttpService } from '@/utils/http-services'
+import { getCurrentUserToken, getHttpService } from '@/utils/http-services'
 import { loadCachedTeamDynamics, saveCachedTeamDynamics } from '@/utils/team-dynamics-cache'
 
 export default {
@@ -62,15 +66,16 @@ export default {
 	},
 	computed: {
 		hasToken() {
-			return !!uni.getStorageSync('token')
+			return !!getCurrentUserToken()
 		},
 		previewDynamicsList() {
 			return (Array.isArray(this.teamDynamics) ? this.teamDynamics : []).slice(0, this.limit).map((item, index) => {
 				const source = item && typeof item === 'object' ? item : {}
-				const inviterName = source.inviter_name || source.nickname || source.username || `伙伴${index + 1}`
-				const inviteeName = source.invitee_name || '新伙伴'
+				const inviterName = source.inviter_name || source.nickname || source.username || `用户${index + 1}`
+				const inviteeName = source.invitee_name || '用户'
 				const businessName = source.business_name || '任务'
-				const levelLabel = source.level_label ? `(${source.level_label})` : ''
+				const levelLabel = source.level_label || (Number(source.level || 0) === 0 ? '本人' : '')
+				const levelNumber = Number(source.level || 0)
 				const isInvite = source.action_type === 'invite'
 				const actionLabel = isInvite ? '邀新' : '开单'
 
@@ -79,6 +84,7 @@ export default {
 					avatar: source.inviter_avatar || source.avatar || '',
 					name: inviterName,
 					levelLabel,
+					levelClass: `level-${levelNumber}`,
 					businessName,
 					actionLabel,
 					content: isInvite
@@ -99,18 +105,12 @@ export default {
 				allowPartial: true
 			})
 			if (!cached || !Array.isArray(cached.list)) return false
+			if (!cached.list.length) return false
 			this.teamDynamics = cached.list
 			this.hasLoadedCache = true
 			return true
 		},
 		goToTeamDynamics() {
-			if (!this.hasToken) {
-				uni.navigateTo({
-					url: '/pages/auth/login/index'
-				})
-				return
-			}
-
 			uni.navigateTo({
 				url: '/pages/extra/team-dynamics'
 			})
@@ -119,7 +119,7 @@ export default {
 			const config = options && typeof options === 'object' ? options : {}
 			const forceRefresh = config.forceRefresh === true
 			if (this.loading) return
-			const token = uni.getStorageSync('token')
+			const token = getCurrentUserToken()
 			if (!token) {
 				this.teamDynamics = []
 				this.hasLoadedCache = false
@@ -146,10 +146,10 @@ export default {
 					if (!this.hasLoadedCache) {
 						this.teamDynamics = []
 					}
-					console.warn('[task-center] 获取伙伴动态失败', res)
+					console.warn('[task-center] 获取多级直推动态失败', res)
 				}
 			} catch (error) {
-				console.error('[task-center] 获取伙伴动态异常', error)
+				console.error('[task-center] 获取多级直推动态异常', error)
 				if (!this.hasLoadedCache) {
 					this.teamDynamics = []
 				}
@@ -184,14 +184,15 @@ export default {
 	width: 100%;
 	padding: 0;
 	box-sizing: border-box;
+	transform: translateY(-8rpx);
 }
 
 .task-center-dynamics-header {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	min-height: 20rpx;
-	margin-bottom: 2rpx;
+	min-height: 56rpx;
+	margin-bottom: 0;
 }
 
 .task-center-dynamics-header-spacer {
@@ -201,25 +202,25 @@ export default {
 
 .task-center-dynamics-list {
 	display: flex;
+	flex: 1;
+	min-height: 0;
 	flex-direction: column;
 	gap: 4rpx;
 	justify-content: flex-start;
-	height: 110rpx;
-	margin-top: 4rpx;
+	margin-top: 0;
 	margin-left: -4rpx;
 	margin-right: -4rpx;
-	transform: translateY(16rpx);
 	overflow: hidden;
 }
 
 .task-center-dynamics-item {
 	position: relative;
 	display: flex;
-	align-items: flex-end;
+	align-items: flex-start;
 	gap: 8rpx;
 	width: 100%;
-	min-height: 42rpx;
-	padding: 7rpx 8rpx 4rpx 10rpx;
+	min-height: 40rpx;
+	padding: 4rpx 8rpx 4rpx 10rpx;
 	border-radius: 14rpx;
 	background: transparent;
 	border: none;
@@ -239,7 +240,7 @@ export default {
 	background: transparent;
 	flex-shrink: 0;
 	border: none;
-	transform: translateY(-20rpx);
+	margin-top: 2rpx;
 }
 
 .task-center-dynamics-copy {
@@ -247,8 +248,8 @@ export default {
 	flex: 1;
 	min-width: 0;
 	flex-direction: column;
-	justify-content: flex-end;
-	padding-top: 6rpx;
+	justify-content: flex-start;
+	padding-top: 0;
 }
 
 .task-center-dynamics-topline {
@@ -278,8 +279,76 @@ export default {
 	font-size: 15rpx;
 	font-weight: 700;
 	line-height: 1.2;
-	color: #6366f1;
 	flex-shrink: 0;
+	padding: 3rpx 8rpx;
+	border-radius: 999rpx;
+	border: 1rpx solid transparent;
+}
+
+.level-0 {
+	color: #92400e;
+	background: #fef3c7;
+	border-color: #fcd34d;
+}
+
+.level-1 {
+	color: #1d4ed8;
+	background: #dbeafe;
+	border-color: #93c5fd;
+}
+
+.level-2 {
+	color: #0369a1;
+	background: #e0f2fe;
+	border-color: #7dd3fc;
+}
+
+.level-3 {
+	color: #0f766e;
+	background: #ccfbf1;
+	border-color: #5eead4;
+}
+
+.level-4 {
+	color: #15803d;
+	background: #dcfce7;
+	border-color: #86efac;
+}
+
+.level-5 {
+	color: #65a30d;
+	background: #ecfccb;
+	border-color: #bef264;
+}
+
+.level-6 {
+	color: #b45309;
+	background: #fef3c7;
+	border-color: #fbbf24;
+}
+
+.level-7 {
+	color: #c2410c;
+	background: #ffedd5;
+	border-color: #fdba74;
+}
+
+.level-8 {
+	color: #be123c;
+	background: #ffe4e6;
+	border-color: #fda4af;
+}
+
+.level-9 {
+	color: #9d174d;
+	background: #fce7f3;
+	border-color: #f9a8d4;
+}
+
+.level-10 {
+	color: #6d28d9;
+	background: #ede9fe;
+	border-color: #c4b5fd;
 }
 
 .task-center-dynamics-content {

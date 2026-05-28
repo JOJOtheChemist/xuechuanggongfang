@@ -1,5 +1,6 @@
 // uniCloud is global in cloud functions
 // internal imports not needed for this function based on analysis
+const { getWechatMiniprogramConfig } = require('../common/wechat-config')
 const INVITE_REWARD_POINTS = 5
 const DEFAULT_WECHAT_NICKNAME = '删旧版下新版'
 
@@ -127,8 +128,7 @@ async function loginByWeixin({ code, inviterId }) {
         inviterId = actualInviterId
 
         // 1. 调用微信接口获取 openid 和 session_key
-        const APPID = 'wxd7918f6ffc6e4234'
-        const SECRET = '607588d26e9df050892c321579063f8e'
+        const { appId: APPID, appSecret: SECRET } = getWechatMiniprogramConfig()
         const url = `https://api.weixin.qq.com/sns/jscode2session?appid=${APPID}&secret=${SECRET}&js_code=${code}&grant_type=authorization_code`
 
         console.log('[loginByWeixin] 调用微信API...')

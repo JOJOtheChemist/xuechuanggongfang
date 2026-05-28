@@ -5,13 +5,13 @@
 			<view class="back-btn" @tap="goBack">
 				<text class="back-arrow">←</text>
 			</view>
-			<text class="nav-title">多级直推动态（含自己，开单）</text>
+			<text class="nav-title">多级直推动态</text>
 		</view>
 
 		<view v-if="isGuest" class="guest-state">
 			<view class="guest-icon">🔒</view>
-			<text class="guest-title">登录后可查看伙伴动态</text>
-			<text class="guest-desc">完整记录团队成员开单等实时动态</text>
+			<text class="guest-title">登录后可查看多级直推动态</text>
+			<text class="guest-desc">完整记录多级直推开单等实时动态</text>
 			<button class="guest-btn" @tap="goLogin">去登录</button>
 		</view>
 
@@ -22,13 +22,14 @@
 			:refresher-enabled="true"
 			:refresher-triggered="refreshing"
 			@refresherrefresh="handleRefresh"
+			@scrolltolower="loadMore"
 		>
 			<view class="list-container">
 				<view v-if="loading && list.length === 0" class="loading-state">
 					<text>加载中...</text>
 				</view>
 				<view v-else-if="list.length === 0" class="empty-state">
-					<text>暂无团队开单动态</text>
+					<text>暂无多级直推动态</text>
 				</view>
 				<view v-else class="dynamics-list">
 					<view v-for="item in list" :key="item.id" class="dynamics-item">
@@ -36,7 +37,7 @@
 						<view class="item-content">
 							<view class="item-text">
 								<text class="name">{{ item.inviter_name }}</text>
-								<text class="level-text" :class="'level-' + (item.level || 0)">({{ item.level_label || '伙伴' }})</text>
+								<text class="level-text" :class="'level-' + (item.level || 0)">{{ formatLevelRole(item) }}</text>
 								<template v-if="item.action_type === 'invite'">
 									<text class="message">邀请了</text>
 									<text class="name">{{ item.invitee_name }}</text>
@@ -50,6 +51,11 @@
 							<text class="time">{{ formatRelativeTime(item.create_date) }}</text>
 						</view>
 					</view>
+				</view>
+				<view v-if="list.length > 0" class="list-footer">
+					<text v-if="loadingMore">加载更多中...</text>
+					<text v-else-if="hasMore">上拉加载更多</text>
+					<text v-else>没有更多了</text>
 				</view>
 			</view>
 			
@@ -67,16 +73,20 @@
 </template>
 
 <script>
-import { getHttpService } from '@/utils/http-services'
+import { getCurrentUserToken, getHttpService } from '@/utils/http-services'
 import { loadCachedTeamDynamics, saveCachedTeamDynamics } from '@/utils/team-dynamics-cache'
 export default {
 	data() {
 		return {
 			loading: false,
+			loadingMore: false,
 			list: [],
 			isGuest: false,
 			refreshing: false,
-			hasLoadedCache: false
+			hasLoadedCache: false,
+			page: 1,
+			pageSize: 20,
+			hasMore: true
 		}
 	},
 	onLoad() {
@@ -93,47 +103,120 @@ export default {
 			uni.navigateBack()
 		},
 		applyCachedList() {
-			const cached = loadCachedTeamDynamics({ minLimit: 50, allowPartial: true })
+			const cached = loadCachedTeamDynamics({ allowPartial: true })
 			if (!cached || !Array.isArray(cached.list)) return false
+			if (!cached.list.length) return false
 			this.list = cached.list
+			this.page = Math.max(1, Math.ceil(cached.list.length / this.pageSize))
+			this.hasMore = cached.list.length >= this.pageSize
 			this.hasLoadedCache = true
 			return true
+		},
+		normalizePagedPayload(payload) {
+			if (Array.isArray(payload)) {
+				return {
+					list: payload,
+					page: 1,
+					pageSize: this.pageSize,
+					hasMore: payload.length >= this.pageSize
+				}
+			}
+			const data = payload && typeof payload === 'object' ? payload : {}
+			const list = Array.isArray(data.list)
+				? data.list
+				: (Array.isArray(data.data) ? data.data : [])
+			const page = Number(data.page || 1) || 1
+			const pageSize = Number(data.pageSize || this.pageSize) || this.pageSize
+			return {
+				list,
+				page,
+				pageSize,
+				hasMore: data.hasMore === true
+			}
 		},
 		async loadData(options = {}) {
 			const config = options && typeof options === 'object' ? options : {}
 			const forceRefresh = config.forceRefresh === true
-			if (this.loading) return
-			const token = uni.getStorageSync('token')
+			if (this.loading || this.loadingMore) return
+			const token = getCurrentUserToken()
 			if (!token) {
 				this.isGuest = true
 				this.loading = false
+				this.loadingMore = false
 				this.list = []
 				this.hasLoadedCache = false
+				this.page = 1
+				this.hasMore = false
 				return
 			}
 			this.isGuest = false
-			if (!forceRefresh) {
-				const hitCache = this.applyCachedList()
-				if (hitCache) return
+			if (!forceRefresh && !this.list.length) {
+				this.applyCachedList()
 			}
 			this.loading = !this.list.length
 			try {
 				const dashboardService = getHttpService('dashboard-service')
-				const res = await dashboardService.getTeamDynamics({ _token: token, limit: 50 })
-				if (res && res.code === 0 && Array.isArray(res.data)) {
-					this.list = res.data
-					saveCachedTeamDynamics(res.data, { fetchedLimit: 50 })
+				const res = await dashboardService.getTeamDynamics({
+					_token: token,
+					page: 1,
+					pageSize: this.pageSize
+				})
+				if (res && res.code === 0) {
+					const payload = this.normalizePagedPayload(res.data)
+					this.list = payload.list
+					this.page = payload.page
+					this.pageSize = Number(payload.pageSize || this.pageSize) || this.pageSize
+					this.hasMore = payload.hasMore
+					saveCachedTeamDynamics(payload.list, { fetchedLimit: payload.list.length })
 				} else if (!this.hasLoadedCache) {
 					this.list = []
+					this.page = 1
+					this.hasMore = false
 				}
 			} catch (e) {
 				console.error('[TeamDynamics] Load failed', e)
 				if (!this.hasLoadedCache) {
 					this.list = []
+					this.page = 1
+					this.hasMore = false
 					uni.showToast({ title: '加载失败', icon: 'none' })
 				}
 			} finally {
 				this.loading = false
+			}
+		},
+		async loadMore() {
+			if (this.loading || this.loadingMore || !this.hasMore || this.isGuest) return
+			const token = getCurrentUserToken()
+			if (!token) return
+			this.loadingMore = true
+			try {
+				const nextPage = this.page + 1
+				const dashboardService = getHttpService('dashboard-service')
+				const res = await dashboardService.getTeamDynamics({
+					_token: token,
+					page: nextPage,
+					pageSize: this.pageSize
+				})
+				if (!(res && res.code === 0)) return
+				const payload = this.normalizePagedPayload(res.data)
+				const existingIds = new Set(
+					this.list.map((item) => String(item.id || item._id || ''))
+				)
+				const appendList = payload.list.filter((item) => {
+					const itemId = String(item && (item.id || item._id || ''))
+					if (!itemId) return true
+					return !existingIds.has(itemId)
+				})
+				this.list = this.list.concat(appendList)
+				this.page = payload.page || nextPage
+				this.pageSize = Number(payload.pageSize || this.pageSize) || this.pageSize
+				this.hasMore = payload.hasMore
+				saveCachedTeamDynamics(this.list, { fetchedLimit: this.list.length })
+			} catch (e) {
+				console.error('[TeamDynamics] loadMore failed', e)
+			} finally {
+				this.loadingMore = false
 			}
 		},
 		handleRefresh() {
@@ -153,6 +236,10 @@ export default {
 			if (diff < hour) return Math.floor(diff / min) + ' 分钟前'
 			if (diff < day) return Math.floor(diff / hour) + ' 小时前'
 			return Math.floor(diff / day) + ' 天前'
+		},
+		formatLevelRole(item) {
+			const rawLevelLabel = item && item.level_label ? String(item.level_label) : (Number(item?.level || 0) === 0 ? '本人' : '')
+			return rawLevelLabel || '本人'
 		},
 		goLogin() {
 			uni.navigateTo({
@@ -249,6 +336,13 @@ export default {
 	padding: 24rpx;
 }
 
+.list-footer {
+	padding: 24rpx 0 40rpx;
+	text-align: center;
+	font-size: 24rpx;
+	color: #94a3b8;
+}
+
 .dynamics-item {
 	display: flex;
 	align-items: center;
@@ -286,13 +380,78 @@ export default {
 
 .level-text {
 	font-size: 24rpx;
-	color: #6366f1;
 	margin-right: 8rpx;
 	font-weight: 800;
+	padding: 6rpx 14rpx;
+	border-radius: 999rpx;
+	border: 1rpx solid transparent;
+	line-height: 1;
 }
 
 .level-0 {
-	color: #f59e0b;
+	color: #92400e;
+	background: #fef3c7;
+	border-color: #fcd34d;
+}
+
+.level-1 {
+	color: #1d4ed8;
+	background: #dbeafe;
+	border-color: #93c5fd;
+}
+
+.level-2 {
+	color: #0369a1;
+	background: #e0f2fe;
+	border-color: #7dd3fc;
+}
+
+.level-3 {
+	color: #0f766e;
+	background: #ccfbf1;
+	border-color: #5eead4;
+}
+
+.level-4 {
+	color: #15803d;
+	background: #dcfce7;
+	border-color: #86efac;
+}
+
+.level-5 {
+	color: #65a30d;
+	background: #ecfccb;
+	border-color: #bef264;
+}
+
+.level-6 {
+	color: #b45309;
+	background: #fef3c7;
+	border-color: #fbbf24;
+}
+
+.level-7 {
+	color: #c2410c;
+	background: #ffedd5;
+	border-color: #fdba74;
+}
+
+.level-8 {
+	color: #be123c;
+	background: #ffe4e6;
+	border-color: #fda4af;
+}
+
+.level-9 {
+	color: #9d174d;
+	background: #fce7f3;
+	border-color: #f9a8d4;
+}
+
+.level-10 {
+	color: #6d28d9;
+	background: #ede9fe;
+	border-color: #c4b5fd;
 }
 
 .action {

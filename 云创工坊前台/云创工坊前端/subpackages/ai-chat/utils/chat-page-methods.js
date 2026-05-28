@@ -12,6 +12,7 @@ import { buildVolunteerPaymentConfirmText } from '@/utils/volunteer-support-rule
 import { getCurrentUserInfo, getHttpService, normalizeUserInfo } from '@/utils/http-services'
 import {
 	CHAT_PATH,
+	DEFAULT_AGENT_ID,
 	buildRequestError,
 	createSessionId,
 	extractDisplayUserInfo,
@@ -952,22 +953,46 @@ const MEMBERSHIP_CARD_PRESETS = {
 		}
 	},
 	campus_partner: {
-		title: '校园合伙人加入入口',
+		title: '校园合伙人入口',
 		badgeByIntent: {
-			purchase: '19.9入口',
+			purchase: '小春鹿推荐',
 			upgrade: '推荐查看',
 			renew: '续费提醒'
 		},
-		pillText: '团队加入',
+		pillText: '团队入口',
+		summaryByIntent: {
+			purchase: '先看团队加入入口、适合谁、加入后怎么开始，避免刚进来就把问题问偏了。',
+			upgrade: '如果你已经有一些基础，先看团队入口和协同路径，会更容易判断下一步怎么走。',
+			renew: '先看当前团队入口和身份状态，再决定接下来是续费、参与还是继续往下推进。'
+		},
 		benefitsByIntent: {
-			purchase: ['先把 19.9 团队入口看清楚', '适合还没进团队的同学', '再决定要不要往下走'],
-			upgrade: ['如果你已经有基础，可直接看团队路径', '更适合想进入协同与实践路径', '先确认入口再做决定'],
-			renew: ['继续保留当前团队路径', '适合先看清入口和状态', '再决定下一步动作']
+			purchase: ['适合想先了解团队和业务起步的同学', '先把团队入口和节奏看清楚', '再决定要不要往下走'],
+			upgrade: ['更适合想进入协同与实践路径', '先确认入口再做决定', '如果你已经有基础，可直接看团队路径'],
+			renew: ['适合先看清入口和状态', '继续保留当前团队路径', '再决定下一步动作']
 		},
 		buttonTextByIntent: {
-			purchase: '去加入团队',
-			upgrade: '去查看团队',
-			renew: '去查看团队'
+			purchase: '去看合伙人',
+			upgrade: '去看合伙人',
+			renew: '去看合伙人'
+		}
+	},
+	gaokao_teacher: {
+		title: '高考咨询老师',
+		badgeByIntent: {
+			purchase: '高考AI',
+			upgrade: '推荐分流',
+			renew: '继续咨询'
+		},
+		pillText: '志愿填报',
+		benefitsByIntent: {
+			purchase: ['分数、位次、学校、专业问题更适合在这里问', '会按高考咨询场景来接，不容易答偏', '适合直接去高考 AI 老师那边继续问'],
+			upgrade: ['如果你已经在问高考问题，直接切到这里更准', '会按志愿填报逻辑继续承接', '不用在小春鹿这里绕一层'],
+			renew: ['继续沿着高考问题往下问更顺', '方便延续上一轮志愿咨询', '适合继续看学校和专业建议']
+		},
+		buttonTextByIntent: {
+			purchase: '去高考 AI',
+			upgrade: '去高考 AI',
+			renew: '继续咨询'
 		}
 	}
 }
@@ -986,6 +1011,16 @@ function normalizeMembershipCardType(value) {
 		normalized.includes('查分大使')
 	) {
 		return 'campus_score_ambassador'
+	}
+	if (
+		normalized === 'gaokao_teacher' ||
+		normalized === 'gaokao-teacher' ||
+		normalized.includes('高考咨询老师') ||
+		normalized.includes('高考老师') ||
+		normalized.includes('高考ai') ||
+		normalized.includes('志愿老师')
+	) {
+		return 'gaokao_teacher'
 	}
 	if (
 		normalized === 'campus_partner' ||
@@ -1009,6 +1044,9 @@ function normalizeMembershipCardIntent(value) {
 }
 
 function buildMembershipCardRoute(cardType, intent) {
+	if (cardType === 'gaokao_teacher') {
+		return `${CHAT_PATH}?agentId=${encodeURIComponent(DEFAULT_AGENT_ID)}`
+	}
 	if (cardType === 'campus_score_ambassador') {
 		return GOAL_SETTING_ROUTE
 	}
@@ -1440,6 +1478,30 @@ function stripKnownReplyMetaTags(value = '') {
 		.trim()
 }
 
+function extractFlexibleXmlReplySection(source = '', tagName = 'reply') {
+	const normalized = String(source || '')
+		.replace(/＜/g, '<')
+		.replace(/＞/g, '>')
+	const openRegex = new RegExp(`<${tagName}(?:\\s[^>]*)?>`, 'i')
+	const openMatch = openRegex.exec(normalized)
+	if (!openMatch || typeof openMatch.index !== 'number') {
+		return null
+	}
+
+	const openStart = openMatch.index
+	const openEnd = openStart + openMatch[0].length
+	const closeRegex = new RegExp(`</${tagName}\\s*>`, 'i')
+	const closeMatch = closeRegex.exec(normalized.slice(openEnd))
+	const closeStart = closeMatch && typeof closeMatch.index === 'number'
+		? openEnd + closeMatch.index
+		: normalized.length
+
+	return {
+		openStart,
+		visibleSlice: normalized.slice(openEnd, closeStart)
+	}
+}
+
 function extractBracketedVisibleReplyText(value = '') {
 	return splitBracketedVisibleReplyText(value).visibleText
 }
@@ -1457,44 +1519,28 @@ function splitBracketedVisibleReplyText(value = '') {
 		.replace(/｝/g, '}')
 		.replace(/［/g, '[')
 		.replace(/］/g, ']')
-		.replace(/＜/g, '<')
-		.replace(/＞/g, '>')
-	const replyOpen = '<reply>'
-	const replyClose = '</reply>'
-	const replyStartIndex = normalized.indexOf(replyOpen)
-	if (replyStartIndex >= 0) {
-		const innerStart = replyStartIndex + replyOpen.length
-		const replyEndIndex = normalized.indexOf(replyClose, innerStart)
-		const visibleSlice = replyEndIndex >= 0
-			? normalized.slice(innerStart, replyEndIndex)
-			: normalized.slice(innerStart)
+	const replySection = extractFlexibleXmlReplySection(normalized, 'reply')
+	if (replySection) {
 		return {
-			thinkingText: normalizeText(source.slice(0, replyStartIndex), ''),
+			thinkingText: normalizeText(source.slice(0, replySection.openStart), ''),
 			visibleText: normalizeText(
 				stripVisibleFormattingMarkers(
 					stripMidBodyProtocolBrackets(
-						normalizeMidBodyProtocolLineBreaks(visibleSlice)
+						normalizeMidBodyProtocolLineBreaks(replySection.visibleSlice)
 					)
 				),
 				''
 			)
 		}
 	}
-	const dialectOpen = '<方言回复>'
-	const dialectClose = '</方言回复>'
-	const dialectStartIndex = normalized.indexOf(dialectOpen)
-	if (dialectStartIndex >= 0) {
-		const innerStart = dialectStartIndex + dialectOpen.length
-		const dialectEndIndex = normalized.indexOf(dialectClose, innerStart)
-		const visibleSlice = dialectEndIndex >= 0
-			? normalized.slice(innerStart, dialectEndIndex)
-			: normalized.slice(innerStart)
+	const dialectSection = extractFlexibleXmlReplySection(normalized, '方言回复')
+	if (dialectSection) {
 		return {
-			thinkingText: normalizeText(source.slice(0, dialectStartIndex), ''),
+			thinkingText: normalizeText(source.slice(0, dialectSection.openStart), ''),
 			visibleText: normalizeText(
 				stripVisibleFormattingMarkers(
 					stripMidBodyProtocolBrackets(
-						normalizeMidBodyProtocolLineBreaks(visibleSlice)
+						normalizeMidBodyProtocolLineBreaks(dialectSection.visibleSlice)
 					)
 				),
 				''
@@ -1907,7 +1953,8 @@ export const chatPageMethods = {
 		const schoolCards = normalizeSchoolCards(payload.schoolCards)
 		const inviteCards = Array.isArray(payload.inviteCards) ? payload.inviteCards : []
 		const choiceCards = this.normalizeChoiceCards(payload.choiceCards)
-		const membershipCards = this.currentUserIsCampusPartner ? [] : this.normalizeMembershipCards(payload.membershipCards)
+		const membershipCards = this.normalizeMembershipCards(payload.membershipCards)
+			.filter((card) => !this.currentUserIsCampusPartner || card.cardType !== 'campus_partner')
 
 		if (
 			!text &&
@@ -2540,6 +2587,7 @@ export const chatPageMethods = {
 				const intent = normalizeMembershipCardIntent(item && item.intent)
 				const preset = MEMBERSHIP_CARD_PRESETS[cardType]
 				if (!preset) return null
+				const isCampusPartnerCard = cardType === 'campus_partner'
 				const customBenefits = Array.isArray(item && item.benefits)
 					? item.benefits.map((benefit) => normalizeText(benefit, '')).filter(Boolean)
 					: []
@@ -2547,15 +2595,31 @@ export const chatPageMethods = {
 					id: normalizeText(item && item.id, `${cardType}-${intent}-${index}-${Date.now()}`),
 					cardType,
 					intent,
-					title: normalizeText(item && item.title, preset.title),
-					badge: normalizeText(item && item.badge, preset.badgeByIntent[intent] || ''),
-					pillText: normalizeText(item && item.pillText, preset.pillText || ''),
-					summary: clipInlineText(
-						item && (item.recommendationReason || item.questionRelation || item.summary),
-						120
-					),
-					benefits: (customBenefits.length ? customBenefits : (preset.benefitsByIntent[intent] || [])).slice(0, 3),
-					buttonText: normalizeText(item && item.buttonText, preset.buttonTextByIntent[intent] || '立即前往'),
+					title: isCampusPartnerCard
+						? preset.title
+						: normalizeText(item && item.title, preset.title),
+					badge: isCampusPartnerCard
+						? normalizeText(preset.badgeByIntent[intent], '')
+						: normalizeText(item && item.badge, preset.badgeByIntent[intent] || ''),
+					pillText: isCampusPartnerCard
+						? normalizeText(preset.pillText, '')
+						: normalizeText(item && item.pillText, preset.pillText || ''),
+					summary: isCampusPartnerCard
+						? normalizeText(preset.summaryByIntent && preset.summaryByIntent[intent], '')
+						: (
+							clipInlineText(
+								item && (item.recommendationReason || item.questionRelation || item.summary),
+								120
+							) || normalizeText(preset.summaryByIntent && preset.summaryByIntent[intent], '')
+						),
+					benefits: (
+						isCampusPartnerCard
+							? (preset.benefitsByIntent[intent] || [])
+							: (customBenefits.length ? customBenefits : (preset.benefitsByIntent[intent] || []))
+					).slice(0, 3),
+					buttonText: isCampusPartnerCard
+						? normalizeText(preset.buttonTextByIntent[intent], '立即前往')
+						: normalizeText(item && item.buttonText, preset.buttonTextByIntent[intent] || '立即前往'),
 					routeUrl: normalizeText(item && (item.routeUrl || item.url), buildMembershipCardRoute(cardType, intent))
 				}
 			})
@@ -2708,7 +2772,7 @@ export const chatPageMethods = {
 				content: buildVolunteerPaymentConfirmText({
 					paymentAmount
 				}),
-				confirmText: '创建订单',
+				confirmText: '立即开通',
 				success: (res) => resolve(Boolean(res && res.confirm)),
 				fail: () => resolve(false)
 			})

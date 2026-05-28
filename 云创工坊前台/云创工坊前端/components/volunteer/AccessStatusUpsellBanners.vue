@@ -105,7 +105,7 @@ export default {
         return `查分大使 · 无限查分 · ${phoneText}`
       }
 
-      return `VIP：客服加2次 / 查分大使无限查分 · ${phoneText}`
+      return `VIP：客服加3次 / 查分大使无限查分 · ${phoneText}`
     }
   },
   methods: {

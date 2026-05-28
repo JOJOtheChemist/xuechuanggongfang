@@ -1,62 +1,219 @@
 <template>
-	<view class="page-container">
-		<view class="hero-card">
-			<text class="hero-kicker">校园合伙人</text>
-			<text class="hero-title">团队中心</text>
-			<text class="hero-desc">团队信息、邀请二维码和新加入的伙伴列表都集中放在这里查看。</text>
-		</view>
-
-		<team-card ref="teamCard" />
-
-		<view class="partners-shell">
-			<view class="partners-shell-header">
-				<text class="partners-shell-title">伙伴动态</text>
-				<text class="partners-shell-desc">加入团队后，这里会持续展示最新伙伴和邀请入口。</text>
+	<view class="page-root">
+		<scroll-view class="page-scroll" scroll-y>
+			<view class="top-hero">
+				<image class="top-hero-image" src="/pages/extra/static/team/team-center-hero.jpg" mode="widthFix" />
+				<view class="hero-back-hit" @tap="goBack"></view>
 			</view>
-			<new-partners ref="newPartners" class="partners-content" />
-		</view>
+
+			<view class="page-content">
+				<view v-if="myTeam" class="section-card">
+					<view class="section-head">
+						<view class="section-title-row">
+							<view class="section-title-accent"></view>
+							<text class="section-title">我的团队</text>
+						</view>
+					</view>
+					<view class="my-team-card-shell" @tap="openMyTeamDetail">
+						<team-summary-card
+							:team="myTeam"
+							:crown-icon-url="crownIconUrl"
+							:member-icon-url="memberIconUrl"
+							:coin-icon-url="coinIconUrl"
+						/>
+					</view>
+				</view>
+
+				<view class="section-card team-list-shell">
+					<view class="section-head">
+						<view class="section-title-row">
+							<view class="section-title-accent"></view>
+							<text class="section-title">全部团队</text>
+						</view>
+					</view>
+					<team-join-list
+						ref="teamJoinList"
+						list-title=""
+						empty-text="暂时还没有可展示的团队"
+					/>
+				</view>
+			</view>
+		</scroll-view>
+
+		<team-detail-dialog
+			:visible="showMyTeamDetailDialog"
+			:team="myTeam"
+			:crown-icon-url="crownIconUrl"
+			:member-icon-url="memberIconUrl"
+			:coin-icon-url="coinIconUrl"
+			@close="closeMyTeamDetail"
+			@join="closeMyTeamDetail"
+		/>
 	</view>
 </template>
 
 <script>
-import NewPartners from './components/NewPartners.vue'
-import TeamCard from './components/TeamCard.vue'
+import { getHttpService } from '@/utils/http-services'
+import TeamDetailDialog from './components/TeamDetailDialog.vue'
+import TeamJoinList from './components/TeamJoinList.vue'
+import TeamSummaryCard from './components/TeamSummaryCard.vue'
+
+const TEAM_DEFAULT_AVATAR_URLS = Object.freeze([
+	'https://xuechuang.xyz/oss/share-assets/xuechuang/team/avatars/default/team-avatar-default-1-v1.webp',
+	'https://xuechuang.xyz/oss/share-assets/xuechuang/team/avatars/default/team-avatar-default-2-v1.webp',
+	'https://xuechuang.xyz/oss/share-assets/xuechuang/team/avatars/default/team-avatar-default-3-v1.webp'
+])
 
 export default {
 	components: {
-		NewPartners,
-		TeamCard
+		TeamDetailDialog,
+		TeamJoinList,
+		TeamSummaryCard
 	},
 	data() {
 		return {
 			hasInitialized: false,
-			autoOpenInvite: false,
-			autoInviteHandled: false
+			myTeam: null,
+			showMyTeamDetailDialog: false,
+			crownIconUrl: '/pages/extra/static/team/team-crown.png',
+			memberIconUrl: '/pages/extra/static/team/team-members.png',
+			coinIconUrl: '/pages/extra/static/team/team-coin.png'
 		}
-	},
-	onLoad(options = {}) {
-		this.autoOpenInvite = String(options.autoInvite || '').trim() === '1'
 	},
 	async onShow() {
-		const shouldRefresh = this.hasInitialized
 		this.hasInitialized = true
-
-		if (shouldRefresh || (this.autoOpenInvite && !this.autoInviteHandled)) {
-			await this.refreshPanels()
-		}
-
-		await this.triggerAutoInvite()
+		await this.refreshPanels()
 	},
 	methods: {
+		goBack() {
+			uni.navigateBack()
+		},
+		normalizeAvatarUrl(url, fallback = '') {
+			const normalized = String(url || '').trim()
+			return normalized || fallback
+		},
+		getDefaultTeamAvatar(team = {}) {
+			const rawTeamId = String(team.team_id || team.id || team._id || '').trim()
+			const explicitDefault = this.normalizeAvatarUrl(team.default_avatar_url, '')
+			if (explicitDefault) {
+				return explicitDefault
+			}
+
+			const numericTeamId = Number(rawTeamId)
+			if (Number.isInteger(numericTeamId) && numericTeamId > 0) {
+				return TEAM_DEFAULT_AVATAR_URLS[(numericTeamId - 1) % TEAM_DEFAULT_AVATAR_URLS.length]
+			}
+
+			const raw = String(rawTeamId || team.team_name || '').trim()
+			let hash = 0
+			for (let index = 0; index < raw.length; index += 1) {
+				hash = (hash * 31 + raw.charCodeAt(index)) >>> 0
+			}
+			return TEAM_DEFAULT_AVATAR_URLS[hash % TEAM_DEFAULT_AVATAR_URLS.length]
+		},
+		resolveTeamAvatar(team = {}) {
+			return this.normalizeAvatarUrl(
+				team.resolvedAvatar || team.avatar || team.avatar_url,
+				this.getDefaultTeamAvatar(team)
+			)
+		},
+		buildTeamSummaryCardData(team = {}, detail = {}) {
+			const mergedTeam = Object.assign({}, team || {}, detail || {})
+			const rawTeamId = String(mergedTeam.team_id || mergedTeam.id || mergedTeam._id || '').trim()
+			const resolvedAvatar = this.resolveTeamAvatar(mergedTeam)
+
+			return {
+				team_id: rawTeamId,
+				id: rawTeamId,
+				_id: rawTeamId,
+				team_name: mergedTeam.team_name || '未命名团队',
+				member_count: mergedTeam.member_count || 0,
+				team_level: mergedTeam.team_level || '',
+				description: String(mergedTeam.description || '').trim(),
+				team_year_income: mergedTeam.team_year_income || mergedTeam.month_team_sales || 0,
+				avatar: this.normalizeAvatarUrl(mergedTeam.avatar || mergedTeam.avatar_url, ''),
+				avatar_url: this.normalizeAvatarUrl(mergedTeam.avatar_url || mergedTeam.avatar, ''),
+				resolvedAvatar,
+				default_avatar_url: this.getDefaultTeamAvatar(Object.assign({}, mergedTeam, { team_id: rawTeamId })),
+				showcase_image: mergedTeam.showcase_image || mergedTeam.showcaseImage || '',
+				style_image_url: mergedTeam.style_image_url || mergedTeam.styleImageUrl || '',
+				cover_url: mergedTeam.cover_url || mergedTeam.coverUrl || '',
+				image_url: mergedTeam.image_url || mergedTeam.imageUrl || '',
+				extra_payload: mergedTeam.extra_payload && typeof mergedTeam.extra_payload === 'object' ? mergedTeam.extra_payload : {}
+			}
+		},
+		openMyTeamDetail() {
+			if (!this.myTeam) return
+			this.showMyTeamDetailDialog = true
+		},
+		closeMyTeamDetail() {
+			this.showMyTeamDetailDialog = false
+		},
+		async loadMyTeam() {
+			const token = uni.getStorageSync('token')
+			if (!token) {
+				this.myTeam = null
+				this.closeMyTeamDetail()
+				return
+			}
+
+			try {
+				const teamService = getHttpService('team-service')
+				const [result, listResult] = await Promise.all([
+					teamService.getMyTeam({ _token: token }),
+					teamService.getTeamList({
+						page: 1,
+						pageSize: 100,
+						_token: token
+					})
+				])
+				if (result && result.code === 0 && result.data) {
+					const teamId = result.data.team_id || result.data.id
+					const matchedListItem =
+						listResult &&
+						listResult.code === 0 &&
+						listResult.data &&
+						Array.isArray(listResult.data.list)
+							? listResult.data.list.find((item) => String(item.team_id || item.id || '') === String(teamId)) || null
+							: null
+					let teamDetail = {}
+					if (teamId) {
+						try {
+							const detailResult = await teamService.getTeamDetail({ team_id: teamId, _token: token })
+							if (detailResult && detailResult.code === 0 && detailResult.data) {
+								teamDetail = detailResult.data
+							}
+						} catch (detailError) {
+							console.warn('[team-center] load my team detail failed:', detailError)
+						}
+					}
+					const summarySource = matchedListItem || result.data
+					const detailSource = Object.assign({}, teamDetail, {
+						team_year_income:
+							matchedListItem && matchedListItem.team_year_income !== undefined && matchedListItem.team_year_income !== null
+								? matchedListItem.team_year_income
+								: teamDetail.team_year_income,
+						month_team_sales:
+							matchedListItem && matchedListItem.month_team_sales !== undefined && matchedListItem.month_team_sales !== null
+								? matchedListItem.month_team_sales
+								: teamDetail.month_team_sales
+					})
+					this.myTeam = this.buildTeamSummaryCardData(summarySource, detailSource)
+					return
+				}
+			} catch (error) {
+				console.error('[team-center] load my team failed:', error)
+			}
+
+			this.myTeam = null
+			this.closeMyTeamDetail()
+		},
 		async refreshPanels() {
 			await new Promise((resolve) => this.$nextTick(resolve))
 
-			const tasks = []
-			if (this.$refs.teamCard && typeof this.$refs.teamCard.refresh === 'function') {
-				tasks.push(this.$refs.teamCard.refresh())
-			}
-			if (this.$refs.newPartners && typeof this.$refs.newPartners.loadTeamMembers === 'function') {
-				tasks.push(this.$refs.newPartners.loadTeamMembers())
+			const tasks = [this.loadMyTeam()]
+			if (this.$refs.teamJoinList && typeof this.$refs.teamJoinList.refresh === 'function') {
+				tasks.push(this.$refs.teamJoinList.refresh())
 			}
 
 			if (!tasks.length) {
@@ -64,83 +221,84 @@ export default {
 			}
 
 			await Promise.allSettled(tasks)
-		},
-		async triggerAutoInvite() {
-			if (!this.autoOpenInvite || this.autoInviteHandled) {
-				return
-			}
-
-			this.autoInviteHandled = true
-			const teamCard = this.$refs.teamCard
-			if (teamCard && typeof teamCard.showInviteQrcode === 'function') {
-				await teamCard.showInviteQrcode()
-			}
 		}
 	}
 }
 </script>
 
 <style scoped>
-.page-container {
-	padding: 24rpx;
-	min-height: 100vh;
-	background: linear-gradient(180deg, #f3f0ff 0%, #f8fafc 100%);
-}
-
-.hero-card {
-	margin-bottom: 24rpx;
-	padding: 34rpx 36rpx;
-	border-radius: 32rpx;
-	background: linear-gradient(135deg, #fffbeb 0%, #fff7ed 56%, #ffffff 100%);
-	box-shadow: 0 12rpx 32rpx rgba(245, 158, 11, 0.12);
-	display: flex;
-	flex-direction: column;
-	gap: 14rpx;
-}
-
-.hero-kicker {
-	font-size: 22rpx;
-	font-weight: 700;
-	letter-spacing: 4rpx;
-	color: #b45309;
-}
-
-.hero-title {
-	font-size: 42rpx;
-	font-weight: 800;
-	color: #1f2937;
-}
-
-.hero-desc {
-	font-size: 24rpx;
-	line-height: 1.7;
-	color: #92400e;
-}
-
-.partners-shell {
-	margin-top: 8rpx;
-	padding: 28rpx 28rpx 8rpx;
-	border-radius: 32rpx;
+.page-root {
+	height: 100vh;
 	background: #ffffff;
-	box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.05);
 }
 
-.partners-shell-header {
+.page-scroll {
+	height: 100%;
+	background: #ffffff;
+}
+
+.top-hero {
+	position: relative;
+	width: 100%;
+	background: #dfeeff;
+}
+
+.top-hero-image {
+	display: block;
+	width: 100%;
+	height: auto;
+}
+
+.hero-back-hit {
+	position: absolute;
+	left: 20rpx;
+	top: 18rpx;
+	width: 96rpx;
+	height: 96rpx;
+	z-index: 2;
+}
+
+.page-content {
+	padding: 20rpx 24rpx 28rpx;
+	box-sizing: border-box;
+}
+
+.section-card {
+	padding: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+}
+
+.team-list-shell {
+	margin-top: 28rpx;
+}
+
+.section-head {
 	margin-bottom: 20rpx;
 }
 
-.partners-shell-title {
-	display: block;
-	font-size: 30rpx;
-	font-weight: 700;
-	color: #0f172a;
+.my-team-card-shell {
+	margin-bottom: 16rpx;
 }
 
-.partners-shell-desc {
-	display: block;
-	margin-top: 8rpx;
-	font-size: 22rpx;
-	line-height: 1.6;
-	color: #64748b;
+.section-title-row {
+	display: flex;
+	align-items: center;
+}
+
+.section-title-accent {
+	width: 8rpx;
+	height: 30rpx;
+	margin-right: 12rpx;
+	border-radius: 999rpx;
+	background: #2589ff;
+}
+
+.section-title {
+	font-size: 34rpx;
+	line-height: 1.3;
+	font-weight: 700;
+	color: #12233d;
 }
 </style>

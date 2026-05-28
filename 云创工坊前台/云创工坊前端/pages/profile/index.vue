@@ -110,7 +110,6 @@
 <script>
 import ProfileHeader from '../../components/profile/ProfileHeader.vue'
 import ProfileSummaryPanels from '../../components/profile/ProfileSummaryPanels.vue'
-import WalletCard from '../../components/profile/WalletCard.vue'
 import IncentiveSystem from '../../components/tasks/IncentiveSystem.vue'
 import { getHttpService, getCurrentUserToken } from '../../utils/http-services'
 import { getPointsStats } from '../../utils/points-api'
@@ -132,6 +131,8 @@ function createDefaultTeamCardState(overrides = {}) {
 			teamId: '',
 			teamName: '',
 			teamLevel: '',
+			teamPosition: '',
+			roleCode: '',
 			memberCount: 0,
 			todayNewMembers: 0,
 			inviteCount: 0
@@ -144,7 +145,6 @@ export default {
 	components: {
 		ProfileHeader,
 		ProfileSummaryPanels,
-		WalletCard,
 		IncentiveSystem
 	},
 	data() {
@@ -176,9 +176,6 @@ export default {
 	computed: {
 		profileHeaderKey() {
 			return `profile-header-${this.childRefreshKey}`
-		},
-		walletCardKey() {
-			return `wallet-card-${this.childRefreshKey}`
 		},
 		incentiveSystemKey() {
 			return `incentive-system-${this.childRefreshKey}`
@@ -400,6 +397,14 @@ export default {
 							teamResponse.data.team_level ||
 							detail.team_level ||
 							'普通团队'
+						nextState.teamPosition =
+							teamResponse.data.position ||
+							detail.position ||
+							''
+						nextState.roleCode =
+							teamResponse.data.role_code ||
+							detail.role_code ||
+							''
 						nextState.memberCount = Number(
 							detail.member_count ||
 							teamResponse.data.member_count ||

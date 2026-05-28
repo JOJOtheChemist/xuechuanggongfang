@@ -75,7 +75,7 @@ export async function startAdmissionUnlockPayment(options = {}) {
   })
 
   if (!orderRes || orderRes.code !== 0 || !orderRes.data) {
-    throw new Error((orderRes && orderRes.message) || '创建订单失败')
+    throw new Error((orderRes && orderRes.message) || '开通失败')
   }
 
   const orderData = orderRes.data

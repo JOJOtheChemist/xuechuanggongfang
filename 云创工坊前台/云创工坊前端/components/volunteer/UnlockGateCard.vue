@@ -32,7 +32,7 @@
           :disabled="paymentLoading"
           @tap="$emit('pay')"
         >
-          {{ paymentLoading ? '创建订单中...' : '19.9元立即解锁' }}
+          {{ paymentLoading ? '正在开通中...' : '19.9元立即解锁' }}
         </button>
         <view class="unlock-contact-chip" @tap="copyPhone">
           <text class="unlock-contact-label">客服电话</text>
@@ -48,6 +48,8 @@
 </template>
 
 <script>
+import { VOLUNTEER_UNLOCK_REQUIRED_INVITE_COUNT } from '../../utils/volunteer-local-admission'
+
 export default {
   name: 'VolunteerUnlockGateCard',
   props: {
@@ -69,7 +71,7 @@ export default {
     },
     requiredInviteCount: {
       type: Number,
-      default: 0
+      default: VOLUNTEER_UNLOCK_REQUIRED_INVITE_COUNT
     },
     userNickname: {
       type: String,
@@ -83,12 +85,10 @@ export default {
   computed: {
     normalizedRequiredInviteCount() {
       const count = Number(this.requiredInviteCount)
-      return Number.isFinite(count) && count > 0 ? count : 0
+      return Number.isFinite(count) && count > 0 ? count : VOLUNTEER_UNLOCK_REQUIRED_INVITE_COUNT
     },
     shareUnlockTitle() {
-      return this.normalizedRequiredInviteCount > 0
-        ? `分享${this.normalizedRequiredInviteCount}人免费解锁`
-        : '分享3人免费解锁'
+      return `分享${this.normalizedRequiredInviteCount}人免费解锁`
     },
     progressText() {
       if (this.normalizedRequiredInviteCount > 0) {
@@ -110,9 +110,7 @@ export default {
     },
     description() {
       if (!this.userLoggedIn) {
-        return this.normalizedRequiredInviteCount > 0
-          ? `登录后可选择分享${this.normalizedRequiredInviteCount}人免费解锁，或支付 19.9 元立即解锁。`
-          : '登录后可选择分享3人免费解锁，或支付 19.9 元立即解锁。'
+        return `登录后可选择分享${this.normalizedRequiredInviteCount}人免费解锁，或支付 19.9 元立即解锁。`
       }
 
       const remaining = Math.max(this.normalizedRequiredInviteCount - this.inviteCount, 0)

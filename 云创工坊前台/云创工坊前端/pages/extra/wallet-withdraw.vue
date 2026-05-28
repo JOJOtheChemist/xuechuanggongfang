@@ -34,22 +34,33 @@
 				</view>
 
 			</view>
+			<coin-withdraw-records-card
+				v-if="!isGuest"
+				:loading="withdrawRecordsLoading"
+				:records="withdrawRecords"
+				@refresh="loadWithdrawRecords"
+				@launch-confirm="handleLaunchConfirm"
+			/>
 		</view>
 	</view>
 </template>
 
 <script>
 import { getHttpService, getCurrentUserToken } from '@/utils/http-services'
-import { uploadImageWithPresign } from '@/utils/presigned-upload'
+import CoinWithdrawRecordsCard from './components/CoinWithdrawRecordsCard.vue'
 
 export default {
+	components: {
+		CoinWithdrawRecordsCard
+	},
 	data() {
 		return {
 			amount: '',
 			balance: 0,
 			loading: false,
-			paymentQrcode: '',
-			isGuest: false
+			isGuest: false,
+			withdrawRecords: [],
+			withdrawRecordsLoading: false
 		}
 	},
 	onLoad(options) {
@@ -59,10 +70,145 @@ export default {
 	},
 	onShow() {
 		this.loadBalance()
+		this.loadWithdrawRecords()
 	},
 	methods: {
-		showSubmitError(message) {
-			const text = String(message || '').trim() || '申请失败'
+		formatCoinAmount(value) {
+			const amount = Number(value)
+			if (!Number.isFinite(amount)) return '0'
+			const normalized = Math.round((amount + Number.EPSILON) * 100) / 100
+			return Number.isInteger(normalized)
+				? String(normalized)
+				: normalized.toFixed(2).replace(/\.?0+$/, '')
+		},
+		formatRecordTime(value) {
+			const date = new Date(value)
+			if (Number.isNaN(date.getTime())) return '-'
+			const year = date.getFullYear()
+			const month = String(date.getMonth() + 1).padStart(2, '0')
+			const day = String(date.getDate()).padStart(2, '0')
+			const hours = String(date.getHours()).padStart(2, '0')
+			const minutes = String(date.getMinutes()).padStart(2, '0')
+			return `${year}-${month}-${day} ${hours}:${minutes}`
+		},
+		normalizeWithdrawRecord(item) {
+			const source = item && typeof item === 'object' ? item : {}
+			const status = String(source.status || '').trim().toLowerCase() || 'pending'
+			const transferStateText = String(source.transferStateText || source.transfer_state_text || '').trim()
+			const transferFailReason = String(source.transferFailReason || source.transfer_fail_reason || source.reject_reason || '').trim()
+			let statusText = '处理中'
+			let statusClass = 'status-pending'
+
+			if (status === 'rejected') {
+				statusText = '失败'
+				statusClass = 'status-rejected'
+			} else if (status === 'transferred') {
+				statusText = '已到账'
+				statusClass = 'status-transferred'
+			} else if (status === 'approved') {
+				statusText = transferStateText || '处理中'
+				statusClass = 'status-approved'
+			} else if (transferStateText) {
+				statusText = transferStateText
+				statusClass = 'status-pending'
+			}
+
+			return {
+				id: Number(source.id || source._id || 0),
+				amountText: `-${this.formatCoinAmount(source.amount || source.coins_spent || 0)} 新币`,
+				statusText,
+				statusClass,
+				timeText: this.formatRecordTime(source.createTime || source.create_time || source.approved_time),
+				transferStateText,
+				transferFailReason,
+				canLaunchConfirm: Boolean(source.canLaunchConfirm || source.can_launch_confirm),
+				transferLaunch: source.transferLaunch || source.transfer_launch || null
+			}
+		},
+		async launchWechatTransferConfirm(transferLaunch) {
+			const launch = transferLaunch && typeof transferLaunch === 'object' ? transferLaunch : null
+			const mchId = String(launch?.mchId || launch?.mch_id || '').trim()
+			const appId = String(launch?.appId || launch?.app_id || '').trim()
+			const packageInfo = String(launch?.packageInfo || launch?.package_info || '').trim()
+			if (!launch || !mchId || !appId || !packageInfo) {
+				return false
+			}
+
+			return new Promise((resolve, reject) => {
+				// #ifdef MP-WEIXIN
+				if (typeof wx === 'undefined' || typeof wx.requestMerchantTransfer !== 'function') {
+					reject(new Error('当前微信版本不支持确认收款，请升级微信后重试'))
+					return
+				}
+
+				if (typeof wx.canIUse === 'function' && !wx.canIUse('requestMerchantTransfer')) {
+					reject(new Error('当前微信版本不支持确认收款，请升级微信后重试'))
+					return
+				}
+
+				wx.requestMerchantTransfer({
+					mchId,
+					appId,
+					package: packageInfo,
+					success: (res) => resolve(res || true),
+					fail: (error) => reject(error || new Error('拉起微信确认失败'))
+				})
+				// #endif
+				// #ifndef MP-WEIXIN
+				resolve(false)
+				// #endif
+			})
+		},
+		extractSubmitErrorMessage(errorLike, depth = 0) {
+			if (depth > 2 || errorLike === undefined || errorLike === null) {
+				return ''
+			}
+
+			if (typeof errorLike === 'string') {
+				const text = errorLike.trim()
+				if (!text) return ''
+				if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
+					try {
+						return this.extractSubmitErrorMessage(JSON.parse(text), depth + 1) || text
+					} catch (parseError) {
+						return text
+					}
+				}
+				return text
+			}
+
+			if (typeof errorLike !== 'object') {
+				return String(errorLike || '').trim()
+			}
+
+			const candidates = [
+				errorLike.message,
+				errorLike.errMsg,
+				errorLike.error,
+				errorLike.details && errorLike.details.message,
+				errorLike.details && errorLike.details.detail,
+				errorLike.data && errorLike.data.message,
+				errorLike.response && errorLike.response.data && errorLike.response.data.message,
+				errorLike.body
+			]
+			const genericPattern = /^(申请失败|请求异常|请求失败|服务器内部错误|服务开小差了，请稍后重试)$/i
+			let fallbackText = ''
+
+			for (let index = 0; index < candidates.length; index += 1) {
+				const text = this.extractSubmitErrorMessage(candidates[index], depth + 1)
+				if (!text) continue
+				if (/商户.*余额不足|联系商家补充余额|NOT_ENOUGH/i.test(text)) {
+					return text
+				}
+				if (!fallbackText || genericPattern.test(fallbackText)) {
+					fallbackText = text
+				}
+			}
+
+			return fallbackText
+		},
+		showSubmitError(errorLike) {
+			const text = this.extractSubmitErrorMessage(errorLike) || '申请失败'
 			if (/商户.*余额不足|联系商家补充余额|NOT_ENOUGH/i.test(text)) {
 				uni.showModal({
 					title: '提现失败',
@@ -101,6 +247,66 @@ export default {
 				return null
 			}
 			return normalized
+		},
+		async loadWithdrawRecords() {
+			const token = getCurrentUserToken()
+			const refreshToken = uni.getStorageSync('refreshToken')
+			if (!token && !refreshToken) {
+				this.withdrawRecords = []
+				return
+			}
+
+			this.withdrawRecordsLoading = true
+			try {
+				const withdrawalService = getHttpService('withdrawal-service')
+				const res = await withdrawalService.getWithdrawalList(Object.assign(
+					token ? { _token: token } : {},
+					{
+						status: 'all',
+						limit: 5,
+						offset: 0
+					}
+				))
+
+				const list = Array.isArray(res?.data?.list) ? res.data.list : []
+				this.withdrawRecords = list.map((item) => this.normalizeWithdrawRecord(item))
+			} catch (error) {
+				console.error('[wallet-withdraw] load withdraw records failed:', error)
+				this.withdrawRecords = []
+			} finally {
+				this.withdrawRecordsLoading = false
+			}
+		},
+		async handleOfficialTransferLaunch(transferLaunch) {
+			if (!transferLaunch) return
+			try {
+				await this.launchWechatTransferConfirm(transferLaunch)
+				uni.showToast({ title: '请在微信中完成确认收款', icon: 'none' })
+			} catch (launchError) {
+				const launchMessage = this.extractSubmitErrorMessage(launchError)
+				if (/cancel/i.test(String(launchMessage || ''))) {
+					uni.showToast({ title: '已取消确认，可在下方记录继续拉起', icon: 'none' })
+				} else {
+					uni.showModal({
+						title: '待微信确认',
+						content: launchMessage || '请在微信中完成确认收款',
+						showCancel: false,
+						confirmText: '我知道了'
+					})
+				}
+			} finally {
+				setTimeout(() => {
+					this.loadBalance()
+					this.loadWithdrawRecords()
+				}, 1200)
+			}
+		},
+		async handleLaunchConfirm(item) {
+			if (!item || !item.transferLaunch) {
+				uni.showToast({ title: '当前提现单无法继续确认', icon: 'none' })
+				return
+			}
+			await this.handleOfficialTransferLaunch(item.transferLaunch)
 		},
 		async loadBalance() {
 			const token = getCurrentUserToken()
@@ -168,15 +374,20 @@ export default {
 
 				if (res.code === 0) {
 					const stateText = res.data?.transferStateText || ''
-					uni.showToast({ title: stateText ? `已发起：${stateText}` : '微信提现已发起', icon: 'success' })
-					setTimeout(() => {
-						uni.navigateBack()
-					}, 1500)
+					const transferLaunch = res.data?.transferLaunch || null
+					this.amount = ''
+					await this.loadBalance()
+					await this.loadWithdrawRecords()
+					if (transferLaunch) {
+						await this.handleOfficialTransferLaunch(transferLaunch)
+					} else {
+						uni.showToast({ title: stateText ? `已发起：${stateText}` : '微信提现已发起', icon: 'success' })
+					}
 				} else {
-					this.showSubmitError(res.message || '申请失败')
+					this.showSubmitError(res)
 				}
 			} catch (e) {
-				this.showSubmitError(e && e.message ? e.message : '请求异常')
+				this.showSubmitError(e)
 			} finally {
 				this.loading = false
 			}
@@ -186,69 +397,21 @@ export default {
 				url: '/pages/auth/login/index'
 			})
 		},
-		promptLogin() {
-			uni.showModal({
-				title: '请先登录',
+			promptLogin() {
+				uni.showModal({
+					title: '请先登录',
 				content: '登录后即可提交提现申请',
 				confirmText: '去登录',
 				confirmColor: '#4f46e5',
 				success: (res) => {
 					if (res.confirm) {
 						this.goLogin()
-					}
-				}
-			})
-		},
-		uploadQrcode() {
-			uni.chooseImage({
-				count: 1,
-				success: (res) => {
-					const tempFilePath = res.tempFilePaths[0]
-					uni.showLoading({ title: '处理中...' })
-					
-					// 压缩图片
-					uni.compressImage({
-						src: tempFilePath,
-						quality: 70,
-						success: (compressRes) => {
-							this.performUpload(compressRes.tempFilePath)
-						},
-						fail: () => {
-							this.performUpload(tempFilePath)
 						}
-					})
-				}
-			})
-		},
-		performUpload(filePath) {
-			uni.showLoading({ title: '上传中...' })
-			uploadImageWithPresign({
-				scene: 'payment-qrcode',
-				filePath,
-				token: getCurrentUserToken(),
-				fileNamePrefix: 'payment-qrcode'
-			})
-				.then(async (uploadResult) => {
-					this.paymentQrcode = uploadResult.url
-					try {
-						const token = getCurrentUserToken()
-						const userCenter = getHttpService('user-center')
-						await userCenter.updatePaymentQrcode({ url: this.paymentQrcode, _token: token })
-						uni.showToast({ title: '已自动保存收款码', icon: 'none' })
-					} catch(e) {
-						console.error('Auto save qrcode failed', e)
 					}
 				})
-				.catch((err) => {
-					console.error(err)
-					uni.showToast({ title: (err && err.message) || '上传失败', icon: 'none' })
-				})
-				.finally(() => {
-					uni.hideLoading()
-				})
+			}
 		}
 	}
-}
 </script>
 
 <style scoped>
@@ -347,77 +510,11 @@ export default {
 	height: 80rpx;
 }
 
-.contact-row {
-	display: flex;
-	border-bottom: 2rpx solid #e2e8f0;
-	padding-bottom: 16rpx;
-	margin-bottom: 48rpx;
-}
-
-.type-picker {
-	margin-right: 24rpx;
-}
-
-.picker-inner {
-	font-size: 28rpx;
-	color: #0f172a;
-}
-
-.contact-input {
-	flex: 1;
-	font-size: 28rpx;
-}
-
 .confirm-btn {
 	background-color: #4f46e5;
 	color: #ffffff;
 	border-radius: 999rpx;
 	font-size: 30rpx;
 	font-weight: 600;
-}
-
-.qrcode-section {
-	margin-bottom: 24rpx;
-}
-
-.qrcode-box {
-	width: 200rpx;
-	height: 200rpx;
-	background-color: #f8fafc;
-	border: 2rpx dashed #cbd5e1;
-	border-radius: 12rpx;
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	overflow: hidden;
-	margin-bottom: 12rpx;
-}
-
-.qrcode-img {
-	width: 100%;
-	height: 100%;
-}
-
-.qrcode-placeholder {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-}
-
-.plus-icon {
-	font-size: 48rpx;
-	color: #94a3b8;
-	margin-bottom: 8rpx;
-}
-
-.upload-text {
-	font-size: 24rpx;
-	color: #64748b;
-}
-
-.tip-text {
-	font-size: 24rpx;
-	color: #94a3b8;
 }
 </style>

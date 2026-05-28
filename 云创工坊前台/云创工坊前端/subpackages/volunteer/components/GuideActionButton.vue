@@ -60,7 +60,8 @@ export default {
 
 <style scoped>
 .guide-action-card {
-	padding: 0;
+	padding: 12rpx 24rpx 0;
+	box-sizing: border-box;
 }
 
 .guide-action-image-wrap {

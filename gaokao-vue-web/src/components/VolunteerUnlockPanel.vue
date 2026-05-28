@@ -1,6 +1,8 @@
 <script setup>
 import { computed } from 'vue'
 
+const VOLUNTEER_UNLOCK_REQUIRED_INVITE_COUNT = 3
+
 const props = defineProps({
   isLoggedIn: {
     type: Boolean,
@@ -20,7 +22,7 @@ const props = defineProps({
   },
   requiredInviteCount: {
     type: Number,
-    default: 6,
+    default: VOLUNTEER_UNLOCK_REQUIRED_INVITE_COUNT,
   },
   unlocked: {
     type: Boolean,
@@ -40,7 +42,7 @@ const emit = defineEmits(['login', 'invite', 'pay', 'refresh', 'contact'])
 
 const normalizedRequired = computed(() => {
   const value = Number(props.requiredInviteCount)
-  return Number.isFinite(value) && value > 0 ? value : 6
+  return Number.isFinite(value) && value > 0 ? value : VOLUNTEER_UNLOCK_REQUIRED_INVITE_COUNT
 })
 
 const normalizedInvite = computed(() => {

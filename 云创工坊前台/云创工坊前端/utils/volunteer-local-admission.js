@@ -1,8 +1,9 @@
 export const DEFAULT_ADMISSION_PROVINCE = '云南'
 export const INSTITUTION_CACHE_PAGE_SIZE = 50
-export const VOLUNTEER_UNLOCK_REQUIRED_INVITE_COUNT = 6
+export const VOLUNTEER_UNLOCK_REQUIRED_INVITE_COUNT = 3
 export const VOLUNTEER_UNLOCK_PAYMENT_AMOUNT = 19.9
 export const VOLUNTEER_CUSTOMER_SERVICE_PHONE = '19184057109'
+const VOLUNTEER_UNLOCK_QUERY_COUNT = 3
 export const VOLUNTEER_TOP_FILTER_OPTIONS = [
   { label: '物理+化学+生物', examType: 'gaokao', subjectTrack: '物理组', majorCategory: '' },
   { label: '物理+化学+地理', examType: 'gaokao', subjectTrack: '物理组', majorCategory: '' },
@@ -18,10 +19,10 @@ export const VOLUNTEER_TOP_FILTER_OPTIONS = [
   { label: '历史+化学+生物', examType: 'gaokao', subjectTrack: '历史组', majorCategory: '' }
 ]
 
-const LOCAL_INSTITUTION_CACHE_VERSION = '20260522-gaokao-major-score-rows-v2'
+const LOCAL_INSTITUTION_CACHE_VERSION = '20260525-gaokao-full-snapshot-v5'
 const LOCAL_INSTITUTION_CACHE_TTL_MS = 12 * 60 * 60 * 1000
 const LOCAL_INSTITUTION_CACHE_PREFIX = 'admission_institutions_cache:'
-const LOCAL_GUEST_PREVIEW_CACHE_VERSION = '20260521-gaokao-guest-preview-v1'
+const LOCAL_GUEST_PREVIEW_CACHE_VERSION = '20260523-gaokao-guest-preview-v3'
 const LOCAL_GUEST_PREVIEW_CACHE_TTL_MS = 12 * 60 * 60 * 1000
 const LOCAL_GUEST_PREVIEW_CACHE_PREFIX = 'admission_guest_preview_cache:'
 const LOCAL_UNLOCK_STATUS_CACHE_PREFIX = 'admission_unlock_status_cache:'
@@ -72,8 +73,8 @@ export function createDefaultScoreStatus() {
     examType: '',
     hasSavedScore: false,
     usedModifyCount: 0,
-    remainingModifyCount: 2,
-    totalModifyCount: 2,
+    remainingModifyCount: VOLUNTEER_UNLOCK_QUERY_COUNT,
+    totalModifyCount: VOLUNTEER_UNLOCK_QUERY_COUNT,
     unlimited: false,
     extensionCount: 0,
     maxExtensionCount: 2,
@@ -137,14 +138,14 @@ export function normalizeUnlockStatus(status = {}) {
     ? 0
     : Math.max(requiredInviteCount - inviteCount, 0)
   const unlimited = toBoolean(scoreSource.unlimited)
-  const totalModifyCount = unlimited
+  const rawTotalModifyCount = unlimited
     ? null
     : toNullableNumber(scoreSource.totalModifyCount !== undefined ? scoreSource.totalModifyCount : scoreSource.total_modify_count)
-  const usedModifyCount = toNonNegativeNumber(
+  const rawUsedModifyCount = toNonNegativeNumber(
     scoreSource.usedModifyCount !== undefined ? scoreSource.usedModifyCount : scoreSource.used_modify_count,
     0
   )
-  const remainingModifyCount = unlimited
+  const rawRemainingModifyCount = unlimited
     ? null
     : scoreSource.remainingModifyCount !== undefined || scoreSource.remaining_modify_count !== undefined
       ? toNullableNumber(
@@ -152,9 +153,25 @@ export function normalizeUnlockStatus(status = {}) {
             ? scoreSource.remainingModifyCount
             : scoreSource.remaining_modify_count
         )
-      : totalModifyCount === null
-        ? null
-        : Math.max(totalModifyCount - usedModifyCount, 0)
+      : null
+  const usedModifyCount =
+    rawTotalModifyCount !== null && rawRemainingModifyCount !== null
+      ? Math.max(rawTotalModifyCount - rawRemainingModifyCount, 0)
+      : rawUsedModifyCount
+  const totalModifyCount = unlimited
+    ? null
+    : rawTotalModifyCount === null
+      ? null
+      : Math.max(rawTotalModifyCount, VOLUNTEER_UNLOCK_QUERY_COUNT)
+  const remainingModifyCount = unlimited
+    ? null
+    : rawTotalModifyCount !== null && rawTotalModifyCount < VOLUNTEER_UNLOCK_QUERY_COUNT
+      ? (totalModifyCount === null ? null : Math.max(totalModifyCount - usedModifyCount, 0))
+      : rawRemainingModifyCount !== null
+        ? rawRemainingModifyCount
+        : totalModifyCount === null
+          ? null
+          : Math.max(totalModifyCount - usedModifyCount, 0)
   const defaultScoreStatus = createDefaultScoreStatus()
 
   return Object.assign(createDefaultUnlockStatus(), source, {

@@ -59,6 +59,14 @@ export default {
     })
   },
   methods: {
+    formatCoinAmount(value) {
+      const amount = Number(value)
+      if (!Number.isFinite(amount)) return '0'
+      const normalized = Math.round((amount + Number.EPSILON) * 100) / 100
+      return Number.isInteger(normalized)
+        ? String(normalized)
+        : normalized.toFixed(2).replace(/\.?0+$/, '')
+    },
     async loadData() {
       if (this.loading) return
       this.loading = true
@@ -135,7 +143,7 @@ export default {
       }
 
       const amount = Number(item.amount) || 0
-      const amountStr = (amount > 0 ? '+' : '') + Math.floor(amount).toString() + ' 新币'
+      const amountStr = (amount > 0 ? '+' : '') + this.formatCoinAmount(amount) + ' 新币'
       const amountColor = amount > 0 ? '#10B981' : '#333'
 
       let statusStr = '未知'
@@ -144,7 +152,7 @@ export default {
       let statusColor = '#9CA3AF'
 
       if (item.status === 'processing') {
-        statusStr = '审核中'
+        statusStr = /待微信确认/.test(remark) ? '待微信确认' : '处理中'
         bgColor = '#FFF7ED'
         dotColor = '#F59E0B'
         statusColor = '#F59E0B'

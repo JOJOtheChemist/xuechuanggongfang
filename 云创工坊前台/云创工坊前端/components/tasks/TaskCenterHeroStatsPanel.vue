@@ -7,7 +7,7 @@
 			</view>
 		</view>
 
-		<view class="hero-stats-item hero-stats-item-no-title">
+		<view class="hero-stats-item hero-stats-item-no-title" @tap="goToInviteFissionDetail">
 			<view class="hero-stats-value-row">
 				<text class="hero-stats-value">{{ teamCount }}</text>
 				<text class="hero-stats-pill">+{{ todayMultiLevelInviteCount }}</text>
@@ -219,7 +219,9 @@ export default {
 					this.todayMultiLevelInviteCount = 0
 				}
 
-				if (goalRes && goalRes.code === 0 && goalRes.data && goalRes.data.stats) {
+				if (statsRes && statsRes.code === 0 && statsRes.data && statsRes.data.orderCount !== undefined) {
+					this.orderCount = Number(statsRes.data.orderCount) || 0
+				} else if (goalRes && goalRes.code === 0 && goalRes.data && goalRes.data.stats) {
 					this.orderCount = Number(goalRes.data.stats.total_completed) || 0
 				} else {
 					this.orderCount = 0
@@ -294,6 +296,17 @@ export default {
 			uni.navigateTo({
 				url: '/pages/admin/order-management'
 			})
+		},
+		goToInviteFissionDetail() {
+			const token = this.getToken()
+			if (!token) {
+				uni.showToast({ title: '请先登录', icon: 'none' })
+				return
+			}
+
+			uni.navigateTo({
+				url: '/pages/extra/invite-fission-detail'
+			})
 		}
 	}
 }
@@ -308,6 +321,7 @@ export default {
 	margin: 0 auto;
 	box-sizing: border-box;
 	align-self: stretch;
+	transform: translateY(8rpx);
 }
 
 .hero-stats-item {
@@ -439,7 +453,7 @@ export default {
 	align-items: center;
 	justify-content: center;
 	box-sizing: border-box;
-	transform: translate(-6rpx, -14rpx);
+	transform: translate(-12rpx, -20rpx);
 }
 
 .hero-checkin-btn.is-checked {

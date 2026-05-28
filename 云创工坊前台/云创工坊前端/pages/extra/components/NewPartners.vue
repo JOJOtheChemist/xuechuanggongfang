@@ -1,12 +1,5 @@
 <template>
 	<view class="partners">
-		<view class="partners-header">
-			<text class="partners-title">新增校园合伙人</text>
-			<view class="partners-count">
-				<text class="partners-count-text">{{ memberCount }}</text>
-			</view>
-		</view>
-
 		<scroll-view class="partners-scroll" scroll-x="true" show-scrollbar="false">
 			<view class="partners-row">
 				<view class="partner-item" @tap="showInviteQrcode">
@@ -17,10 +10,10 @@
 				</view>
 
 				<view v-for="item in list" :key="item.id" class="partner-item" @tap="openMemberPopup(item)">
-                    <view style="position: relative;">
-                        <image class="partner-avatar" :src="normalizeAvatarUrl(item.avatar)" mode="aspectFill" />
-                        <view class="status-badge">开单中</view>
-                    </view>
+					<view class="partner-avatar-wrap">
+						<image class="partner-avatar" :src="normalizeAvatarUrl(item.avatar)" mode="aspectFill" />
+						<view class="status-badge">开单中</view>
+					</view>
 					<text class="partner-name">{{ item.name }}</text>
 				</view>
 			</view>
@@ -108,21 +101,30 @@ import { getHttpService } from '@/utils/http-services'
 						_token: token
 					})
 
-					if (!membersRes || membersRes.code !== 0 || !Array.isArray(membersRes.data)) {
+					const memberList = Array.isArray(membersRes && membersRes.data)
+						? membersRes.data
+						: (membersRes && membersRes.data && Array.isArray(membersRes.data.list) ? membersRes.data.list : [])
+
+					if (!membersRes || membersRes.code !== 0 || !memberList.length) {
+						if (membersRes && membersRes.code === 0) {
+							this.list = []
+							this.memberCount = '0'
+						}
 						return
 					}
 
 					// 根据加入时间排序：新人在左边，旧人在右（join_team_date 越大越靠左）
-					const sorted = membersRes.data.slice().sort((a, b) => {
-						const aj = a.team_info && a.team_info.join_team_date ? a.team_info.join_team_date : 0
-						const bj = b.team_info && b.team_info.join_team_date ? b.team_info.join_team_date : 0
+					const sorted = memberList.slice().sort((a, b) => {
+						const aj = a.joined_at || (a.team_info && a.team_info.join_team_date ? a.team_info.join_team_date : 0)
+						const bj = b.joined_at || (b.team_info && b.team_info.join_team_date ? b.team_info.join_team_date : 0)
 						return bj - aj
 					})
 
 					this.list = sorted.map(item => ({
-						id: item._id,
-						name: item.nickname || item.username || '未命名',
-						avatar: item.avatar || 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png'
+						id: item.user_id || item._id || item.id,
+						user_id: item.user_id || item._id || item.id,
+						name: item.public_name || item.nickname || item.username || '未命名',
+						avatar: item.avatar_url || item.avatar || 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png'
 					}))
 
 					this.memberCount = String(this.list.length)
@@ -239,35 +241,9 @@ import { getHttpService } from '@/utils/http-services'
 		margin-bottom: 32rpx;
 	}
 
-	.partners-header {
-		flex-direction: row;
-		align-items: center;
-		justify-content: space-between;
-		display: flex;
-		margin-bottom: 16rpx;
-	}
-
-	.partners-title {
-		font-size: 28rpx;
-		font-weight: bold;
-		color: #1f2937;
-	}
-
-	.partners-count {
-		padding: 4rpx 12rpx;
-		border-radius: 999rpx;
-		background-color: #e5e7eb;
-	}
-
-	.partners-count-text {
-		font-size: 20rpx;
-		color: #4b5563;
-		font-weight: 600;
-	}
-
-	.partners-scroll {
-		width: 100%;
-	}
+		.partners-scroll {
+			width: 100%;
+		}
 
 	.partners-row {
 		flex-direction: row;
@@ -275,12 +251,17 @@ import { getHttpService } from '@/utils/http-services'
 		display: flex;
 	}
 
-	.partner-item {
-		align-items: center;
-		margin-right: 24rpx;
-		display: flex;
-		flex-direction: column;
-	}
+		.partner-item {
+			align-items: center;
+			margin-right: 24rpx;
+			display: flex;
+			flex-direction: column;
+		}
+
+		.partner-avatar-wrap {
+			position: relative;
+			padding-bottom: 20rpx;
+		}
 
 	.partner-add {
 		width: 80rpx;
@@ -300,16 +281,15 @@ import { getHttpService } from '@/utils/http-services'
 		color: #4f46e5;
 	}
 
-	.partner-avatar {
-		width: 80rpx;
-		height: 80rpx;
-		border-radius: 40rpx;
+		.partner-avatar {
+			width: 80rpx;
+			height: 80rpx;
+			border-radius: 40rpx;
 		border-width: 2rpx;
-		border-color: #ffffff;
-		border-style: solid;
-		background-color: #dbeafe;
-		margin-bottom: 4rpx;
-	}
+			border-color: #ffffff;
+			border-style: solid;
+			background-color: #dbeafe;
+		}
 
 	.partner-name {
 		font-size: 20rpx;
@@ -321,22 +301,23 @@ import { getHttpService } from '@/utils/http-services'
 		text-overflow: ellipsis;
 	}
 
-    .status-badge {
-        position: absolute;
-        bottom: 0; /* Align to bottom overlap */
-        left: 50%;
-        transform: translateX(-50%) translateY(20%); /* Center and push down slightly */
-        background: linear-gradient(90deg, #F59E0B, #EA580C);
-        color: white;
-        font-size: 16rpx;
-        padding: 2rpx 8rpx;
-        border-radius: 99rpx;
-        white-space: nowrap;
-        border: 2rpx solid #ffffff;
-        z-index: 10;
-        font-weight: 600;
-        box-shadow: 0 2rpx 4rpx rgba(234, 88, 12, 0.2);
-    }
+		.status-badge {
+			position: absolute;
+			left: 50%;
+			bottom: 10rpx;
+			transform: translateX(-50%);
+			background: linear-gradient(90deg, #f59e0b, #ea580c);
+			color: #ffffff;
+			font-size: 16rpx;
+			line-height: 1;
+			padding: 4rpx 10rpx;
+			border-radius: 999rpx;
+			white-space: nowrap;
+			border: 2rpx solid #ffffff;
+			z-index: 10;
+			font-weight: 600;
+			box-shadow: 0 4rpx 10rpx rgba(234, 88, 12, 0.18);
+		}
 
 /* 二维码弹窗 (Big Code Style) */
 .qr-modal {

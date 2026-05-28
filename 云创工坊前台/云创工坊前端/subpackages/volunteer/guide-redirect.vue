@@ -26,6 +26,7 @@ import { getHttpService } from '@/utils/http-services'
 import { extractArticleId } from '@/utils/article-navigation'
 import { getCachedImageSync, resolveCachedImages } from '@/utils/remote-image-cache'
 import { getStaticAssetUrl } from '@/utils/cloud-static-assets'
+import { CURRENT_GAOKAO_AGENT_ID } from '@/subpackages/ai-chat/utils/chat-auth.js'
 import BottomNav from './components/BottomNav.vue'
 import GuideHeroImage from './components/GuideHeroImage.vue'
 import GuideActionButton from './components/GuideActionButton.vue'
@@ -270,7 +271,7 @@ export default {
 		},
 		goToAiChat() {
 			uni.navigateTo({
-				url: '/subpackages/ai-chat/index?agentId=gaokao-volunteer-consultant-sales-v13'
+				url: `/subpackages/ai-chat/index?agentId=${CURRENT_GAOKAO_AGENT_ID}`
 			})
 		},
 		goToScorePage() {

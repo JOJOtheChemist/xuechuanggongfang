@@ -51,40 +51,24 @@
 				class="message-tool-calls"
 				:tools="visibleToolCalls"
 			/>
-			<ChatArticleCardList
-				v-if="articleCards.length"
-				class="message-article-cards"
-				:cards="articleCards"
+			<ChatXiaochunluHardcodedCards
+				v-if="unifiedShortcutCards.length"
+				class="message-unified-shortcut-cards"
+				:cards="unifiedShortcutCards"
+				@select="handleShortcutCardSelect"
 			/>
-			<ChatBusinessCardList
-				v-if="businessCards.length"
-				class="message-business-cards"
-				:cards="businessCards"
+			<ChatSchoolCardList
+				v-if="schoolCards.length"
+				class="message-school-cards"
+				:cards="schoolCards"
+				@select="$emit('school-card-tap', $event)"
+				@copy-url="$emit('school-card-copy', $event)"
 			/>
-			<ChatGoalCardList
-				v-if="goalCards.length"
-				class="message-goal-cards"
-				:cards="goalCards"
-			/>
-				<ChatSchoolCardList
-					v-if="schoolCards.length"
-					class="message-school-cards"
-					:cards="schoolCards"
-					@select="$emit('school-card-tap', $event)"
-					@copy-url="$emit('school-card-copy', $event)"
-				/>
 			<ChatInviteCardList
 				v-if="inviteCards.length"
 				class="message-invite-cards"
 				:cards="inviteCards"
 			/>
-			<ChatMembershipCardList
-					v-if="visibleMembershipCards.length"
-					class="message-membership-cards"
-					:cards="visibleMembershipCards"
-					:hidden="currentUserIsCampusPartner"
-					@select="$emit('membership-action', $event)"
-				/>
 			<ChatChoiceCard
 				v-for="card in choiceCards"
 				:key="card.id"
@@ -102,26 +86,26 @@
 <script>
 import ChatRichText from './ChatRichText.vue'
 import ToolCallListCard from './ToolCallListCard.vue'
-import ChatBusinessCardList from './ChatBusinessCardList.vue'
-import ChatGoalCardList from './ChatGoalCardList.vue'
-import ChatArticleCardList from './ChatArticleCardList.vue'
+import ChatXiaochunluHardcodedCards from './ChatXiaochunluHardcodedCards.vue'
 import ChatSchoolCardList from './ChatSchoolCardList.vue'
 import ChatInviteCardList from './ChatInviteCardList.vue'
-import ChatMembershipCardList from './ChatMembershipCardList.vue'
 import ChatChoiceCard from './ChatChoiceCard.vue'
 import { normalizeAvatarUrl } from '@/utils/avatar.js'
+import { DEFAULT_AGENT_ID } from '../utils/chat-auth.js'
+import {
+	GAOKAO_CONSULTANT_AVATAR_URL,
+	XIAOCHUNLU_AVATAR_URL,
+	XIAOCHUNLU_TOPIC_IMAGE_URLS
+} from '../utils/agent-ui-config.js'
 
 export default {
 	name: 'AssistantMessageBubble',
 	components: {
 		ChatRichText,
 		ToolCallListCard,
-		ChatBusinessCardList,
-		ChatGoalCardList,
-		ChatArticleCardList,
+		ChatXiaochunluHardcodedCards,
 		ChatSchoolCardList,
 		ChatInviteCardList,
-		ChatMembershipCardList,
 		ChatChoiceCard
 	},
 	props: {
@@ -210,10 +194,25 @@ export default {
 		},
 		visibleMembershipCards() {
 			const cards = Array.isArray(this.membershipCards) ? this.membershipCards : []
-			if (this.currentUserIsCampusPartner) {
-				return []
-			}
-			return cards
+			return this.currentUserIsCampusPartner
+				? cards.filter((card) => String(card && card.cardType || '').trim() !== 'campus_partner')
+				: cards
+		},
+		unifiedShortcutCards() {
+			const articleCards = Array.isArray(this.articleCards)
+				? this.articleCards.map((card) => this.normalizeArticleShortcutCard(card)).filter(Boolean)
+				: []
+			const businessCards = Array.isArray(this.businessCards)
+				? this.businessCards.map((card) => this.normalizeBusinessShortcutCard(card)).filter(Boolean)
+				: []
+			const goalCards = Array.isArray(this.goalCards)
+				? this.goalCards.map((card) => this.normalizeGoalShortcutCard(card)).filter(Boolean)
+				: []
+			const membershipCards = this.visibleMembershipCards
+				.map((card) => this.normalizeMembershipShortcutCard(card))
+				.filter(Boolean)
+
+			return [...articleCards, ...businessCards, ...goalCards, ...membershipCards]
 		},
 		avatarShellClass() {
 			return this.isVisualImageMode ? 'avatar-shell-xiaochunlu' : ''
@@ -274,6 +273,108 @@ export default {
 		this.stopThinkingPreviewTicker()
 	},
 	methods: {
+		resolveArticleMeta(card = {}) {
+			const tags = Array.isArray(card.tags) ? card.tags.filter(Boolean).slice(0, 2) : []
+			if (card.categoryTitle && tags.length) {
+				return `${card.categoryTitle} · ${tags.join(' · ')}`
+			}
+			if (card.categoryTitle) return card.categoryTitle
+			if (tags.length) return tags.join(' · ')
+			return '文章推荐'
+		},
+		resolveBusinessRoute(card = {}) {
+			const explicitRoute = String(card.routeUrl || card.url || '').trim()
+			if (explicitRoute) return explicitRoute
+			const businessId = String(card.businessId || card.id || '').trim()
+			if (!businessId) return ''
+			const query = [`id=${encodeURIComponent(businessId)}`]
+			const title = String(card.title || '').trim()
+			if (title) query.push(`category=${encodeURIComponent(title)}`)
+			query.push(`type=${encodeURIComponent(card.hasSignup ? 'signup' : 'consult')}`)
+			if (businessId === '15') query.push('source=ai_chat_business')
+			return `/pages/extra/signup/index?${query.join('&')}`
+		},
+		normalizeArticleShortcutCard(card = {}) {
+			const articleId = String(card.articleId || '').trim()
+			const title = String(card.title || '').trim()
+			if (!articleId || !title) return null
+			return {
+				id: card.id || `article-${articleId}`,
+				title,
+				badge: card.unlocked ? '已解锁' : '文章卡片',
+				summary: String(card.summary || '').trim(),
+				meta: this.resolveArticleMeta(card),
+				buttonText: '去看文章',
+				coverImageUrl: XIAOCHUNLU_TOPIC_IMAGE_URLS.business,
+				themeClass: 'hardcoded-card-article',
+				actionType: 'article',
+				articleId,
+				tags: Array.isArray(card.tags) ? card.tags.filter(Boolean).slice(0, 2) : [],
+				visualLabel: String(card.categoryTitle || '文章').trim()
+			}
+		},
+		normalizeBusinessShortcutCard(card = {}) {
+			const businessId = String(card.businessId || '').trim()
+			const title = String(card.title || '').trim()
+			if (!businessId || !title) return null
+			return {
+				id: card.id || `business-${businessId}`,
+				title,
+				badge: String(card.tag || '业务入口').trim(),
+				summary: String(card.summary || '').trim(),
+				meta: card.hasSignup ? '适合直接查看报名与详情' : '适合先看服务说明',
+				buttonText: card.hasSignup ? '去看业务' : '去咨询',
+				coverImageUrl: XIAOCHUNLU_TOPIC_IMAGE_URLS.business,
+				themeClass: 'hardcoded-card-xiaochunlu',
+				actionType: 'route',
+				routeUrl: this.resolveBusinessRoute(card),
+				tags: [],
+				visualLabel: '业务'
+			}
+		},
+		normalizeGoalShortcutCard(card = {}) {
+			const routeUrl = String(card.routeUrl || '').trim()
+			const title = String(card.title || '').trim()
+			if (!routeUrl || !title) return null
+			return {
+				id: card.id || `goal-${title}`,
+				title,
+				badge: '成长动作',
+				summary: String(card.summary || '').trim(),
+				meta: '先把当前目标和节奏定下来',
+				buttonText: String(card.buttonText || '去设目标').trim(),
+				coverImageUrl: XIAOCHUNLU_TOPIC_IMAGE_URLS.business,
+				themeClass: 'hardcoded-card-xiaochunlu',
+				actionType: 'route',
+				routeUrl,
+				tags: [],
+				visualLabel: '目标'
+			}
+		},
+		normalizeMembershipShortcutCard(card = {}) {
+			const cardType = String(card.cardType || '').trim()
+			if (!cardType) return null
+			const isGaokaoCard = cardType === 'gaokao_teacher' || cardType === 'campus_score_ambassador'
+			const fallbackAvatarUrl = isGaokaoCard ? GAOKAO_CONSULTANT_AVATAR_URL : XIAOCHUNLU_AVATAR_URL
+			return {
+				id: card.id || `membership-${cardType}`,
+				title: String(card.title || '').trim(),
+				badge: String(card.badge || '').trim(),
+				summary: String(card.summary || '').trim(),
+				meta: String(card.pillText || '').trim(),
+				buttonText: String(card.buttonText || '立即前往').trim(),
+				avatarUrl: String(card.avatarUrl || fallbackAvatarUrl || '').trim(),
+				themeClass: isGaokaoCard ? 'hardcoded-card-gaokao' : 'hardcoded-card-xiaochunlu',
+				actionType: isGaokaoCard ? 'switch-agent' : 'route',
+				agentId: isGaokaoCard ? DEFAULT_AGENT_ID : '',
+				routeUrl: isGaokaoCard ? '' : String(card.routeUrl || '').trim(),
+				tags: Array.isArray(card.benefits) ? card.benefits.filter(Boolean).slice(0, 2) : [],
+				visualLabel: isGaokaoCard ? '高考' : '团队'
+			}
+		},
+		handleShortcutCardSelect(card = {}) {
+			this.$emit('shortcut-select', card)
+		},
 		handleAvatarError() {
 			this.avatarLoadFailed = true
 		},
@@ -409,7 +510,7 @@ export default {
 
 .message-content {
 	flex: 1;
-	max-width: calc(100% - 170rpx);
+	max-width: calc(100% - 150rpx);
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
@@ -516,12 +617,9 @@ export default {
 
 .message-tool-calls,
 .thinking-card,
-.message-article-cards,
-.message-business-cards,
-.message-goal-cards,
+.message-unified-shortcut-cards,
 .message-school-cards,
 .message-invite-cards,
-.message-membership-cards,
 .message-choice-card {
 	margin-top: 8rpx;
 	width: 560rpx;
@@ -529,18 +627,25 @@ export default {
 	min-width: 0;
 }
 
+.message-unified-shortcut-cards {
+	width: calc(100vw - 150rpx);
+	max-width: calc(100vw - 150rpx);
+}
+
 @media (max-width: 750rpx) {
 	.message-card,
 	.thinking-card,
 	.message-tool-calls,
-	.message-article-cards,
-	.message-business-cards,
-	.message-goal-cards,
 	.message-school-cards,
 	.message-invite-cards,
-	.message-membership-cards,
 	.message-choice-card {
 		width: calc(100vw - 190rpx);
+		min-width: 0;
+	}
+
+	.message-unified-shortcut-cards {
+		width: calc(100vw - 150rpx);
+		max-width: calc(100vw - 150rpx);
 		min-width: 0;
 	}
 }

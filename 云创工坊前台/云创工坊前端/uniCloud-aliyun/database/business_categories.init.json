@@ -218,7 +218,7 @@
     "icon": "https://picsum.photos/100/100?random=6",
     "sort_order": 16,
     "status": "active",
-    "has_articles": false,
+    "has_articles": true,
     "tag": "限时特惠",
     "create_date": 1732348800000,
     "update_date": 1732348800000

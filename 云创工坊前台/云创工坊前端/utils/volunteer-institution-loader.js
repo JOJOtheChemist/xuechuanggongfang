@@ -1,47 +1,15 @@
-import { isAdmissionAccessDeniedError, requestAdmission, requestAdmissionEnvelope } from './admission-api'
+import { isAdmissionAccessDeniedError } from './admission-api'
 import {
   DEFAULT_ADMISSION_PROVINCE,
-  INSTITUTION_CACHE_PAGE_SIZE,
   buildLocalInstitutionCacheKey,
   isValidInstitution,
   readLocalInstitutionCache,
   writeLocalInstitutionCache
 } from './volunteer-local-admission'
+import { buildInstitutionSnapshotDebugApi, requestInstitutionSnapshot } from './volunteer-institution-snapshot'
 
 export const FILTER_DEBOUNCE_MS = 300
 export const INSTITUTION_REQUEST_DEDUPE_MS = 800
-
-function buildInstitutionDebugApi(query, envelope, summary = {}) {
-  const body = envelope && envelope.body ? envelope.body : {}
-  const rawData = body && body.data && typeof body.data === 'object' ? body.data : {}
-  const items = Array.isArray(rawData.items) ? rawData.items : []
-  const nextData = Object.assign({}, rawData)
-
-  delete nextData.items
-
-  return {
-    requestedAt: new Date().toISOString(),
-    request: {
-      method: (envelope && envelope.method) || 'GET',
-      path: (envelope && envelope.path) || '/admission/institutions',
-      url: (envelope && envelope.requestUrl) || '',
-      query: Object.assign({}, query || {})
-    },
-    response: {
-      statusCode: Number((envelope && envelope.statusCode) || 0),
-      body: {
-        code: body.code,
-        message: body.message,
-        data: Object.assign({}, nextData, {
-          itemsCount: items.length,
-          itemsPreview: items.slice(0, 2),
-          itemsOmittedCount: Math.max(items.length - 2, 0)
-        })
-      }
-    },
-    summary: Object.assign({}, summary)
-  }
-}
 
 function compactInstitutionMajor(major) {
   if (!major || typeof major !== 'object') return null
@@ -65,6 +33,28 @@ function compactInstitutionMajor(major) {
       major.majorCategory ||
       major.major_category ||
       major.category ||
+      ''
+    ).trim(),
+    subjectRequirement: String(
+      major.subjectRequirement ||
+      major.subject_requirement ||
+      (extraPayload && (
+        extraPayload.subjectRequirement ||
+        extraPayload.subject_requirement ||
+        extraPayload['选科要求'] ||
+        extraPayload['选考要求'] ||
+        extraPayload['选科']
+      )) ||
+      ''
+    ).trim(),
+    retentionRate: String(
+      major.retentionRate ||
+      major.retention_rate ||
+      (extraPayload && (
+        extraPayload.retentionRate ||
+        extraPayload.retention_rate ||
+        extraPayload['保研率']
+      )) ||
       ''
     ).trim(),
     subjectTrack: String(
@@ -210,12 +200,12 @@ export const volunteerInstitutionLoaderMethods = {
     if (options === undefined) options = {}
     this.institutions = compactInstitutionList(items).filter(isValidInstitution)
     this.institutionBaseCacheKey = cacheKey
-    this.page = Math.max(1, Number(options.page || 1))
+    this.page = 1
     this.total = Number(options.total || 0) || this.institutions.length
     this.errorText = ''
     this.loading = false
-    this.loadingMore = Boolean(options.loadingMore)
-    this.institutionLoadProgressText = String(options.progressText || '')
+    this.loadingMore = false
+    this.institutionLoadProgressText = ''
     console.log('[volunteer][load] applyInstitutionResults:', {
       count: this.institutions.length,
       total: this.total,
@@ -223,16 +213,12 @@ export const volunteerInstitutionLoaderMethods = {
     })
   },
   buildInstitutionBaseQuery() {
-    const query = {
+    return {
       province: DEFAULT_ADMISSION_PROVINCE,
       examType: this.selectedExamValue,
       subjectTrack: this.selectedSubjectTrackValue,
-      majorCategory: this.selectedMajorCategoryValue,
-      page: 1,
-      pageSize: INSTITUTION_CACHE_PAGE_SIZE
+      majorCategory: this.selectedMajorCategoryValue
     }
-
-    return query
   },
   async loadInstitutions(reset, options) {
     if (reset === undefined) reset = true
@@ -257,39 +243,12 @@ export const volunteerInstitutionLoaderMethods = {
     const cached = options.force || skipLocalCache ? null : readLocalInstitutionCache(cacheKey)
     const cachedItems = Array.isArray(cached && cached.items) ? cached.items : []
     const cachedTotal = Math.max(0, Number(cached && cached.total) || 0)
-    const cachedPageSize = Math.max(1, Number(cached && cached.pageSize) || Number(query.pageSize) || INSTITUTION_CACHE_PAGE_SIZE)
-    const cachedPage = Math.max(1, Number(cached && cached.page) || 1)
-    const cachedLoadedPages = Math.max(1, Number(cached && cached.loadedPages) || cachedPage)
-    const legacyUnknownTotal = Boolean(cached && cachedTotal <= 0 && cachedItems.length >= cachedPageSize)
-    const cachedPageCount = legacyUnknownTotal
-      ? 0
-      : Math.max(
-          1,
-          Number(cached && cached.pageCount) || (cachedTotal > 0 ? Math.ceil(cachedTotal / cachedPageSize) : cachedLoadedPages)
-        )
-    const cachedHasMore = Boolean(
-      cached &&
-      cachedItems.length > 0 &&
-      (
-        Boolean(cached.loadingMore) ||
-        (cachedTotal > 0 && cachedItems.length < cachedTotal) ||
-        cachedLoadedPages < cachedPageCount ||
-        legacyUnknownTotal
-      )
-    )
-    const cachedProgressText = String(cached && cached.progressText || '').trim() || (
-      cachedHasMore
-        ? (cachedTotal > 0
-          ? ('已加载 ' + cachedItems.length + '/' + (cachedTotal || cachedItems.length) + ' 所')
-          : ('已加载 ' + cachedItems.length + ' 所，继续补全中'))
-        : ''
-    )
+    const hasCachedItems = cachedItems.length > 0
 
     if (requestKey === this.activeInstitutionRequestKey && this.activeInstitutionRequestPromise) {
       return this.activeInstitutionRequestPromise
     }
 
-    // 如果当前数据就是同一个查询，直接用，不重新拉
     if (
       !options.force &&
       this.institutionBaseCacheKey === cacheKey &&
@@ -300,11 +259,10 @@ export const volunteerInstitutionLoaderMethods = {
       this.errorText = ''
       this.loading = false
       this.loadingMore = false
+      this.institutionLoadProgressText = ''
       return
     }
 
-    // 本地缓存
-    const hasCachedItems = cachedItems.length > 0
     if (cached && hasCachedItems) {
       console.log('[volunteer][load] using local cache, count:', cachedItems.length)
       if (typeof this.setAdmissionDebugPayload === 'function') {
@@ -313,7 +271,7 @@ export const volunteerInstitutionLoaderMethods = {
           query,
           cacheKey,
           total: cachedTotal || cachedItems.length,
-          pageCount: cachedPageCount,
+          pageCount: 1,
           api: {
             institutions: {
               requestedAt: new Date().toISOString(),
@@ -328,66 +286,16 @@ export const volunteerInstitutionLoaderMethods = {
           }
         })
       }
+
       this.applyInstitutionResults(cachedItems, cacheKey, {
-        total: cachedTotal || cachedItems.length,
-        page: cachedPage,
-        loadingMore: cachedHasMore,
-        progressText: cachedProgressText
+        total: cachedTotal || cachedItems.length
       })
 
-      if (!options.force && !skipLocalCache && !cachedHasMore) {
-        return
-      }
-
-      if (!options.force && !skipLocalCache && cachedHasMore) {
-        const resumeRequestSeq = this.institutionRequestSeq + 1
-        this.institutionRequestSeq = resumeRequestSeq
-        this.lastInstitutionRequestKey = requestKey
-        this.lastInstitutionRequestAt = requestAt
-        this.loading = false
-        this.loadingMore = true
-        this.institutionLoadProgressText = cachedProgressText
-
-        const resumePromise = this.streamRemainingInstitutionPages(
-          query,
-          resumeRequestSeq,
-          cacheKey,
-          {
-            items: cachedItems.slice(),
-            total: cachedTotal || cachedItems.length,
-            pageCount: cachedTotal > 0 ? cachedPageCount : 0,
-            pageSize: cachedPageSize,
-            loadedPages: cachedLoadedPages,
-            firstEnvelope: null,
-            startPage: cachedLoadedPages + 1
-          }
-        )
-
-        this.activeInstitutionRequestKey = requestKey
-        this.activeInstitutionRequestPromise = resumePromise
-        resumePromise.catch((error) => {
-          if (resumeRequestSeq !== this.institutionRequestSeq) return
-          console.warn('[volunteer][load] resume stream failed:', error && error.message)
-          this.loadingMore = false
-          this.institutionLoadProgressText = ''
-        }).finally(() => {
-          if (
-            this.activeInstitutionRequestKey === requestKey &&
-            this.activeInstitutionRequestPromise === resumePromise
-          ) {
-            this.activeInstitutionRequestKey = ''
-            this.activeInstitutionRequestPromise = null
-          }
-        })
+      if (!options.force && !skipLocalCache) {
         return
       }
     } else if (cached && !hasCachedItems) {
       console.log('[volunteer][load] ignore empty local cache, fetching remote')
-    }
-
-    // 防重复请求
-    if (requestKey === this.activeInstitutionRequestKey && this.activeInstitutionRequestPromise) {
-      return this.activeInstitutionRequestPromise
     }
 
     if (
@@ -412,6 +320,7 @@ export const volunteerInstitutionLoaderMethods = {
       this.total = 0
     }
     this.errorText = ''
+
     if (!hasCachedItems && typeof this.setAdmissionDebugPayload === 'function') {
       this.setAdmissionDebugPayload({
         source: 'requesting',
@@ -426,7 +335,7 @@ export const volunteerInstitutionLoaderMethods = {
             state: 'requesting',
             request: {
               method: 'GET',
-              path: '/admission/institutions',
+              path: '/admission/institutions/full-snapshot',
               query: Object.assign({}, query || {})
             }
           }
@@ -434,9 +343,9 @@ export const volunteerInstitutionLoaderMethods = {
       })
     }
 
-    console.log('[volunteer][load] start loading, query:', JSON.stringify(query))
+    console.log('[volunteer][load] start snapshot loading, query:', JSON.stringify(query))
 
-    const requestPromise = this.fetchInstitutionFirstPage(query, requestSeq, cacheKey)
+    const requestPromise = this.fetchInstitutionSnapshot(query, requestSeq, cacheKey)
     this.activeInstitutionRequestKey = requestKey
     this.activeInstitutionRequestPromise = requestPromise
 
@@ -446,25 +355,12 @@ export const volunteerInstitutionLoaderMethods = {
 
       writeLocalInstitutionCache(cacheKey, compactInstitutionList(result.items), {
         total: result.total,
-        page: result.page || 1,
-        pageSize: result.pageSize || Number(query.pageSize) || INSTITUTION_CACHE_PAGE_SIZE,
-        loadedPages: result.loadedPages || 1,
-        pageCount: result.pageCount || 1,
-        loadingMore: result.pageCount > 1,
-        progressText: result.pageCount > 1
-          ? ('已加载 ' + result.items.length + '/' + result.total + ' 所')
-          : ''
-      })
-
-      if (result.pageCount <= 1) {
-        return
-      }
-
-      this.streamRemainingInstitutionPages(query, requestSeq, cacheKey, result).catch((error) => {
-        if (requestSeq !== this.institutionRequestSeq) return
-        console.warn('[volunteer][load] remaining pages stream failed:', error && error.message)
-        this.loadingMore = false
-        this.institutionLoadProgressText = ''
+        page: 1,
+        pageSize: result.total || result.items.length || 1,
+        loadedPages: 1,
+        pageCount: 1,
+        loadingMore: false,
+        progressText: ''
       })
     } catch (error) {
       if (requestSeq !== this.institutionRequestSeq) return
@@ -485,7 +381,7 @@ export const volunteerInstitutionLoaderMethods = {
         return
       }
 
-      console.error('[volunteer][load] failed:', error && error.message)
+      console.error('[volunteer][load] snapshot failed:', error && error.message)
       this.errorText = (error && error.message) || '院校数据加载失败'
       this.institutionLoadProgressText = ''
       this.loading = false
@@ -502,7 +398,7 @@ export const volunteerInstitutionLoaderMethods = {
               requestedAt: new Date().toISOString(),
               request: {
                 method: 'GET',
-                path: '/admission/institutions',
+                path: '/admission/institutions/full-snapshot',
                 query: Object.assign({}, query || {})
               },
               error: (error && error.message) || '院校数据加载失败'
@@ -524,43 +420,17 @@ export const volunteerInstitutionLoaderMethods = {
       }
     }
   },
-  async fetchInstitutionFirstPage(query, requestSeq, cacheKey) {
-    const pageSize = Number(query.pageSize) || INSTITUTION_CACHE_PAGE_SIZE
-    const firstEnvelope = await requestAdmissionEnvelope('/admission/institutions', query, { auth: true })
-    const firstResult = firstEnvelope.body.data
+  async fetchInstitutionSnapshot(query, requestSeq, cacheKey) {
+    const snapshotResult = await requestInstitutionSnapshot(query)
     if (requestSeq !== this.institutionRequestSeq) return null
 
-    console.log('[volunteer][load] page 1 raw result keys:', firstResult && Object.keys(firstResult).join(','))
+    const snapshotData = snapshotResult && snapshotResult.data ? snapshotResult.data : {}
+    const snapshotItems = (Array.isArray(snapshotData.items) ? snapshotData.items : []).filter(isValidInstitution)
+    const total = Math.max(0, Number(snapshotData.total) || snapshotItems.length)
 
-    const firstItems = ((firstResult && firstResult.items) || []).filter(isValidInstitution)
-    const total = this.resolvePaginationTotal(firstResult, firstItems.length)
-    const pageCount = pageSize > 0 ? Math.ceil(total / pageSize) : 1
-    const mergedItems = firstItems
-    const loadedPages = 1
-
-    console.log('[volunteer][load] page 1:', {
-      total,
-      pageCount,
-      itemCount: firstItems.length,
-      firstSchool: firstItems[0] && firstItems[0].name
-    })
-
-    // 显示第一页
     if (requestSeq === this.institutionRequestSeq) {
-      this.applyInstitutionResults(mergedItems, cacheKey, {
-        total,
-        page: 1,
-        loadingMore: pageCount > 1,
-        progressText: pageCount > 1 ? ('已加载 ' + mergedItems.length + '/' + total + ' 所') : ''
-      })
-      writeLocalInstitutionCache(cacheKey, compactInstitutionList(mergedItems), {
-        total,
-        page: 1,
-        pageSize,
-        loadedPages: loadedPages,
-        pageCount,
-        loadingMore: pageCount > 1,
-        progressText: pageCount > 1 ? ('已加载 ' + mergedItems.length + '/' + total + ' 所') : ''
+      this.applyInstitutionResults(snapshotItems, cacheKey, {
+        total
       })
       if (typeof this.setAdmissionDebugPayload === 'function') {
         this.setAdmissionDebugPayload({
@@ -569,15 +439,13 @@ export const volunteerInstitutionLoaderMethods = {
           cacheKey,
           requestSeq,
           total,
-          pageCount,
+          pageCount: 1,
           api: {
-            institutions: buildInstitutionDebugApi(query, firstEnvelope, {
+            institutions: buildInstitutionSnapshotDebugApi(query, snapshotResult.envelope, {
               cacheKey,
-              pageSize,
-              loadedPages,
-              pageCount,
-              mergedItems: mergedItems.length,
-              total
+              total,
+              snapshot: true,
+              mergedItems: snapshotItems.length
             })
           }
         })
@@ -585,198 +453,24 @@ export const volunteerInstitutionLoaderMethods = {
     }
 
     return {
-      items: mergedItems,
-      total: Math.max(total, mergedItems.length),
-      pageCount,
-      pageSize,
-      loadedPages,
-      firstEnvelope
+      source: 'snapshot',
+      items: snapshotItems,
+      total
     }
-  },
-  async streamRemainingInstitutionPages(query, requestSeq, cacheKey, initialResult) {
-    if (!initialResult || requestSeq !== this.institutionRequestSeq) return
-
-    const pageCount = Number(initialResult.pageCount || 0)
-    const total = Number(initialResult.total || 0)
-    const pageSize = Number(initialResult.pageSize || INSTITUTION_CACHE_PAGE_SIZE)
-    const firstEnvelope = initialResult.firstEnvelope
-    let mergedItems = Array.isArray(initialResult.items) ? initialResult.items.slice() : []
-    let loadedPages = Number(initialResult.loadedPages || 1)
-    let lastUiFlushPage = Number(initialResult.loadedPages || 1)
-    const startPage = Math.max(2, Number(initialResult.startPage || 2))
-
-    if (pageCount > 0) {
-      for (let page = startPage; page <= pageCount; page += 1) {
-        if (requestSeq !== this.institutionRequestSeq) return null
-
-        const pageResult = await requestAdmission(
-          '/admission/institutions',
-          Object.assign({}, query, { page: page }),
-          { auth: true }
-        )
-        if (requestSeq !== this.institutionRequestSeq) return null
-
-        const pageItems = ((pageResult && pageResult.items) || []).filter(isValidInstitution)
-        console.log('[volunteer][load] page ' + page + ':', {
-          itemCount: pageItems.length,
-          firstSchool: pageItems[0] && pageItems[0].name
-        })
-        mergedItems = this.mergeInstitutions(mergedItems, pageItems)
-        loadedPages = page
-
-        const shouldFlushUi = page === pageCount || page === startPage || page % 4 === 0
-
-        if (requestSeq === this.institutionRequestSeq && shouldFlushUi) {
-          lastUiFlushPage = page
-          this.applyInstitutionResults(mergedItems, cacheKey, {
-            total,
-            page,
-            loadingMore: page < pageCount,
-            progressText: page < pageCount ? ('已加载 ' + mergedItems.length + '/' + total + ' 所') : ''
-          })
-          writeLocalInstitutionCache(cacheKey, compactInstitutionList(mergedItems), {
-            total,
-            page,
-            pageSize,
-            loadedPages,
-            pageCount,
-            loadingMore: page < pageCount,
-            progressText: page < pageCount ? ('已加载 ' + mergedItems.length + '/' + total + ' 所') : ''
-          })
-          if (typeof this.setAdmissionDebugPayload === 'function') {
-            this.setAdmissionDebugPayload({
-              source: 'remote',
-              query,
-              cacheKey,
-              requestSeq,
-              total,
-              pageCount,
-              api: {
-                institutions: buildInstitutionDebugApi(query, firstEnvelope, {
-                  cacheKey,
-                  pageSize,
-                  loadedPages,
-                  pageCount,
-                  mergedItems: mergedItems.length,
-                  total
-                })
-              }
-            })
-          }
-        }
-      }
-    } else {
-      let page = startPage
-
-      while (requestSeq === this.institutionRequestSeq) {
-        const pageResult = await requestAdmission(
-          '/admission/institutions',
-          Object.assign({}, query, { page: page }),
-          { auth: true }
-        )
-        if (requestSeq !== this.institutionRequestSeq) return null
-
-        const pageItems = ((pageResult && pageResult.items) || []).filter(isValidInstitution)
-        console.log('[volunteer][load] page ' + page + ':', {
-          itemCount: pageItems.length,
-          firstSchool: pageItems[0] && pageItems[0].name
-        })
-        mergedItems = this.mergeInstitutions(mergedItems, pageItems)
-        loadedPages = page
-
-        const shouldFlushUi = page === startPage || page % 4 === 0 || pageItems.length < pageSize
-
-        if (requestSeq === this.institutionRequestSeq && shouldFlushUi) {
-          lastUiFlushPage = page
-          this.applyInstitutionResults(mergedItems, cacheKey, {
-            total: pageItems.length >= pageSize ? 0 : mergedItems.length,
-            page,
-            loadingMore: pageItems.length >= pageSize,
-            progressText: pageItems.length >= pageSize ? ('已加载 ' + mergedItems.length + ' 所，继续补全中') : ''
-          })
-          writeLocalInstitutionCache(cacheKey, compactInstitutionList(mergedItems), {
-            total: pageItems.length >= pageSize ? 0 : mergedItems.length,
-            page,
-            pageSize,
-            loadedPages,
-            pageCount: pageItems.length >= pageSize ? 0 : page,
-            loadingMore: pageItems.length >= pageSize,
-            progressText: pageItems.length >= pageSize ? ('已加载 ' + mergedItems.length + ' 所，继续补全中') : ''
-          })
-          if (typeof this.setAdmissionDebugPayload === 'function') {
-            this.setAdmissionDebugPayload({
-              source: 'remote',
-              query,
-              cacheKey,
-              requestSeq,
-              total: mergedItems.length,
-              pageCount: 0,
-              api: {
-                institutions: buildInstitutionDebugApi(query, firstEnvelope, {
-                  cacheKey,
-                  pageSize,
-                  loadedPages,
-                  pageCount: 0,
-                  mergedItems: mergedItems.length,
-                  total: mergedItems.length
-                })
-              }
-            })
-          }
-        }
-
-        if (pageItems.length < pageSize) {
-          break
-        }
-
-        page += 1
-      }
-    }
-
-    if (requestSeq === this.institutionRequestSeq) {
-      if (pageCount > 0 && lastUiFlushPage !== pageCount) {
-        this.applyInstitutionResults(mergedItems, cacheKey, {
-          total: Math.max(total, mergedItems.length),
-          page: pageCount,
-          loadingMore: false,
-          progressText: ''
-        })
-      }
-      writeLocalInstitutionCache(cacheKey, compactInstitutionList(mergedItems), {
-        total: Math.max(total, mergedItems.length),
-        page: pageCount > 0 ? pageCount : Math.max(startPage, loadedPages),
-        pageSize,
-        loadedPages: pageCount > 0 ? pageCount : loadedPages,
-        pageCount: pageCount > 0 ? pageCount : 0,
-        loadingMore: false,
-        progressText: ''
-      })
-    }
-  },
-  resolvePaginationTotal(result, fallbackTotal) {
-    if (fallbackTotal === undefined) fallbackTotal = 0
-    const total = Number(result && result.pagination && result.pagination.total)
-    return Number.isFinite(total) && total >= 0 ? total : fallbackTotal
-  },
-  mergeInstitutions(currentItems, nextItems) {
-    const existedIds = currentItems.map(function(item) { return item.id })
-    const merged = currentItems.slice()
-
-    nextItems.forEach(function(item) {
-      if (existedIds.indexOf(item.id) === -1) {
-        existedIds.push(item.id)
-        merged.push(item)
-      }
-    })
-
-    return merged
   },
   reloadInstitutions(options) {
     if (options === undefined) options = {}
     if (!this.canQueryInstitutions) return
-    this.scheduleInstitutionReload(true, options)
+    return this.scheduleInstitutionReload(true, options)
   },
-  loadMore() {
-    // 所有数据已一次性加载到本地，无需翻页
+  continueInstitutionLoading(options) {
+    if (options === undefined) options = {}
+    return this.loadInstitutions(true, {
+      immediate: true,
+      force: Boolean(options.force)
+    })
+  },
+  loadMore(options) {
+    return this.continueInstitutionLoading(options)
   }
 }

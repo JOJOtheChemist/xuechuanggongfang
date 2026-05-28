@@ -13,7 +13,9 @@
 					<view class="info-content">
 						<view class="info-header">
 							<text class="name">{{ item.inviter_name || '未知用户' }}</text>
-							<text class="role-badge" :class="'level-' + (item.level || 0)">({{ item.level_label || '伙伴' }})</text>
+							<text v-if="item.order_scope_label" class="scope-badge" :class="item.order_scope === 'mine' ? 'scope-mine' : 'scope-team'">
+								{{ item.order_scope_label }}
+							</text>
 						</view>
 						
 						<view class="dynamic-text">
@@ -31,7 +33,9 @@
 						<text class="time">{{ formatTime(item.create_date) }}</text>
 					</view>
 					
-					<view class="view-btn">查看详情</view>
+					<view class="view-btn" :class="{ 'view-btn-disabled': item.can_view_detail === false }">
+						{{ item.can_view_detail === false ? '只有队长可以查看' : '查看详情' }}
+					</view>
 				</view>
 			</view>
 		</view>
@@ -70,14 +74,13 @@ import { getHttpService } from '@/utils/http-services'
 					}
 					
 					const dashboardService = getHttpService('dashboard-service')
-					// Reuse getTeamDynamics for now as requested
-					const res = await dashboardService.getTeamDynamics({ _token: token, limit: 50 })
+					const res = await dashboardService.getTeamMembersOrders({ _token: token, limit: 50 })
 					
 					if (res && res.code === 0) {
 						this.list = res.data || []
 					} else {
 						uni.showToast({
-							title: res.msg || '加载失败',
+							title: (res && (res.message || res.msg)) || '加载失败',
 							icon: 'none'
 						})
 					}
@@ -103,6 +106,14 @@ import { getHttpService } from '@/utils/http-services'
 			},
 			viewDetail(item) {
 				console.log('[order-management] Clicked item:', item)
+
+				if (item && item.can_view_detail === false) {
+					uni.showToast({
+						title: item.permission_tip || '只有队长可以查看',
+						icon: 'none'
+					})
+					return
+				}
 				
 				// Store item data for the detail page to consume
 				uni.setStorageSync('current_order_detail', item)
@@ -179,20 +190,41 @@ import { getHttpService } from '@/utils/http-services'
 	.info-header {
 		display: flex;
 		align-items: center;
+		flex-wrap: nowrap;
 		margin-bottom: 8rpx;
+		overflow: hidden;
 	}
 	
 	.name {
+		flex: 1;
+		min-width: 0;
 		font-size: 28rpx;
 		font-weight: 700;
 		color: #1F2937;
 		margin-right: 8rpx;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	
-	.role-badge {
+	.scope-badge {
+		flex-shrink: 0;
+		margin-left: 10rpx;
+		padding: 4rpx 12rpx;
+		border-radius: 999rpx;
 		font-size: 20rpx;
-		color: #6366F1;
 		font-weight: 600;
+		white-space: nowrap;
+	}
+
+	.scope-mine {
+		color: #0f766e;
+		background: #ccfbf1;
+	}
+
+	.scope-team {
+		color: #92400e;
+		background: #ffedd5;
 	}
 	
 	.dynamic-text {
@@ -234,5 +266,10 @@ import { getHttpService } from '@/utils/http-services'
 		font-weight: 600;
 		margin-left: 16rpx;
 		flex-shrink: 0;
+	}
+
+	.view-btn-disabled {
+		color: #9CA3AF;
+		background-color: #F3F4F6;
 	}
 </style>

@@ -297,16 +297,25 @@ export default {
 			if (toolVariant === 'web-fetch') return '完整网页正文提取'
 			return '完整内容'
 		},
+		shouldDefaultExpand(tool = {}, toolVariant = '') {
+			if (tool && tool.isWebResearchSummary) return true
+			return toolVariant === 'web-search' || toolVariant === 'web-fetch'
+		},
 		isExpanded(tool = {}) {
 			const id = String(tool && tool.id ? tool.id : '')
-			return !!this.expandedToolIds[id]
+			if (!id) return this.shouldDefaultExpand(tool, tool && tool.toolVariant)
+			if (Object.prototype.hasOwnProperty.call(this.expandedToolIds, id)) {
+				return !!this.expandedToolIds[id]
+			}
+			return this.shouldDefaultExpand(tool, tool && tool.toolVariant)
 		},
 		toggleExpanded(tool = {}) {
 			const id = String(tool && tool.id ? tool.id : '')
 			if (!id) return
+			const nextExpanded = !this.isExpanded(tool)
 			this.expandedToolIds = {
 				...this.expandedToolIds,
-				[id]: !this.expandedToolIds[id]
+				[id]: nextExpanded
 			}
 		}
 	}

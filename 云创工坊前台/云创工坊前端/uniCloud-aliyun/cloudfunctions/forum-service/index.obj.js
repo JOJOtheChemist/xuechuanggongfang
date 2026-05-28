@@ -1,4 +1,8 @@
 const authUtils = require('auth-utils')
+const {
+  WECHAT_MINIPROGRAM_APP_ID: DEFAULT_WECHAT_APP_ID,
+  WECHAT_MINIPROGRAM_APP_SECRET: DEFAULT_WECHAT_APP_SECRET
+} = require('../common/wechat-config')
 
 const db = uniCloud.database()
 const dbCmd = db.command
@@ -115,8 +119,6 @@ const WECHAT_TEXT_CHECK_ENDPOINT = '/wxa/msg_sec_check'
 const CONTENT_SECURITY_VIOLATION_MESSAGE = '内容含违规信息'
 const CONTENT_SECURITY_SERVICE_UNAVAILABLE_MESSAGE = '内容审核服务暂不可用，请稍后重试'
 const PUBLISH_PROFILE_REQUIRED_MESSAGE = '首次发布前请先完善学校、手机号、学号'
-const DEFAULT_WECHAT_APP_ID = 'wxd7918f6ffc6e4234'
-const DEFAULT_WECHAT_APP_SECRET = '607588d26e9df050892c321579063f8e'
 const TOKEN_CACHE_BUFFER_SECONDS = 120
 const TOKEN_ERROR_CODES = new Set([40001, 40014, 41001, 42001])
 const VIOLATION_ERROR_CODES = new Set([
@@ -414,6 +416,11 @@ function normalizeTitle(title, content) {
   return fallbackTitleFromContent(content) || '未命名动态'
 }
 
+function toBooleanFlag(value) {
+  if (value === true || value === 'true' || value === 1 || value === '1') return true
+  return false
+}
+
 function isValidChineseMobile(value) {
   return /^1\d{10}$/.test(normalizePhone(value))
 }
@@ -689,21 +696,26 @@ module.exports = {
     }
   },
 
-  async getPostList({ tab = 'local', school = '', page = 1, pageSize = DEFAULT_PAGE_SIZE } = {}) {
+  async getPostList({ tab = 'local', school = '', mine = false, page = 1, pageSize = DEFAULT_PAGE_SIZE } = {}) {
     try {
       const safePage = normalizePage(page, 1)
       const safePageSize = normalizePageSize(pageSize)
       const safeTab = tab === 'hot' ? 'hot' : 'local'
+      const mineOnly = toBooleanFlag(mine)
       const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
       let targetSchool = normalizeSchoolName(school)
 
-      if (!targetSchool && safeTab === 'local' && this.currentUser && this.currentUser.uid) {
+      if (mineOnly) {
+        requireLogin(this.currentUser)
+      }
+
+      if (!mineOnly && !targetSchool && safeTab === 'local' && this.currentUser && this.currentUser.uid) {
         targetSchool = await getUserSchool(this.currentUser.uid)
       }
-      if (!targetSchool && safeTab === 'local') {
+      if (!mineOnly && !targetSchool && safeTab === 'local') {
         targetSchool = DEFAULT_HOME_SCHOOL
       }
-      if (safeTab === 'local') {
+      if (!mineOnly && safeTab === 'local') {
         targetSchool = sanitizeSchoolSelection(targetSchool, DEFAULT_HOME_SCHOOL)
       }
 
@@ -711,12 +723,16 @@ module.exports = {
         status: 1
       }
 
-      if (safeTab === 'local' && targetSchool) {
+      if (!mineOnly && safeTab === 'local' && targetSchool) {
         if (targetSchool === MYSTERY_SCHOOL) {
           where.school = dbCmd.in([MYSTERY_SCHOOL, 'Campus', '其他'])
         } else {
           where.school = targetSchool
         }
+      }
+
+      if (mineOnly && this.currentUser && this.currentUser.uid) {
+        where.user_id = this.currentUser.uid
       }
 
       const postsColl = db.collection(COLLECTION_POSTS)
@@ -725,46 +741,17 @@ module.exports = {
 
       let list = []
       if (safeTab === 'hot') {
-        const recentWhere = Object.assign({}, where, {
+        const hotWhere = Object.assign({}, where, {
           create_date: dbCmd.gte(sevenDaysAgo)
         })
-        const olderWhere = Object.assign({}, where, {
-          create_date: dbCmd.lt(sevenDaysAgo)
-        })
-        const offset = (safePage - 1) * safePageSize
-        const recentCountRes = await postsColl.where(recentWhere).count()
-        const recentTotal = Number((recentCountRes && recentCountRes.total) || 0)
-
-        const recentSkip = Math.min(offset, recentTotal)
-        const recentLimit = Math.max(0, Math.min(safePageSize, recentTotal - recentSkip))
-        const olderSkip = Math.max(0, offset - recentTotal)
-        const olderLimit = Math.max(0, safePageSize - recentLimit)
-
-        const recentPromise = recentLimit > 0
-          ? postsColl.where(recentWhere)
-            .orderBy('like_count', 'desc')
-            .orderBy('comment_count', 'desc')
-            .orderBy('create_date', 'desc')
-            .skip(recentSkip)
-            .limit(recentLimit)
-            .get()
-          : Promise.resolve({ data: [] })
-
-        const olderPromise = olderLimit > 0
-          ? postsColl.where(olderWhere)
-            .orderBy('like_count', 'desc')
-            .orderBy('comment_count', 'desc')
-            .orderBy('create_date', 'desc')
-            .skip(olderSkip)
-            .limit(olderLimit)
-            .get()
-          : Promise.resolve({ data: [] })
-
-        const [recentRes, olderRes] = await Promise.all([recentPromise, olderPromise])
-        list = [
-          ...(Array.isArray(recentRes.data) ? recentRes.data : []),
-          ...(Array.isArray(olderRes.data) ? olderRes.data : [])
-        ]
+        const hotRes = await postsColl.where(hotWhere)
+          .orderBy('like_count', 'desc')
+          .orderBy('comment_count', 'desc')
+          .orderBy('create_date', 'desc')
+          .skip((safePage - 1) * safePageSize)
+          .limit(safePageSize)
+          .get()
+        list = Array.isArray(hotRes.data) ? hotRes.data : []
       } else {
         const postRes = await postsColl.where(where)
           .orderBy('create_date', 'desc')

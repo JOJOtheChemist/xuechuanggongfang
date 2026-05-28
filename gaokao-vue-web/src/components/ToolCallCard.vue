@@ -238,15 +238,26 @@ function shouldShowRawOutput(toolVariant = '', outputText = '', summaryText = ''
   return true
 }
 
+function shouldDefaultExpandTool(tool = {}) {
+  const toolVariant = resolveToolVariant(tool)
+  return toolVariant === 'web-search' || toolVariant === 'web-fetch'
+}
+
 function isExpanded(toolId) {
-  return Boolean(expandedToolIds.value[String(toolId)])
+  const id = String(toolId)
+  if (Object.prototype.hasOwnProperty.call(expandedToolIds.value, id)) {
+    return Boolean(expandedToolIds.value[id])
+  }
+  const tool = normalizedTools.value.find((item) => String(item.id) === id)
+  return shouldDefaultExpandTool(tool)
 }
 
 function toggleExpanded(toolId) {
   const id = String(toolId)
+  const nextExpanded = !isExpanded(id)
   expandedToolIds.value = {
     ...expandedToolIds.value,
-    [id]: !expandedToolIds.value[id],
+    [id]: nextExpanded,
   }
 }
 

@@ -20,7 +20,7 @@
 						</view>
 					</view>
 
-					<view class="left-stat-item">
+					<view class="left-stat-item left-stat-item-clickable" @tap="goToInviteFissionDetail">
 						<text class="item-label">多级直推人数（含1-10级）</text>
 						<view class="item-content">
 							<text class="item-value">{{ teamCount }}</text>
@@ -86,27 +86,27 @@
 import { getHttpService, getCurrentUserToken } from '@/utils/http-services'
 export default {
 	name: 'BentoStatsCard',
-		data() {
-			return {
-				// 新币统计
-				monthProfit: 0, // 当月新币利润
-				todayProfit: 0, // 今日新币利润
-				currentCoins: 0, // 当前新币余额
-				// 用户 & 伙伴统计
-				newUsers: 0,
-				totalPromotedUsers: 0,
-				teamCount: 0, // 多级直推累计人数（从开始到现在）
-				todayMultiLevelInviteCount: 0, // 多级直推今日新增
-				// 订单统计
-				orderCount: 0, // 成功报名的订单总量
-				todayNewOrders: 0, // 今日新增订单
-				// 签到统计（精简版）
-				isChecked: false,
-				streakDays: 0,
-				checkinRewardPoints: 5,
-				checkInLoading: false,
-				loading: false
-			}
+	data() {
+		return {
+			// 新币统计
+			monthProfit: 0, // 当月新币利润
+			todayProfit: 0, // 今日新币利润
+			currentCoins: 0, // 当前新币余额
+			// 用户 & 伙伴统计
+			newUsers: 0,
+			totalPromotedUsers: 0,
+			teamCount: 0, // 多级直推累计人数（从开始到现在）
+			todayMultiLevelInviteCount: 0, // 多级直推今日新增
+			// 订单统计
+			orderCount: 0, // 成功报名的订单总量
+			todayNewOrders: 0, // 今日新增订单
+			// 签到统计（精简版）
+			isChecked: false,
+			streakDays: 0,
+			checkinRewardPoints: 5,
+			checkInLoading: false,
+			loading: false
+		}
 	},
 	methods: {
 		getToken() {
@@ -260,7 +260,9 @@ export default {
 					this.todayMultiLevelInviteCount = 0
 				}
 
-				if (goalRes && goalRes.code === 0 && goalRes.data && goalRes.data.stats) {
+				if (statsRes && statsRes.code === 0 && statsRes.data && statsRes.data.orderCount !== undefined) {
+					this.orderCount = Number(statsRes.data.orderCount) || 0
+				} else if (goalRes && goalRes.code === 0 && goalRes.data && goalRes.data.stats) {
 					this.orderCount = Number(goalRes.data.stats.total_completed) || 0
 				}
 
@@ -324,16 +326,27 @@ export default {
 				this.checkInLoading = false
 			}
 		},
-	goToHotSections() {
-		uni.switchTab({
-			url: '/pages/business/index'
-		})
-	},
-	goToMyOrders() {
-		uni.navigateTo({
-			url: '/pages/admin/order-management'
-		})
-	}
+		goToHotSections() {
+			uni.switchTab({
+				url: '/pages/business/index'
+			})
+		},
+		goToMyOrders() {
+			uni.navigateTo({
+				url: '/pages/admin/order-management'
+			})
+		},
+		goToInviteFissionDetail() {
+			const token = this.getToken()
+			if (!token) {
+				uni.showToast({ title: '请先登录', icon: 'none' })
+				return
+			}
+
+			uni.navigateTo({
+				url: '/pages/extra/invite-fission-detail'
+			})
+		}
 	},
 	mounted() {
 		this.loadStats()
@@ -353,6 +366,10 @@ export default {
 	overflow: hidden;
 	box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.04);
 	border: 1rpx solid #e2e8f0;
+}
+
+.left-stat-item-clickable:active {
+	opacity: 0.72;
 }
 
 /* Flex 容器：固定高度 */

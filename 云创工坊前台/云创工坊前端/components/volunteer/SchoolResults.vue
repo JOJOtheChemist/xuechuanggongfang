@@ -49,7 +49,7 @@
     </view>
 
     <view
-      v-if="loadingMore || hasMore || schoolItems.length > 0"
+      v-if="loadingMore || hasMore"
       class="load-more"
       @tap="handleLoadMore"
     >
@@ -274,7 +274,7 @@ export default {
         return filteredMajors
       }
 
-      return previewMajors
+      return []
     },
     isHintMajor(text) {
       const value = String(text || '').trim()

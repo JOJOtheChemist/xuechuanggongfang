@@ -83,6 +83,14 @@
 					}
 				},
 				{
+					"path": "pay-199",
+					"style": {
+						"navigationBarTitleText": "19.9 付费页",
+						"navigationStyle": "custom",
+						"backgroundColor": "#f6f8ff"
+					}
+				},
+				{
 					"path": "detail",
 					"style": {
 						"navigationBarTitleText": "学校详情",
@@ -141,7 +149,8 @@
 				{
 					"path": "team-dynamics",
 					"style": {
-						"navigationBarTitleText": "团队动态"
+						"navigationBarTitleText": "多级直推动态",
+						"navigationStyle": "custom"
 					}
 				},
 				{
@@ -159,20 +168,29 @@
 				{
 					"path": "team-browser",
 					"style": {
-						"navigationBarTitleText": "选择团队"
+						"navigationStyle": "custom"
 					}
 				},
 				{
 					"path": "team-member-list",
 					"style": {
 						"navigationBarTitleText": "团队成员",
+						"navigationStyle": "custom",
+						"enablePullDownRefresh": true
+					}
+				},
+				{
+					"path": "invite-fission-detail",
+					"style": {
+						"navigationBarTitleText": "裂变详情",
 						"enablePullDownRefresh": true
 					}
 				},
 				{
 					"path": "team-center",
 					"style": {
-						"navigationBarTitleText": "团队中心"
+						"navigationBarTitleText": "团队中心",
+						"navigationStyle": "custom"
 					}
 				},
 				{
@@ -187,12 +205,20 @@
 						"navigationBarTitleText": "余额提现"
 					}
 				},
-					{
-						"path": "join-team-confirm",
-						"style": {
-							"navigationStyle": "custom"
-						}
-					},
+				{
+					"path": "join-team-confirm",
+					"style": {
+						"navigationBarTitleText": "入团支付",
+						"navigationStyle": "custom"
+					}
+				},
+				{
+					"path": "join-team-contact",
+					"style": {
+						"navigationBarTitleText": "完善联系方式",
+						"navigationStyle": "custom"
+					}
+				},
 				{
 					"path": "wallet-details",
 					"style": {
@@ -203,6 +229,13 @@
 					"path": "points-center",
 					"style": {
 						"navigationBarTitleText": "积分明细"
+					}
+				},
+				{
+					"path": "forum-notifications",
+					"style": {
+						"navigationBarTitleText": "动态消息",
+						"enablePullDownRefresh": true
 					}
 				},
 				{
@@ -268,7 +301,7 @@
 				{
 					"path": "order-management",
 					"style": {
-						"navigationBarTitleText": "订单管理",
+						"navigationBarTitleText": "本人和团队订单",
 						"enablePullDownRefresh": true
 					}
 				},

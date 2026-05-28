@@ -1,0 +1,15 @@
+const WECHAT_MINIPROGRAM_APP_ID = 'wxd7918f6ffc6e4234'
+const WECHAT_MINIPROGRAM_APP_SECRET = '607588d26e9df050892c321579063f8e'
+
+function getWechatMiniprogramConfig() {
+	return {
+		appId: WECHAT_MINIPROGRAM_APP_ID,
+		appSecret: WECHAT_MINIPROGRAM_APP_SECRET
+	}
+}
+
+module.exports = {
+	WECHAT_MINIPROGRAM_APP_ID,
+	WECHAT_MINIPROGRAM_APP_SECRET,
+	getWechatMiniprogramConfig
+}

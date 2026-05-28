@@ -77,6 +77,7 @@
 </template>
 
 <script>
+import { getApiBaseUrl } from '@/utils/api-switch'
 import { getHttpService } from '@/utils/http-services'
 import ForumContentSafetyNotice from './components/ForumContentSafetyNotice.vue'
 import ForumPublishProfileDialog from './components/ForumPublishProfileDialog.vue'
@@ -97,6 +98,10 @@ import {
   getForumSchoolOptions,
   sanitizeForumSchoolSelection
 } from '@/utils/forum-school-options'
+
+const UPLOAD_SIZE_LIMIT_BYTES = 900 * 1024
+const COMPRESS_QUALITIES = [80, 65, 50, 35]
+const AGGRESSIVE_COMPRESS_QUALITIES = [60, 45, 30, 20]
 
 function buildSchoolOptions(rawOptions = [], currentSchool = '') {
   const baseOptions = getForumSchoolOptions()
@@ -311,140 +316,122 @@ export default {
       }
       uni.showToast({ title: normalized, icon: 'none' })
     },
-    getUploadFileName(filePath, tempFile, index) {
-      const tempName = tempFile && (tempFile.name || tempFile.fileName)
-      if (tempName) return String(tempName).replace(/[\\/]/g, '_')
-
-      const cleanPath = String(filePath || '').split('?')[0]
-      let pathName = cleanPath.split('/').pop() || ''
-      try {
-        pathName = decodeURIComponent(pathName)
-      } catch (error) {
-        pathName = pathName || ''
-      }
-      const extMatch = pathName.match(/\.(jpe?g|png|webp|gif)$/i)
-      if (pathName && extMatch) return pathName.replace(/[\\/]/g, '_')
-
-      const ext = extMatch ? extMatch[0].toLowerCase() : '.jpg'
-      return `forum-post-${Date.now()}-${index}${ext}`
+    getUploadEndpoint() {
+      return `${getApiBaseUrl()}/forum/uploads/image`
     },
-    inferImageContentType(fileName) {
-      const safeName = String(fileName || '').toLowerCase()
-      if (safeName.endsWith('.png')) return 'image/png'
-      if (safeName.endsWith('.webp')) return 'image/webp'
-      if (safeName.endsWith('.gif')) return 'image/gif'
-      return 'image/jpeg'
-    },
-    getLocalFileInfo(filePath) {
-      return new Promise((resolve, reject) => {
+    getFileSize(filePath) {
+      return new Promise((resolve) => {
         uni.getFileInfo({
           filePath,
-          success: resolve,
+          success: (info) => resolve(Number((info && info.size) || 0)),
+          fail: () => resolve(0)
+        })
+      })
+    },
+    compressImageFile(filePath, quality) {
+      return new Promise((resolve, reject) => {
+        uni.compressImage({
+          src: filePath,
+          quality,
+          success: (res) => resolve((res && res.tempFilePath) || filePath),
           fail: reject
         })
       })
     },
-    readLocalFile(filePath) {
-      return new Promise((resolve, reject) => {
-        const fileManager = typeof uni.getFileSystemManager === 'function'
-          ? uni.getFileSystemManager()
-          : typeof wx !== 'undefined' && typeof wx.getFileSystemManager === 'function'
-            ? wx.getFileSystemManager()
-            : null
+    async prepareImageForUpload(filePath, aggressive = false) {
+      const originalSize = await this.getFileSize(filePath)
+      if (!aggressive && originalSize > 0 && originalSize <= UPLOAD_SIZE_LIMIT_BYTES) {
+        return filePath
+      }
 
-        if (!fileManager || typeof fileManager.readFile !== 'function') {
-          reject(new Error('当前平台不支持读取图片文件'))
-          return
+      const qualityList = aggressive ? AGGRESSIVE_COMPRESS_QUALITIES : COMPRESS_QUALITIES
+      let bestPath = filePath
+      let bestSize = originalSize || Number.MAX_SAFE_INTEGER
+
+      for (const quality of qualityList) {
+        try {
+          const sourcePath = aggressive ? bestPath : filePath
+          const compressedPath = await this.compressImageFile(sourcePath, quality)
+          const compressedSize = await this.getFileSize(compressedPath)
+          if (compressedSize > 0 && compressedSize < bestSize) {
+            bestPath = compressedPath
+            bestSize = compressedSize
+          }
+          if (compressedSize > 0 && compressedSize <= UPLOAD_SIZE_LIMIT_BYTES) {
+            return compressedPath
+          }
+        } catch (error) {
+          console.warn('[forum][publish] compress image failed:', quality, error)
         }
+      }
 
-        fileManager.readFile({
+      return bestPath
+    },
+    doUploadForumImage(filePath, token) {
+      return new Promise((resolve, reject) => {
+        uni.uploadFile({
+          url: this.getUploadEndpoint(),
           filePath,
-          success: (res) => resolve(res.data),
-          fail: reject
-        })
-      })
-    },
-    async getUploadFileMeta(filePath, tempFile, index) {
-      const fileName = this.getUploadFileName(filePath, tempFile, index)
-      let fileSize = Number(tempFile && tempFile.size) || 0
-      if (!fileSize) {
-        const info = await this.getLocalFileInfo(filePath)
-        fileSize = Number(info && info.size) || 0
-      }
-
-      if (!fileSize) {
-        throw new Error('无法读取图片大小')
-      }
-
-      return {
-        fileName,
-        fileSize,
-        contentType: this.inferImageContentType(fileName)
-      }
-    },
-    uploadPresignedFile(uploadInfo, fileBuffer, contentType) {
-      return new Promise((resolve, reject) => {
-        const uploadUrl = uploadInfo && (uploadInfo.upload_url || uploadInfo.uploadUrl)
-        if (!uploadUrl) {
-          reject(new Error('后端未返回图片上传地址'))
-          return
-        }
-
-        const headers = Object.assign({}, uploadInfo.headers || {})
-        if (!headers['Content-Type'] && !headers['content-type']) {
-          headers['Content-Type'] = contentType
-        }
-
-        uni.request({
-          url: uploadUrl,
-          method: uploadInfo.method || 'PUT',
-          data: fileBuffer,
-          header: headers,
+          name: 'file',
+          header: {
+            Authorization: `Bearer ${token}`,
+            'X-Access-Token': token
+          },
           success: (res) => {
             const statusCode = Number(res && res.statusCode) || 0
-            if (statusCode >= 200 && statusCode < 300) {
-              resolve(res)
+            if (statusCode !== 200) {
+              reject(new Error(extractRequestErrorMessage(res, `上传失败(${statusCode})`, {
+                assumeContentViolationOn400: true
+              })))
               return
             }
-            reject(new Error(`图片上传失败（${statusCode}）`))
+
+            let payload = {}
+            try {
+              payload = JSON.parse((res && res.data) || '{}')
+            } catch (error) {
+              reject(new Error('上传响应解析失败'))
+              return
+            }
+
+            const imageUrl = payload && payload.data ? payload.data.url : ''
+            if (!imageUrl) {
+              reject(new Error(payload.message || '上传成功但未返回图片地址'))
+              return
+            }
+
+            resolve(imageUrl)
           },
-          fail: reject
+          fail: (error) => {
+            reject(new Error(extractRequestErrorMessage(error, '上传失败', {
+              assumeContentViolationOn400: true
+            })))
+          }
         })
       })
     },
-    extractUploadedImageUrl(uploadInfo) {
-      const file = uploadInfo && uploadInfo.file ? uploadInfo.file : {}
-      return (
-        file.public_url
-        || file.publicUrl
-        || (uploadInfo && uploadInfo.public_url)
-        || (uploadInfo && uploadInfo.publicUrl)
-        || ''
-      )
-    },
-    async uploadForumImage(forumService, filePath, tempFile, index) {
-      const meta = await this.getUploadFileMeta(filePath, tempFile, index)
-      const presignRes = await forumService.createUploadPresign({
-        _token: this.getToken(),
-        scene: 'forum-post-image',
-        fileName: meta.fileName,
-        contentType: meta.contentType,
-        fileSize: meta.fileSize
-      })
-
-      if (!presignRes || presignRes.code !== 0 || !presignRes.data) {
-        throw new Error((presignRes && presignRes.message) || '创建上传地址失败')
+    async uploadForumImage(filePath) {
+      const token = this.getToken()
+      if (!token) {
+        throw new Error('请先登录后再上传图片')
       }
 
-      const fileBuffer = await this.readLocalFile(filePath)
-      await this.uploadPresignedFile(presignRes.data, fileBuffer, meta.contentType)
+      const preparedPath = await this.prepareImageForUpload(filePath, false)
 
-      const imageUrl = this.extractUploadedImageUrl(presignRes.data)
-      if (!imageUrl) {
-        throw new Error('上传成功但未返回图片地址')
+      try {
+        return await this.doUploadForumImage(preparedPath, token)
+      } catch (error) {
+        const message = extractRequestErrorMessage(error, '上传失败', {
+          assumeContentViolationOn400: true
+        })
+
+        if (message.includes('图片过大') || /413/.test(message)) {
+          const retryPath = await this.prepareImageForUpload(filePath, true)
+          return this.doUploadForumImage(retryPath, token)
+        }
+
+        throw error
       }
-
-      return imageUrl
     },
     async chooseImages() {
       if (this.uploading) return
@@ -464,17 +451,15 @@ export default {
         })
 
         const filePaths = Array.isArray(chooseRes.tempFilePaths) ? chooseRes.tempFilePaths : []
-        const tempFiles = Array.isArray(chooseRes.tempFiles) ? chooseRes.tempFiles : []
         if (filePaths.length === 0) return
 
         this.uploading = true
-        const forumService = getHttpService('forum-service')
 
         for (let i = 0; i < filePaths.length; i += 1) {
           const filePath = filePaths[i]
           uni.showLoading({ title: `上传图片 ${i + 1}/${filePaths.length}` })
 
-          const imageUrl = await this.uploadForumImage(forumService, filePath, tempFiles[i], i)
+          const imageUrl = await this.uploadForumImage(filePath)
           this.images.push(imageUrl)
         }
       } catch (error) {

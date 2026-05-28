@@ -2,7 +2,7 @@
   <view class="section-card">
     <view class="section-head">
       <text class="section-title">招生专业</text>
-      <text class="section-subtitle">{{ majorCountText }}</text>
+      <text class="section-subtitle">{{ visibleMajorCountText }}</text>
     </view>
 
     <view v-if="normalizedMajors.length === 0" class="empty-card">
@@ -16,12 +16,17 @@
         class="major-card"
       >
         <view class="major-top">
-          <text class="major-name">{{ majorDisplayName(major) }}</text>
+          <view class="major-top-main">
+            <text class="major-name">{{ majorDisplayName(major) }}</text>
+            <major-inline-meta
+              :subject-requirement="resolveMajorSubjectRequirement(major)"
+              :retention-rate="resolveMajorRetentionRate(major)"
+            />
+          </view>
         </view>
 
         <view class="major-meta">
-          <text>{{ major.degreeLevel || '层次待补充' }}</text>
-          <text v-if="major.latestScoreYearText">{{ major.latestScoreYearText }}</text>
+          <text v-for="item in majorMetaItems(major)" :key="item">{{ item }}</text>
         </view>
 
         <view v-if="major.scoreRows.length > 0" class="major-score-table-scroll">
@@ -64,6 +69,8 @@
 </template>
 
 <script>
+import MajorInlineMeta from './MajorInlineMeta.vue'
+
 const SCORE_TABLE_COLUMNS = Object.freeze([
   { key: 'year', label: '年份' },
   { key: 'minScore', label: '最低分' },
@@ -73,7 +80,20 @@ const SCORE_TABLE_COLUMNS = Object.freeze([
 ])
 
 function normalizeSubjectTrack(value) {
-  return String(value || '').trim()
+  const normalized = String(value || '').trim()
+  if (!normalized) {
+    return ''
+  }
+
+  if (/历史类|历史组|文科/.test(normalized)) {
+    return '历史组'
+  }
+
+  if (/物理类|物理组|理科/.test(normalized)) {
+    return '物理组'
+  }
+
+  return normalized
 }
 
 function pickFirstText(...values) {
@@ -95,6 +115,9 @@ function toFiniteNumber(value) {
 
 export default {
   name: 'VolunteerDetailMajorSection',
+  components: {
+    MajorInlineMeta
+  },
   props: {
     majors: {
       type: Array,
@@ -114,6 +137,10 @@ export default {
   computed: {
     scoreTableColumns() {
       return SCORE_TABLE_COLUMNS
+    },
+    visibleMajorCountText() {
+      const count = this.normalizedMajors.length
+      return count > 0 ? `${count} 个` : this.majorCountText
     },
     normalizedMajors() {
       const normalizedSubjectTrackFilter = normalizeSubjectTrack(this.subjectTrackFilter)
@@ -194,15 +221,57 @@ export default {
     },
     majorDisplayName(major) {
       const majorName = String((major && major.majorName) || '').trim()
-      const subjectTrack = normalizeSubjectTrack(major && major.subjectTrack)
       const majorCategory = String((major && major.majorCategory) || '').trim()
 
       if (!majorName) {
-        return [majorCategory, subjectTrack].filter(Boolean).join(' · ')
+        return majorCategory || '专业待补充'
       }
 
-      const suffix = [majorCategory, subjectTrack].filter(Boolean).join(' · ')
+      const suffix = [majorCategory].filter(Boolean).join(' · ')
       return suffix ? `${majorName} · ${suffix}` : majorName
+    },
+    majorMetaItems(major) {
+      const items = []
+
+      if (major.degreeLevel) {
+        items.push(major.degreeLevel)
+      } else {
+        items.push('层次待补充')
+      }
+
+      if (major.latestScoreYearText) {
+        items.push(major.latestScoreYearText)
+      }
+
+      return items
+    },
+    resolveMajorSubjectRequirement(major) {
+      const extraPayload = this.resolveExtraPayload(major)
+
+      return pickFirstText(
+        major && major.subjectRequirement,
+        major && major.subject_requirement,
+        extraPayload.subjectRequirement,
+        extraPayload.subject_requirement,
+        extraPayload['选科要求'],
+        extraPayload['选考要求'],
+        extraPayload['选科'],
+        extraPayload.raw && extraPayload.raw['选科要求'],
+        extraPayload.raw && extraPayload.raw['选考要求'],
+        extraPayload.raw && extraPayload.raw['选科']
+      )
+    },
+    resolveMajorRetentionRate(major) {
+      const extraPayload = this.resolveExtraPayload(major)
+
+      return pickFirstText(
+        major && major.retentionRate,
+        major && major.retention_rate,
+        extraPayload.retentionRate,
+        extraPayload.retention_rate,
+        extraPayload['保研率'],
+        extraPayload.raw && extraPayload.raw['保研率']
+      )
     },
     majorDetailText(major) {
       const parts = []
@@ -281,9 +350,16 @@ export default {
 .major-top {
   display: flex;
   align-items: flex-start;
-  justify-content: flex-start;
-  flex-wrap: wrap;
   gap: 16rpx;
+}
+
+.major-top-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10rpx;
 }
 
 .major-name {
@@ -308,8 +384,12 @@ export default {
   flex-wrap: wrap;
   gap: 12rpx 20rpx;
   margin-top: 8rpx;
-  font-size: 22rpx;
   color: #64748b;
+}
+
+.major-meta text {
+  font-size: 22rpx;
+  line-height: 1.5;
 }
 
 .major-score-table-scroll {

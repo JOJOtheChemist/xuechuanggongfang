@@ -27,14 +27,11 @@
 						<text class="title">{{ a.title }}</text>
 						<text class="summary">{{ a.summary || '' }}</text>
 						
-						<!-- 文章标签 -->
-						<view class="article-tags" v-if="a.tags && a.tags.length > 0">
-							<text class="tag-item" v-for="(t, ti) in a.tags" :key="ti">{{ t }}</text>
-						</view>
+						<article-tag-row :team-name="resolveTeamName(a)" :tags="a.tags" :max="3" />
 	
 						<view class="badges">
-							<text v-if="(a.price_points||0) <= 0" class="badge free">免费</text>
-							<text v-else class="badge pay">{{ a.price_points }} 积分</text>
+							<text v-if="resolvePricePoints(a) <= 0" class="badge free">免费</text>
+							<text v-else class="badge pay">{{ resolvePricePoints(a) }} 积分</text>
 						</view>
 					</view>
 					<image v-if="a.cover_image || a.coverImageUrl || a.cover_url" :src="a.cover_image || a.coverImageUrl || a.cover_url" class="thumb" mode="aspectFill" />
@@ -51,11 +48,13 @@
 <script>
 import { getHttpService } from '@/utils/http-services'
 import { extractArticleId, openArticleDetail } from '@/utils/article-navigation'
+import ArticleTagRow from '@/components/business/ArticleTagRow.vue'
 import ArticleFilter from './components/ArticleFilter.vue'
 
 export default {
 	components: {
-		ArticleFilter
+		ArticleFilter,
+		ArticleTagRow
 	},
 	data() {
 		return {
@@ -165,6 +164,26 @@ export default {
 			} finally {
 				this.loading = false
 			}
+		},
+		resolveTeamName(article) {
+			const payload = article && typeof article === 'object' ? article : {}
+			const directTeamArticle = payload.teamArticle && typeof payload.teamArticle === 'object' ? payload.teamArticle : null
+			const extraPayload = payload.extraPayload && typeof payload.extraPayload === 'object'
+				? payload.extraPayload
+				: (payload.extra_payload && typeof payload.extra_payload === 'object' ? payload.extra_payload : null)
+			const payloadTeamArticle = extraPayload && extraPayload.teamArticle && typeof extraPayload.teamArticle === 'object'
+				? extraPayload.teamArticle
+				: (extraPayload && extraPayload.team_article && typeof extraPayload.team_article === 'object' ? extraPayload.team_article : null)
+			const teamName = directTeamArticle?.teamName ||
+				directTeamArticle?.team_name ||
+				payloadTeamArticle?.teamName ||
+				payloadTeamArticle?.team_name ||
+				''
+			return typeof teamName === 'string' ? teamName.trim() : ''
+		},
+		resolvePricePoints(article) {
+			const price = Number(article?.pricePoints ?? article?.price_points ?? 0)
+			return Number.isFinite(price) ? price : 0
 		},
 		openDetail(a) {
 			openArticleDetail(a)

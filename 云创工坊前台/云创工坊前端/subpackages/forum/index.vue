@@ -6,7 +6,9 @@
         class="forum-hero-overlay"
         :active-tab="activeTab"
         :current-school="currentSchool"
+        :mine-only="mineOnly"
         @change-tab="handleTabChange"
+        @toggle-mine="handleMineToggle"
         @open-school-popup="openSchoolPopup"
       />
     </view>
@@ -35,8 +37,8 @@
       </view>
 
       <view v-else-if="posts.length === 0" class="state-card">
-        <text class="state-title">暂无动态</text>
-        <text class="state-text">发布第一条校园动态，和同学一起交流吧</text>
+        <text class="state-title">{{ emptyStateTitle }}</text>
+        <text class="state-text">{{ emptyStateText }}</text>
       </view>
 
       <view v-else class="feed-shell">
@@ -124,8 +126,9 @@
 </template>
 
 <script>
-import { getCurrentUserToken, getHttpService } from '@/utils/http-services'
+import { getCurrentUserInfo, getCurrentUserToken, getHttpService } from '@/utils/http-services'
 import { getCachedImageSync, resolveCachedImage } from '@/utils/remote-image-cache'
+import { buildDefaultSharePayload, buildDefaultTimelinePayload } from '@/utils/share'
 import {
   getForumPublishProfileStateFromCache,
   saveForumPublishProfile,
@@ -176,6 +179,8 @@ export default {
   data() {
     return {
       activeTab: 'local',
+      lastBrowseTab: 'local',
+      mineOnly: false,
       heroImageUrl: getCachedImageSync(FORUM_HERO_IMAGE_URL),
       publishButtonImageUrl: getCachedImageSync(PUBLISH_BUTTON_IMAGE_URL),
       publishButtonImageLoadFailed: false,
@@ -204,16 +209,17 @@ export default {
       },
       showDeletePostDialog: false,
       deletingPost: false,
-      pendingDeletePost: null
+      pendingDeletePost: null,
     }
   },
   computed: {
     visiblePosts() {
-      if (this.activeTab !== 'local') {
-        return this.posts
+      const scopedPosts = this.getMineScopedPosts(this.posts)
+      if (this.mineOnly || this.activeTab !== 'local') {
+        return scopedPosts
       }
       const targetSchool = this.normalizeSchoolDisplay(this.currentSchool || DEFAULT_HOME_SCHOOL)
-      return this.posts.filter((item) => {
+      return scopedPosts.filter((item) => {
         return this.normalizeSchoolDisplay(item && item.school) === targetSchool
       })
     },
@@ -226,6 +232,14 @@ export default {
     resolvedPublishButtonImageUrl() {
       if (this.publishButtonImageLoadFailed) return ''
       return this.publishButtonImageUrl
+    },
+    emptyStateTitle() {
+      return this.mineOnly ? '当前筛选下还没有你的动态' : '暂无动态'
+    },
+    emptyStateText() {
+      return this.mineOnly
+        ? '去发布一条动态后，再回来看看吧'
+        : '发布第一条校园动态，和同学一起交流吧'
     },
     pendingDeletePostTitle() {
       return this.getPostDisplayTitle(this.pendingDeletePost)
@@ -258,20 +272,38 @@ export default {
   onUnload() {
     this.unregisterEvents()
   },
+  onShareAppMessage(res = {}) {
+    const dataset = (res && res.target && res.target.dataset) || {}
+    const postId = String(dataset.postId || '').trim()
+    const post = postId
+      ? (Array.isArray(this.posts) ? this.posts : []).find((item) => String(item.id || '') === postId)
+      : null
+    if (post) {
+      return this.buildPostSharePayload(post)
+    }
+
+    return buildDefaultSharePayload(this)
+  },
+  onShareTimeline() {
+    return buildDefaultTimelinePayload(this)
+  },
   methods: {
     restoreCachedFeedState() {
       const cachedState = loadCachedForumFeedState()
       if (!cachedState) return
 
       this.activeTab = cachedState.activeTab || this.activeTab
+      this.lastBrowseTab = this.activeTab || 'local'
       if (this.activeTab === 'local' && cachedState.currentSchool) {
         this.currentSchool = this.normalizeSchoolDisplay(cachedState.currentSchool)
       }
+      this.mineOnly = !!cachedState.mineOnly && !!this.getToken()
     },
     applyCachedFeedList() {
       const cached = loadCachedForumPostList({
         activeTab: this.activeTab,
         currentSchool: this.currentSchool,
+        mineOnly: this.mineOnly,
         pageSize: this.pageSize
       })
       if (!cached || !Array.isArray(cached.list)) return false
@@ -348,6 +380,28 @@ export default {
     getToken() {
       return getCurrentUserToken()
     },
+    getCurrentUserFilterId() {
+      const currentUser = getCurrentUserInfo()
+      return String(
+        (currentUser && (currentUser.uid || currentUser.userId || currentUser.id || currentUser.user_id)) ||
+        uni.getStorageSync('userId') ||
+        ''
+      ).trim()
+    },
+    getMineScopedPosts(list = []) {
+      const items = Array.isArray(list) ? list : []
+      if (!this.mineOnly) return items
+
+      const currentUserId = this.getCurrentUserFilterId()
+      if (!currentUserId) return []
+
+      return items.filter((item) => {
+        return String(
+          (item && (item.user_id || item.userId || item.uid || item.author_id || item.authorId)) ||
+          ''
+        ).trim() === currentUserId
+      })
+    },
     ensureLogin(actionText) {
       const token = this.getToken()
       if (token) return token
@@ -403,6 +457,7 @@ export default {
       saveCachedForumPostList(this.posts, {
         activeTab: this.activeTab,
         currentSchool: this.currentSchool,
+        mineOnly: this.mineOnly,
         page: this.page,
         pageSize: this.pageSize,
         hasMore: this.hasMore
@@ -422,6 +477,7 @@ export default {
       saveCachedForumPostList(this.posts, {
         activeTab: this.activeTab,
         currentSchool: this.currentSchool,
+        mineOnly: this.mineOnly,
         page: this.page,
         pageSize: this.pageSize,
         hasMore: this.hasMore
@@ -482,12 +538,13 @@ export default {
 
       try {
         const forumService = getHttpService('forum-service')
-        const requestedSchool = this.activeTab === 'local'
+        const requestedSchool = this.activeTab === 'local' && !this.mineOnly
           ? this.normalizeSchoolDisplay(this.currentSchool)
           : ''
         const params = {
           tab: this.activeTab,
           school: requestedSchool,
+          mine: this.mineOnly,
           page: this.page,
           pageSize: this.pageSize
         }
@@ -521,6 +578,7 @@ export default {
         applySchoolMeta(data)
 
         const shouldRetryLocalInitialFetch = reset &&
+          !this.mineOnly &&
           this.activeTab === 'local' &&
           !requestedSchool &&
           !!this.currentSchool
@@ -543,8 +601,8 @@ export default {
           return nextItem
         })
 
-        let nextList = normalizedList
-        if (this.activeTab === 'local') {
+        let nextList = this.getMineScopedPosts(normalizedList)
+        if (!this.mineOnly && this.activeTab === 'local') {
           const targetSchool = this.normalizeSchoolDisplay(
             this.currentSchool || data.current_school || DEFAULT_HOME_SCHOOL
           )
@@ -564,11 +622,13 @@ export default {
         this.loadErrorMessage = ''
         saveCachedForumFeedState({
           activeTab: this.activeTab,
-          currentSchool: this.currentSchool
+          currentSchool: this.currentSchool,
+          mineOnly: this.mineOnly
         })
         saveCachedForumPostList(this.posts, {
           activeTab: this.activeTab,
           currentSchool: this.currentSchool,
+          mineOnly: this.mineOnly,
           page: config.preserveExisting ? (config.previousPage || 1) : this.page,
           pageSize: this.pageSize,
           hasMore: this.hasMore
@@ -594,12 +654,43 @@ export default {
       }
     },
     async handleTabChange(tab) {
-      if (this.activeTab === tab || this.feedRefreshingSilently) return
+      if ((this.activeTab === tab && !this.mineOnly) || this.feedRefreshingSilently) return
       const previousTab = this.activeTab
+      const previousMineOnly = this.mineOnly
+      const previousLastBrowseTab = this.lastBrowseTab
+      this.lastBrowseTab = tab
+      this.mineOnly = false
       this.activeTab = tab
       const succeeded = await this.refreshList()
       if (!succeeded) {
         this.activeTab = previousTab
+        this.mineOnly = previousMineOnly
+        this.lastBrowseTab = previousLastBrowseTab
+      }
+    },
+    async handleMineToggle() {
+      if (this.feedRefreshingSilently) return
+
+      const nextMineOnly = !this.mineOnly
+      if (nextMineOnly && !this.ensureLogin('查看我的动态')) {
+        return
+      }
+
+      const previousMineOnly = this.mineOnly
+      const previousTab = this.activeTab
+      const previousLastBrowseTab = this.lastBrowseTab
+      if (nextMineOnly) {
+        this.lastBrowseTab = this.activeTab || this.lastBrowseTab || 'local'
+        this.activeTab = 'local'
+      } else {
+        this.activeTab = this.lastBrowseTab || 'local'
+      }
+      this.mineOnly = nextMineOnly
+      const succeeded = await this.refreshList()
+      if (!succeeded) {
+        this.mineOnly = previousMineOnly
+        this.activeTab = previousTab
+        this.lastBrowseTab = previousLastBrowseTab
       }
     },
     async handleSchoolChange(school) {
@@ -851,6 +942,35 @@ export default {
       uni.navigateTo({
         url: `/subpackages/forum/detail?id=${encodeURIComponent(post.id)}`
       })
+    },
+    buildPostSharePayload(post) {
+      const currentUser = getCurrentUserInfo()
+      const inviterId = String((currentUser && currentUser.uid) || this.global_uid || '').trim()
+      const inviterName = String(
+        (currentUser && (currentUser.nickname || currentUser.username)) ||
+        '你的好友'
+      ).trim() || '你的好友'
+      const cachedShare = post && post.postId ? post : (uni.getStorageSync('forum_share_post_context') || {})
+      const rawTitle = String((post && post.title) || cachedShare.title || '').trim()
+      const rawContent = String((post && post.content) || cachedShare.content || '').trim().replace(/\s+/g, ' ')
+      const summary = rawTitle || (rawContent ? (rawContent.length > 20 ? `${rawContent.slice(0, 20)}...` : rawContent) : '')
+      const schoolName = String((post && post.school) || cachedShare.school || '').trim() || '校园'
+      const title = (post && (post.id || post.postId)) || cachedShare.postId
+        ? `${inviterName}邀请你看${schoolName}的这个动态${summary ? `：${summary}` : ''}`
+        : '校园动态'
+      const imageUrl = post && Array.isArray(post.images) && post.images.length > 0
+        ? String(post.images[0] || '').trim()
+        : String(cachedShare.imageUrl || '').trim()
+      const resolvedPostId = String((post && post.id) || cachedShare.postId || '').trim()
+      const path = resolvedPostId
+        ? `/subpackages/forum/detail?id=${encodeURIComponent(resolvedPostId)}${inviterId ? `&inviter_id=${encodeURIComponent(inviterId)}` : ''}`
+        : buildDefaultSharePayload(this).path
+
+      return {
+        title,
+        path,
+        imageUrl: imageUrl || this.heroImageUrl || FORUM_HERO_IMAGE_URL
+      }
     },
     goPublish() {
       if (this.savingPublishProfile) return

@@ -1,4 +1,5 @@
 const authUtils = require('auth-utils')
+const TEAM_JOIN_PAYMENT_AMOUNT = 29.9
 
 module.exports = {
     _before: function () {
@@ -27,7 +28,7 @@ module.exports = {
     },
 
     /**
-     * 创建入团支付订单 (固定 19.9)
+     * 创建入团支付订单 (固定 29.9)
      */
     async createJoinOrder({ teamId, inviterId }) {
         if (!this.currentUser) return { code: -1, message: '请先登录' }
@@ -81,7 +82,7 @@ module.exports = {
 
                 businessId: `team_join_${teamId}`,
                 businessName: `加入${team.team_name}`,
-                amount: 19.9,
+                amount: TEAM_JOIN_PAYMENT_AMOUNT,
                 extraData: {
                     scene: 'team_join',
                     teamId: teamId,
@@ -261,7 +262,7 @@ module.exports = {
                 new_user_id: uid,
                 order_no: orderNo,
                 status: 'paid', // 已支付入团
-                amount: 19.9,
+                amount: TEAM_JOIN_PAYMENT_AMOUNT,
                 create_date: Date.now()
             })
 

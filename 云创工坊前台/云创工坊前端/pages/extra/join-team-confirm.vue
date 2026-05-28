@@ -1,152 +1,194 @@
 <template>
 	<view class="page-root">
-		<view class="poster-shell">
-			<image class="poster-image" :src="rechargeBackgroundUrl" mode="widthFix" :webp="true" />
-			<view class="back-hotspot" @tap="handleBack"></view>
-			<view class="poster-overlay">
-				<view class="overlay-top">
-					<view class="invite-hero-meta">
-						<text class="invite-hero-label">邀请人</text>
-						<view class="invite-hero-inviter">
-							<image class="inviter-avatar" :src="normalizeAvatarUrl(inviterAvatar, defaultAvatar)" mode="aspectFill" />
-							<text class="inviter-name">{{ displayInviterName }}</text>
+		<scroll-view class="poster-scroll" scroll-y="true">
+			<view class="poster-shell">
+				<view class="poster-panel poster-panel-hero">
+					<image class="poster-image" :src="posterStep1Url" mode="widthFix" :webp="true" />
+					<view class="poster-price-tag">
+						<image class="poster-price-tag-image" :src="priceTagImageUrl" mode="widthFix" />
+						<text class="poster-price-tag-amount">{{ displayJoinFee || '--' }}</text>
+					</view>
+					<view class="poster-hero-overlay">
+						<text class="poster-hero-join">加入{{ heroTeamName }}团队</text>
+					</view>
+				</view>
+				<view class="poster-panel poster-panel-info">
+					<image class="poster-image" :src="posterStep2Url" mode="widthFix" :webp="true" />
+					<view class="poster-info-overlay">
+						<view class="info-card info-card-inviter">
+							<image class="info-avatar" :src="inviterAvatar || defaultAvatar" mode="aspectFill" />
+							<view class="info-copy">
+								<text class="info-label">邀请人</text>
+								<text class="info-name">{{ inviterDisplayName }}</text>
+								<text class="info-desc">{{ inviterId ? `UID ${inviterId}` : '暂无邀请人信息' }}</text>
+							</view>
+						</view>
+						<view class="info-card info-card-team">
+							<text class="info-title">团队成员</text>
+							<view class="info-team-row">
+								<text class="info-count">{{ displayMemberCount }}</text>
+								<text class="info-desc info-count-desc">已加入团队</text>
+							</view>
 						</view>
 					</view>
-
-					<view class="hero-team-block">
-						<text class="hero-team-title">加入{{ heroTeamName }}团队</text>
-						<text class="hero-team-members">{{ heroMemberSummary }}</text>
-					</view>
 				</view>
-
-				<view class="action-footer">
-					<view class="pay-btn-shell" :class="{ 'is-disabled': loading || !resolvedTeamId }">
-						<button
-							class="pay-btn"
-							hover-class="btn-hover"
-							:disabled="loading || !resolvedTeamId"
-							@tap="handlePayAndJoin"
-						>
-							<image
-								v-if="!loading"
-								class="pay-btn-art"
-								:src="joinButtonImageUrl"
-								mode="widthFix"
-								:webp="true"
-							/>
-							<view v-else class="pay-btn-loading">
-								<text class="pay-btn-loading-text">创建订单中...</text>
-							</view>
-						</button>
+				<view class="poster-panel poster-panel-pay">
+					<image class="poster-image" :src="posterStep3Url" mode="widthFix" :webp="true" />
+					<view class="poster-step3-price">
+						<text class="poster-step3-price-amount">{{ displayJoinFee || '--' }}</text>
 					</view>
-					<view class="cancel-link" @tap="cancelJoin">暂不加入</view>
+					<view class="poster-pay-overlay">
+						<view class="pay-btn-shell" :class="{ 'is-disabled': loading || !resolvedTeamId }">
+							<button
+								class="pay-btn"
+								hover-class="btn-hover"
+								:disabled="loading || !resolvedTeamId"
+								@tap="handlePayAndJoin"
+							>
+								<view v-if="!loading" class="pay-btn-content">
+									<image
+										class="pay-btn-art"
+										:src="joinButtonImageUrl"
+										mode="widthFix"
+										:webp="true"
+									/>
+									<text class="pay-btn-amount">{{ displayJoinFee || '--' }}</text>
+								</view>
+								<view v-else class="pay-btn-loading">
+									<text class="pay-btn-loading-text">创建订单中...</text>
+								</view>
+							</button>
+						</view>
+						<text class="cancel-link" @tap="cancelJoin">暂不加入</text>
+					</view>
 				</view>
 			</view>
-		</view>
+		</scroll-view>
+		<view class="back-hotspot" @tap="handleBack"></view>
 	</view>
 </template>
 
 <script>
 import { getCurrentUserInfo, getHttpService } from '@/utils/http-services'
 import { confirmPayment, createPaymentOrder } from '../../utils/payment-api'
+import { getStaticAssetUrl } from '../../utils/cloud-static-assets'
 
-const JOIN_BUTTON_IMAGE_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/team-join/campus-partner-join-button-v2.webp'
-const CAMPUS_PARTNER_RECHARGE_BG_URL = 'https://xuechuang.xyz/oss/share-assets/xuechuang/team-join/campus-partner-recharge-bg-v2.webp'
+const TEAM_JOIN_POSTER_STEP_1_URL = getStaticAssetUrl('/static/team-pay-29-9/1.png')
+const TEAM_JOIN_POSTER_STEP_2_URL = getStaticAssetUrl('/static/team-pay-29-9/2.png')
+const TEAM_JOIN_POSTER_STEP_3_URL = getStaticAssetUrl('/static/team-pay-29-9/3-other-amount.png')
+const JOIN_BUTTON_IMAGE_URL = getStaticAssetUrl('/static/team-pay-29-9/pay-button-v2.png')
+const PRICE_TAG_IMAGE_URL = getStaticAssetUrl('/static/team-pay-29-9/price-tag-top.png')
+
+function toPositiveJoinFee(value) {
+	const amount = Number(value)
+	if (!Number.isFinite(amount) || amount <= 0) {
+		return 0
+	}
+	return Math.round((amount + Number.EPSILON) * 100) / 100
+}
+
+function formatJoinFee(value) {
+	const amount = toPositiveJoinFee(value)
+	if (!amount) {
+		return ''
+	}
+	return amount.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')
+}
 
 export default {
 	computed: {
 		resolvedTeamId() {
 			return this.getTeamId(this.teamInfo) || String(this.teamId || '').trim()
 		},
+		heroTeamName() {
+			const teamInfo = this.teamInfo || {}
+			return String(teamInfo.team_name || '').trim() || '校园合伙人'
+		},
+		displayMemberCount() {
+			const teamInfo = this.teamInfo || {}
+			const rawCount = teamInfo.member_count != null ? teamInfo.member_count : 0
+			const count = Number(rawCount)
+			return Number.isFinite(count) && count >= 0 ? String(count) : '0'
+		},
+		inviterDisplayName() {
+			return String(this.inviterName || '').trim() || '邀请人'
+		},
 		joinFeeValue() {
-			const rawFee = this.teamInfo && this.teamInfo.join_fee
-			const fee = Number(rawFee)
-			return Number.isFinite(fee) && fee > 0 ? fee : 19.9
+			const teamInfo = this.teamInfo || {}
+			return toPositiveJoinFee(
+				teamInfo.join_fee !== undefined ? teamInfo.join_fee : (
+					teamInfo.joinFee !== undefined ? teamInfo.joinFee : (
+						teamInfo.paymentAmount !== undefined ? teamInfo.paymentAmount : teamInfo.payment_amount
+					)
+				)
+			)
 		},
 		displayJoinFee() {
-			return this.joinFeeValue.toFixed(1).replace(/\.0$/, '')
+			return formatJoinFee(this.joinFeeValue)
 		},
-		displayInviterName() {
-			const name = String(this.inviterName || '').trim()
-			return name || '专属邀请人'
-		},
-		heroTeamName() {
-			const name = String((this.teamInfo && this.teamInfo.team_name) || '').trim()
-			return name || '校园合伙人'
-		},
-		heroMemberSummary() {
-			const count = Number(this.teamInfo && this.teamInfo.member_count)
-			return `团队成员 ${Number.isFinite(count) && count > 0 ? count : 0} 人`
+		hasValidJoinFee() {
+			return this.joinFeeValue > 0
 		}
 	},
 	data() {
 		return {
 			inviterId: '',
-			teamId: '', // [NEW] 支持直接传 team_id
+			teamId: '',
 			inviterName: '...',
 			inviterAvatar: '',
-			teamInfo: {}, // 这是一个对象，包含 team_name, team_level 等
+			teamInfo: {},
 			defaultAvatar: 'https://vkceyugu.cdn.bspapp.com/VKCEYUGU-uni-id-avatar/default-avatar.png',
-			rechargeBackgroundUrl: CAMPUS_PARTNER_RECHARGE_BG_URL,
+			posterStep1Url: TEAM_JOIN_POSTER_STEP_1_URL,
+			posterStep2Url: TEAM_JOIN_POSTER_STEP_2_URL,
+			posterStep3Url: TEAM_JOIN_POSTER_STEP_3_URL,
 			joinButtonImageUrl: JOIN_BUTTON_IMAGE_URL,
+			priceTagImageUrl: PRICE_TAG_IMAGE_URL,
 			loading: false,
 			currentOrderNo: '',
 			currentUid: ''
 		}
 	},
-	onLoad(options) {
-		console.log('[join-team-confirm] onLoad 接收到参数:', JSON.stringify(options))
-		
-		// 获取当前用户ID用于调试
+	onLoad(options = {}) {
 		const userInfo = getCurrentUserInfo()
 		this.currentUid = userInfo.uid
-		console.log('[join-team-confirm] currentUid:', this.currentUid)
 
-		// [双重保险] 优先取 URL 参数的 inviter_id
 		if (options.inviter_id) {
 			this.inviterId = options.inviter_id
-			console.log('[join-team-confirm] 使用 URL inviter_id 模式:', this.inviterId)
-			
-			// 同步到缓存(双重保险)
 			uni.setStorageSync('pending_team_invite', {
 				inviter: this.inviterId,
 				type: 'team_invite',
 				timestamp: Date.now(),
 				source: 'join_confirm_url'
 			})
-			
 			this.loadTeamInfoByInviter()
-		} 
-		// [NEW] 如果没有inviter_id，但有team_id (比如直接点击列表加入)
-		else if (options.team_id) {
+			return
+		}
+
+		if (options.team_id) {
 			this.teamId = options.team_id
-			this.inviterName = '无推荐人' // 或者不显示推荐人区域
-			console.log('[join-team-confirm] 使用 team_id 模式:', this.teamId)
+			this.inviterName = '无推荐人'
 			this.restoreTeamSnapshot()
 			this.loadTeamInfoById()
+			return
 		}
-		// [双重保险] 兜底：从缓存读取
-		else {
-			const cached = uni.getStorageSync('pending_team_invite')
-			if (cached && cached.inviter) {
-				this.inviterId = cached.inviter
-				console.log('[join-team-confirm] 从缓存恢复 inviter_id:', this.inviterId)
-				this.loadTeamInfoByInviter()
-			} else {
-				console.error('[join-team-confirm] 参数错误 - 缺少 inviter_id 和 team_id，且缓存为空')
-				uni.showToast({ title: '参数错误', icon: 'none' })
-				setTimeout(() => {
-					uni.reLaunch({ url: '/subpackages/volunteer/guide-redirect' })
-				}, 1500)
-			}
+
+		const cached = uni.getStorageSync('pending_team_invite')
+		if (cached && cached.inviter) {
+			this.inviterId = cached.inviter
+			this.loadTeamInfoByInviter()
+			return
 		}
+
+		uni.showToast({ title: '参数错误', icon: 'none' })
+		setTimeout(() => {
+			uni.reLaunch({ url: '/subpackages/volunteer/guide-redirect' })
+		}, 1500)
 	},
 	methods: {
 		getTeamId(team) {
 			if (!team || typeof team !== 'object') return ''
 			return String(team.team_id || team.teamId || team.id || team._id || '').trim()
 		},
-
 		applyTeamInfo(team) {
 			if (!team || typeof team !== 'object') return
 			const resolvedTeamId = this.getTeamId(team) || String(this.teamId || '').trim()
@@ -157,7 +199,6 @@ export default {
 				this.teamId = resolvedTeamId
 			}
 		},
-
 		restoreTeamSnapshot() {
 			try {
 				const cachedTeam = uni.getStorageSync('pending_join_team_snapshot')
@@ -172,64 +213,47 @@ export default {
 				return false
 			}
 		},
-
 		async loadTeamInfoByInviter() {
-		try {
-			console.log('[join-team-confirm] 开始加载团队信息 - inviterId:', this.inviterId)
-			const teamService = getHttpService('team-service')
-			// 不需要传 token，已在云对象侧配置白名单
-			const res = await teamService.getTeamInfoByInviter(this.inviterId)
-			console.log('[join-team-confirm] 获取团队信息返回:', JSON.stringify(res))
-			
-			if (res && res.code === 0 && res.data) {
-				this.applyTeamInfo(res.data) // data 里包含了 team_id, team_name 等
-				this.inviterName = res.data.inviter_name
-				this.inviterAvatar = res.data.inviter_avatar
-				console.log('[join-team-confirm] 团队信息加载成功 - teamId:', this.teamId, 'teamName:', this.teamInfo.team_name, 'inviterName:', this.inviterName)
-				
-				// [NEW] 立即记录团队邀请查看日志 (解决老用户已登录不触发 loginByWeixin 的问题)
-				await this.recordTeamInviteView()
-			} else {
-				console.error('[join-team-confirm] 获取团队信息失败:', res)
-				this.handleLoadError(res.message)
-			}
-		} catch (e) {
-			console.error('[join-team-confirm] 加载团队信息异常:', e)
-			this.handleLoadError('网络错误')
-		}
-	},
-
-		// [NEW] 根据 team_id 加载信息 (当没有推荐人时)
-		async loadTeamInfoById() {
 			try {
 				const teamService = getHttpService('team-service')
+				const res = await teamService.getTeamInfoByInviter(this.inviterId)
+				if (res && res.code === 0 && res.data) {
+					this.applyTeamInfo(res.data)
+					this.inviterName = res.data.inviter_name
+					this.inviterAvatar = res.data.inviter_avatar
+					await this.recordTeamInviteView()
+				} else {
+					this.handleLoadError(res && res.message)
+				}
+			} catch (e) {
+				console.error('[join-team-confirm] 加载团队信息异常:', e)
+				this.handleLoadError('网络错误')
+			}
+		},
+		async loadTeamInfoById() {
+			try {
 				const requestedTeamId = String(this.teamId || '').trim()
 				if (!requestedTeamId) {
 					this.handleLoadError('缺少团队ID')
 					return
 				}
+
+				const teamService = getHttpService('team-service')
 				const res = await teamService.getTeamDetail({ teamId: requestedTeamId })
-				
+
 				if (res && res.code === 0 && res.data) {
 					this.applyTeamInfo(res.data)
 					uni.setStorageSync('pending_join_team_snapshot', this.teamInfo)
-					// 如果是通过 ID 查的，teamInfo 里可能没有 inviter 相关字段
-					// 界面展示时需要注意 v-if
-				} else {
-					if (!this.teamInfo.team_name) {
-						this.handleLoadError(res && res.message)
-					} else {
-						console.warn('[join-team-confirm] 团队详情接口异常，继续使用缓存快照:', res)
-					}
+				} else if (!this.teamInfo.team_name) {
+					this.handleLoadError(res && res.message)
 				}
 			} catch (e) {
-				console.error('Failed to load team info', e)
+				console.error('[join-team-confirm] 加载团队详情失败:', e)
 				if (!this.teamInfo.team_name) {
 					this.handleLoadError('网络错误')
 				}
 			}
 		},
-
 		handleLoadError(msg) {
 			uni.showModal({
 				title: '提示',
@@ -240,26 +264,30 @@ export default {
 				}
 			})
 		},
-
 		async handlePayAndJoin() {
 			const token = uni.getStorageSync('token')
 			if (!token) {
 				uni.showToast({ title: '请先登录/注册', icon: 'none' })
 				setTimeout(() => {
-					const pendingData = {
+					uni.setStorageSync('pending_team_invite', {
 						type: 'team_invite',
 						inviter: this.inviterId,
 						tid: this.teamId
-					}
-					uni.setStorageSync('pending_team_invite', pendingData)
+					})
 					uni.navigateTo({ url: '/pages/auth/login/index' })
 				}, 1200)
 				return
 			}
 
-			if (this.loading) return
-			if (!this.resolvedTeamId) {
-				uni.showToast({ title: '【B-join-confirm】确认页 teamId 丢失', icon: 'none' })
+			if (this.loading || !this.resolvedTeamId) {
+				return
+			}
+
+			if (!this.hasValidJoinFee) {
+				uni.showToast({
+					title: '当前团队暂未配置入队费用',
+					icon: 'none'
+				})
 				return
 			}
 
@@ -281,7 +309,6 @@ export default {
 				this.loading = false
 			}
 		},
-
 		async createJoinOrder() {
 			const teamId = this.resolvedTeamId
 			const amount = this.joinFeeValue
@@ -292,7 +319,8 @@ export default {
 				extraData: {
 					scene: 'team_join',
 					teamId,
-					inviterId: this.inviterId || ''
+					inviterId: this.inviterId || '',
+					joinFee: amount
 				}
 			})
 
@@ -301,7 +329,6 @@ export default {
 			}
 			return res.data
 		},
-
 		async invokeWxPay(payParams = {}) {
 			if (!payParams || !payParams.timeStamp) {
 				throw new Error('支付参数异常')
@@ -314,7 +341,6 @@ export default {
 				paySign: payParams.paySign
 			})
 		},
-
 		async confirmJoinOrder(orderNo) {
 			const res = await confirmPayment({
 				orderNo
@@ -324,99 +350,100 @@ export default {
 				throw new Error(res.message || '支付确认失败')
 			}
 		},
-
 		async finalizeJoin(token, orderNo) {
-		const teamId = this.resolvedTeamId
-		const inviterId = this.inviterId || ''
-		
-		console.log('[join-team-confirm] 准备加入团队 - teamId:', teamId, 'inviterId:', inviterId, 'orderNo:', orderNo)
-		
-		const teamService = getHttpService('team-service')
-		const res = await teamService.applyJoinTeam({
-			_token: token,
-			teamId,
-			inviterId,
-			orderNo
-		})
-		
-		console.log('[join-team-confirm] 加入团队返回结果:', JSON.stringify(res))
+			const teamId = this.resolvedTeamId
+			const inviterId = this.inviterId || ''
+			const teamService = getHttpService('team-service')
+			const res = await teamService.applyJoinTeam({
+				_token: token,
+				teamId,
+				inviterId,
+				orderNo
+			})
 
-		if (res && res.code === 0) {
-			console.log('[join-team-confirm] 加入团队成功')
-			uni.showToast({ title: '加入成功', icon: 'success' })
-			uni.removeStorageSync('pending_team_invite')
-			uni.removeStorageSync('pending_inviter_id')
-			uni.removeStorageSync('pending_join_team_snapshot')
-			setTimeout(() => {
-				uni.reLaunch({ url: '/subpackages/volunteer/guide-redirect' })
-			}, 1200)
-		} else {
-			console.error('[join-team-confirm] 加入团队失败:', res)
-			throw new Error((res && res.message) || '加入团队失败')
-		}
-	},
-
-	// [NEW] 记录团队邀请查看日志
-	async recordTeamInviteView() {
-		try {
-			const token = uni.getStorageSync('token')
-			console.log('[join-team-confirm] 获取到的token:', token ? '有值' : '空值', 'inviterId:', this.inviterId)
-			
-			if (!token || !this.inviterId) {
-				console.log('[join-team-confirm] 跳过记录: token或inviterId缺失')
+			if (res && res.code === 0) {
+				uni.showToast({ title: '加入成功', icon: 'success' })
+				uni.removeStorageSync('pending_team_invite')
+				uni.removeStorageSync('pending_inviter_id')
+				uni.removeStorageSync('pending_join_team_snapshot')
+				setTimeout(() => {
+					const redirect = encodeURIComponent('/subpackages/volunteer/guide-redirect')
+					uni.reLaunch({
+						url: `/pages/extra/join-team-contact?teamId=${encodeURIComponent(String(teamId))}&redirect=${redirect}`
+					})
+				}, 1200)
 				return
 			}
-			
-			console.log('[join-team-confirm] 准备记录团队邀请查看 - inviterId:', this.inviterId)
-			
-			const userCenter = getHttpService('user-center')
-			const res = await userCenter.recordTeamInviteView({
-				_token: token,
-				inviterId: this.inviterId
-			})
-			
-			if (res && res.code === 0) {
-				console.log('[join-team-confirm] 团队邀请查看记录成功:', res.message)
-			} else {
-				console.warn('[join-team-confirm] 团队邀请查看记录失败:', res?.message)
-			}
-		} catch (e) {
-			console.error('[join-team-confirm] 记录团队邀请查看异常:', e)
-		}
-	},
 
-		cancelJoin() {
-				// 如果用户主动取消，是否要清除缓存？
-				// 策略：清除缓存，避免下次登录又跳进来。用户如果想加，需要重新扫码。
-				uni.removeStorageSync('pending_team_invite')
-				uni.removeStorageSync('pending_join_team_snapshot')
-				uni.reLaunch({ url: '/subpackages/volunteer/guide-redirect' })
-			},
-			handleBack() {
-				const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
-				if (Array.isArray(pages) && pages.length > 1) {
-					uni.navigateBack()
+			throw new Error((res && res.message) || '加入团队失败')
+		},
+		async recordTeamInviteView() {
+			try {
+				const token = uni.getStorageSync('token')
+				if (!token || !this.inviterId) {
 					return
 				}
-				this.cancelJoin()
+
+				const userCenter = getHttpService('user-center')
+				await userCenter.recordTeamInviteView({
+					_token: token,
+					inviterId: this.inviterId
+				})
+			} catch (e) {
+				console.error('[join-team-confirm] 记录团队邀请查看异常:', e)
 			}
+		},
+		cancelJoin() {
+			uni.removeStorageSync('pending_team_invite')
+			uni.removeStorageSync('pending_join_team_snapshot')
+			uni.reLaunch({ url: '/subpackages/volunteer/guide-redirect' })
+		},
+		handleBack() {
+			const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+			if (Array.isArray(pages) && pages.length > 1) {
+				uni.navigateBack()
+				return
+			}
+			this.cancelJoin()
 		}
 	}
+}
 </script>
 
 <style scoped>
 .page-root {
 	min-height: 100vh;
-	background: #ffffff;
+	background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+	position: relative;
+}
+
+.poster-scroll {
+	height: 100vh;
 }
 
 .poster-shell {
-	position: relative;
 	width: 100%;
 	max-width: 750rpx;
 	margin: 0 auto;
+	padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
+	box-sizing: border-box;
+}
+
+.poster-panel {
+	position: relative;
 	line-height: 0;
-	overflow: hidden;
+}
+
+.poster-panel-hero {
+	margin-bottom: -4rpx;
+}
+
+.poster-panel-info {
+	margin-top: -4rpx;
+}
+
+.poster-panel-pay {
+	padding-bottom: 18rpx;
 }
 
 .poster-image {
@@ -425,111 +452,194 @@ export default {
 	height: auto;
 }
 
-.back-hotspot {
+.poster-hero-overlay {
 	position: absolute;
-	top: 36rpx;
-	left: 18rpx;
+	left: 56rpx;
+	top: 168rpx;
+	z-index: 2;
+	pointer-events: none;
+}
+
+.poster-price-tag {
+	position: absolute;
+	left: 60rpx;
+	top: 78rpx;
+	width: 282rpx;
 	z-index: 3;
+}
+
+.poster-price-tag-image {
+	display: block;
+	width: 100%;
+}
+
+.poster-price-tag-amount {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	transform: translate(-50%, -54%);
+	min-width: 112rpx;
+	text-align: center;
+	font-size: 44rpx;
+	font-weight: 900;
+	line-height: 1;
+	color: #ffd861;
+	text-shadow: 0 4rpx 10rpx rgba(15, 23, 42, 0.22);
+}
+
+.poster-hero-join {
+	display: inline-block;
+	max-width: 420rpx;
+	font-size: 40rpx;
+	font-weight: 800;
+	line-height: 1.2;
+	color: #0f172a;
+	text-shadow: 0 4rpx 14rpx rgba(255, 255, 255, 0.7);
+}
+
+.poster-info-overlay {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 0;
+	bottom: 0;
+	padding: 14rpx 36rpx 12rpx;
+	box-sizing: border-box;
+	display: flex;
+	gap: 20rpx;
+	align-items: flex-end;
+}
+
+.info-card {
+	flex: 1;
+	min-width: 0;
+	border-radius: 22rpx;
+	background: rgba(255, 255, 255, 0.46);
+	border: 2rpx solid rgba(255, 255, 255, 0.72);
+	box-shadow: 0 10rpx 24rpx rgba(15, 23, 42, 0.06);
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+	display: flex;
+	align-items: center;
+	gap: 16rpx;
+	padding: 18rpx 18rpx 16rpx;
+	box-sizing: border-box;
+}
+
+.info-card-team {
+	flex-direction: column;
+	justify-content: center;
+	align-items: flex-start;
+	gap: 10rpx;
+	padding: 18rpx 20rpx 16rpx;
+	transform: translateY(-8rpx);
+}
+
+.info-avatar {
+	width: 72rpx;
+	height: 72rpx;
+	border-radius: 50%;
+	background: #e5eefc;
+	flex-shrink: 0;
+}
+
+.info-copy {
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6rpx;
+}
+
+.info-label {
+	font-size: 20rpx;
+	font-weight: 700;
+	color: #3b82f6;
+	letter-spacing: 2rpx;
+}
+
+.info-name {
+	font-size: 26rpx;
+	font-weight: 800;
+	color: #0f172a;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.info-count {
+	font-size: 42rpx;
+	font-weight: 900;
+	line-height: 1;
+	color: #ef4444;
+}
+
+.info-title {
+	font-size: 20rpx;
+	font-weight: 700;
+	color: #3b82f6;
+	letter-spacing: 2rpx;
+}
+
+.info-team-row {
+	display: flex;
+	align-items: baseline;
+	gap: 12rpx;
+}
+
+.info-count-desc {
+	align-self: center;
+}
+
+.info-desc {
+	font-size: 20rpx;
+	line-height: 1.3;
+	color: #64748b;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.poster-pay-overlay {
+	position: absolute;
+	left: 40rpx;
+	right: 40rpx;
+	bottom: 12rpx;
+	z-index: 3;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 14rpx;
+}
+
+.poster-step3-price {
+	position: absolute;
+	left: 198rpx;
+	top: 70rpx;
+	z-index: 3;
+	pointer-events: none;
+}
+
+.poster-step3-price-amount {
+	display: block;
+	font-size: 74rpx;
+	font-weight: 900;
+	line-height: 1;
+	color: #ff5a45;
+	letter-spacing: 1rpx;
+	text-shadow: 0 4rpx 12rpx rgba(255, 90, 69, 0.16);
+}
+
+.back-hotspot {
+	position: fixed;
+	top: 28rpx;
+	left: 18rpx;
+	z-index: 30;
 	width: 104rpx;
 	height: 104rpx;
 }
 
-.poster-overlay {
-	position: absolute;
-	inset: 0;
-	z-index: 2;
-	padding: 0;
-	box-sizing: border-box;
-	line-height: 1.4;
-}
-
-.overlay-top {
-	position: absolute;
-	top: 48rpx;
-	left: 56rpx;
-	right: 56rpx;
-	min-height: 320rpx;
-}
-
-.invite-hero-meta {
-	position: absolute;
-	top: 390rpx;
-	left: 0;
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 12rpx;
-	max-width: 420rpx;
-}
-
-.invite-hero-label {
-	font-size: 24rpx;
-	font-weight: 600;
-	letter-spacing: 2rpx;
-	color: #111827;
-}
-
-.invite-hero-inviter {
-	display: flex;
-	align-items: center;
-	gap: 10rpx;
-}
-
-.inviter-avatar {
-	width: 56rpx;
-	height: 56rpx;
-	border-radius: 28rpx;
-	border: 4rpx solid rgba(255, 255, 255, 0.92);
-	box-shadow: 0 10rpx 24rpx rgba(15, 23, 42, 0.14);
-}
-
-.inviter-name {
-	font-size: 34rpx;
-	font-weight: 700;
-	color: #111827;
-	line-height: 1.3;
-}
-
-.hero-team-block {
-	position: absolute;
-	top: 104rpx;
-	left: 0;
-	display: flex;
-	flex-direction: column;
-	gap: 8rpx;
-	max-width: 470rpx;
-}
-
-.hero-team-title {
-	font-size: 40rpx;
-	font-weight: 800;
-	line-height: 1.24;
-	color: #111827;
-}
-
-.hero-team-members {
-	font-size: 28rpx;
-	font-weight: 600;
-	line-height: 1.4;
-	color: #111827;
-}
-
-.action-footer {
-	position: absolute;
-	left: 66rpx;
-	right: 66rpx;
-	bottom: 52rpx;
-	box-sizing: border-box;
-}
-
 .pay-btn-shell {
 	width: 100%;
-	animation: payBtnPulse 2.8s ease-in-out infinite;
-	transform-origin: center;
-}
-
-.pay-btn-shell.is-disabled {
-	animation: none;
 }
 
 .pay-btn {
@@ -543,6 +653,11 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
+}
+
+.pay-btn-content {
+	position: relative;
+	width: 100%;
 }
 
 .pay-btn:active {
@@ -560,6 +675,29 @@ export default {
 .pay-btn-art {
 	display: block;
 	width: 100%;
+	transform-origin: center center;
+	animation: payBtnPulse 1.9s ease-in-out infinite;
+	filter: drop-shadow(0 14rpx 26rpx rgba(251, 146, 60, 0.28));
+}
+
+.pay-btn-amount {
+	position: absolute;
+	left: 164rpx;
+	top: 50%;
+	transform: translateY(-54%);
+	min-width: 98rpx;
+	text-align: center;
+	font-size: 40rpx;
+	font-weight: 900;
+	line-height: 1;
+	color: #fff2cf;
+	text-shadow: 0 4rpx 10rpx rgba(197, 85, 0, 0.26);
+	pointer-events: none;
+}
+
+.pay-btn-shell.is-disabled .pay-btn-art {
+	animation: none;
+	filter: none;
 }
 
 .pay-btn-loading {
@@ -578,11 +716,12 @@ export default {
 }
 
 .cancel-link {
-	margin-top: 18rpx;
 	text-align: center;
 	font-size: 26rpx;
 	color: #6b7280;
-	padding: 12rpx 0;
+	padding: 12rpx 22rpx;
+	background: rgba(255, 255, 255, 0.72);
+	border-radius: 999rpx;
 }
 
 @keyframes payBtnPulse {
@@ -592,12 +731,10 @@ export default {
 		filter: brightness(1);
 	}
 	45% {
-		transform: scale(1.02);
-		filter: brightness(1.03);
+		transform: scale(1.035);
 	}
 	70% {
-		transform: scale(0.995);
-		filter: brightness(0.99);
+		transform: scale(0.992);
 	}
 }
 </style>

@@ -28,13 +28,18 @@
 
         <view class="score-input-shell">
           <volunteer-input-field
+            ref="scoreInputField"
             v-model="scoreInput"
+            lazy-model
+            :commit-on-blur="false"
             input-class="score-input"
             type="digit"
             confirm-type="search"
             :disabled="!canEditScoreInput"
             :placeholder="canEditScoreInput ? '可不填分数，直接筛学校' : '分数已锁定'"
             placeholder-class="input-placeholder"
+            @focus="handleFilterInputFocus"
+            @blur="handleFilterInputBlur"
             @confirm="handleSearchAction"
           />
           <text class="score-unit">分</text>
@@ -44,21 +49,31 @@
       <view class="search-row">
         <view class="search-input-shell">
           <volunteer-input-field
+            ref="keywordInputField"
             v-model="keyword"
+            lazy-model
+            :commit-on-blur="false"
             input-class="search-input"
             confirm-type="search"
             placeholder="院校名称"
             placeholder-class="input-placeholder"
+            @focus="handleFilterInputFocus"
+            @blur="handleFilterInputBlur"
             @confirm="handleSearchAction"
           />
         </view>
         <view class="search-input-shell">
           <volunteer-input-field
+            ref="majorKeywordInputField"
             v-model="majorKeyword"
+            lazy-model
+            :commit-on-blur="false"
             input-class="search-input"
             confirm-type="search"
             placeholder="专业关键词"
             placeholder-class="input-placeholder"
+            @focus="handleFilterInputFocus"
+            @blur="handleFilterInputBlur"
             @confirm="handleSearchAction"
           />
         </view>
@@ -171,6 +186,7 @@
           />
         </view>
       </view>
+
     </view>
 
     <view v-if="userLoggedIn" class="volunteer-upsell-panel">
@@ -181,7 +197,7 @@
         :customer-service-phone="customerServicePhone"
         @invite="showShareUnlockPrompt"
         @vip="handleAdmissionUnlockPayment"
-        @vip-opened="showVipOpenedServiceModal"
+        @vip-opened="goToPay199Page"
       />
     </view>
 
@@ -204,29 +220,28 @@
       class="result-container"
       :class="{ 'result-container-covered': shouldCoverInstitutions }"
     >
-      <view class="result-summary">
+      <view v-if="!showLoading" class="result-summary">
         <text>{{ resultSummaryText }}</text>
         <text v-if="resultSummaryHintText" class="result-summary-hint">{{ resultSummaryHintText }}</text>
       </view>
 
-      <view v-if="showInstitutionLoadingRow" class="institution-loading-row">
-        <image
-          class="institution-loading-mascot"
-          :src="directScoreLoadingMascotUrl"
-          mode="widthFix"
-          :webp="true"
-        />
-        <image
-          class="institution-loading-copy"
-          :src="directScoreLoadingCopyUrl"
-          mode="widthFix"
-          :webp="true"
-        />
-      </view>
-
-      <view v-if="loading || guestPreviewLoading" class="state-box">
+      <view v-if="showLoading" class="state-box">
+        <view v-if="showInitialInstitutionLoadingVisual" class="institution-loading-row institution-loading-row-state">
+          <image
+            class="institution-loading-mascot"
+            :src="directScoreLoadingMascotUrl"
+            mode="widthFix"
+            :webp="true"
+          />
+          <image
+            class="institution-loading-copy"
+            :src="directScoreLoadingCopyUrl"
+            mode="widthFix"
+            :webp="true"
+          />
+        </view>
         <text>{{ institutionLoadingText }}</text>
-        <text class="state-desc">{{ institutionLoadingHintText }}</text>
+        <text v-if="institutionLoadingHintText" class="state-desc">{{ institutionLoadingHintText }}</text>
         <view class="state-action" @tap="handleForceInstitutionReload">
           <text>主动刷新</text>
         </view>
@@ -243,18 +258,15 @@
         <text>{{ emptyInstitutionStateText }}</text>
       </view>
 
-      <view v-else>
-        <volunteer-direct-score-results
-          :institutions="visibleInstitutions"
-          :major-category-filter="selectedMajorCategoryValue"
-          :subject-track-filter="selectedSubjectTrackValue"
-          :has-more="hasMore"
-          :loading-more="loadingMore"
-          :loading-more-text="institutionLoadProgressText"
-          @select="handleSchoolSelect"
-          @load-more="loadMore"
-        />
-      </view>
+      <volunteer-direct-score-results
+        v-else
+        :institutions="visibleInstitutions"
+        :major-category-filter="selectedMajorCategoryValue"
+        :major-keyword-filter="appliedMajorKeyword"
+        :subject-track-filter="selectedSubjectTrackValue"
+        :suspend-rendering="filterInputFocused"
+        @select="handleSchoolSelect"
+      />
 
       <view
         v-if="shouldCoverInstitutions"
@@ -307,7 +319,7 @@
       <view class="share-invite-sheet" @tap.stop>
         <text class="share-invite-sheet-title">分享查分链接</text>
         <text class="share-invite-sheet-desc">
-          分享{{ admissionUnlockStatus.requiredInviteCount || 3 }}人后计入解锁进度，发到聊天里的会是当前查分页链接，不会再跳团队二维码。
+          分享{{ lockedRequiredInviteCount }}人后计入解锁进度，发到聊天里的会是当前查分页链接，不会再跳团队二维码。
         </text>
         <button
           class="share-invite-sheet-primary"
@@ -388,7 +400,6 @@ const originalData = typeof baseVolunteerPageOptions.data === 'function'
 const originalOnLoad = baseVolunteerPageOptions.onLoad
 const originalOnShow = baseVolunteerPageOptions.onShow
 const originalOnPullDownRefresh = baseVolunteerPageOptions.onPullDownRefresh
-const originalOnReachBottom = baseVolunteerPageOptions.onReachBottom
 const originalOnShareAppMessage = baseVolunteerPageOptions.onShareAppMessage
 const originalOnUnload = baseVolunteerPageOptions.onUnload
 const baseComputed = baseVolunteerPageOptions.computed || {}
@@ -396,17 +407,12 @@ const computed = Object.assign({}, baseComputed, {
   loadedInstitutionCount() {
     return Array.isArray(this.institutions) ? this.institutions.length : 0
   },
-  institutionTotalCount() {
-    const total = Number(this.total || 0)
-    return Number.isFinite(total) && total > 0 ? total : 0
-  },
-  showInstitutionLoadingRow() {
-    if (!this.hasFullInstitutionAccess || this.loading || this.errorText) {
-      return false
-    }
-
-    return this.loadedInstitutionCount > 0 && (
-      this.loadingMore || this.institutionTotalCount > this.loadedInstitutionCount
+  showInitialInstitutionLoadingVisual() {
+    return Boolean(
+      this.hasFullInstitutionAccess &&
+      this.showLoading &&
+      !this.errorText &&
+      this.loadedInstitutionCount <= 0
     )
   }
 })
@@ -423,7 +429,8 @@ const data = function data() {
   })
 
   return Object.assign(baseData, {
-    riskFilterOptions: buildRiskFilterOptions(baseData.riskFilterOptions, getCachedStaticImage)
+    riskFilterOptions: buildRiskFilterOptions(baseData.riskFilterOptions, getCachedStaticImage),
+    filterInputFocused: false
   })
 }
 
@@ -488,24 +495,46 @@ const methods = Object.assign({}, originalMethods, {
       url: VOLUNTEER_HOME_PATH
     })
   },
+  goToPay199Page() {
+    uni.navigateTo({
+      url: '/subpackages/volunteer/pay-199',
+      fail: () => {
+        uni.reLaunch({
+          url: '/subpackages/volunteer/pay-199'
+        })
+      }
+    })
+  },
+  handleFilterInputFocus() {
+    this.filterInputFocused = true
+  },
+  handleFilterInputBlur() {
+    this.filterInputFocused = false
+  },
   beginSearchActionPress() {
     if (this.searchActionDisabled) return
 
-    if (this.searchActionPressTimer) {
-      clearTimeout(this.searchActionPressTimer)
-      this.searchActionPressTimer = null
-    }
-
-    this.queryActionPressed = true
+    this.beginPressState('searchActionPressTimer', 'queryActionPressed')
   },
   endSearchActionPress() {
-    if (this.searchActionPressTimer) {
-      clearTimeout(this.searchActionPressTimer)
+    this.endPressState('searchActionPressTimer', 'queryActionPressed')
+  },
+  beginPressState(timerKey, stateKey) {
+    if (this[timerKey]) {
+      clearTimeout(this[timerKey])
+      this[timerKey] = null
     }
 
-    this.searchActionPressTimer = setTimeout(() => {
-      this.queryActionPressed = false
-      this.searchActionPressTimer = null
+    this[stateKey] = true
+  },
+  endPressState(timerKey, stateKey) {
+    if (this[timerKey]) {
+      clearTimeout(this[timerKey])
+    }
+
+    this[timerKey] = setTimeout(() => {
+      this[stateKey] = false
+      this[timerKey] = null
     }, 120)
   }
 })
@@ -555,11 +584,7 @@ export default {
   onLoad,
   onShow,
   onPullDownRefresh,
-  onReachBottom(...args) {
-    if (typeof originalOnReachBottom === 'function') {
-      return originalOnReachBottom.apply(this, args)
-    }
-  },
+  onReachBottom() {},
   onShareAppMessage(...args) {
     if (typeof originalOnShareAppMessage === 'function') {
       return originalOnShareAppMessage.apply(this, args)

@@ -13,7 +13,7 @@
          <text class="icon-text">!</text>
        </view>
        <text class="title">无权查看</text>
-       <text class="desc">只能查看本人或直推下级的报名详情</text>
+       <text class="desc">只有组长可以查看他人订单内容</text>
     </view>
     
     <view v-else class="content-container">
@@ -141,6 +141,31 @@ export default {
     }
   },
   methods: {
+    normalizeDetail(raw) {
+      if (!raw || typeof raw !== 'object') return null
+      const extraPayload = raw.extraPayload && typeof raw.extraPayload === 'object' ? raw.extraPayload : {}
+      const createdAt = raw.create_date || raw.createdAt || raw.created_at || ''
+      const updatedAt = raw.update_date || raw.updatedAt || raw.updated_at || ''
+
+      return {
+        ...raw,
+        name: raw.name || raw.applicantName || '',
+        mobile: raw.mobile || '',
+        wechat_id: raw.wechat_id || raw.wechatId || '',
+        age: raw.age !== undefined && raw.age !== null && raw.age !== '' ? raw.age : (extraPayload.age || ''),
+        nation: raw.nation || '',
+        business_name: raw.business_name || raw.businessName || '',
+        school: raw.school || raw.schoolName || '',
+        entry_year: raw.entry_year || raw.entryYear || '',
+        work_duration: raw.work_duration || extraPayload.work_duration || '',
+        remark: raw.remark || '',
+        referrer: raw.referrer || raw.referrerName || '',
+        referrer_uid: raw.referrer_uid || raw.referrerUserId || '',
+        user_id: raw.user_id || raw.userId || '',
+        create_date: createdAt,
+        update_date: updatedAt
+      }
+    },
     async fetchDetail(signupId) {
       this.loading = true
       try {
@@ -154,7 +179,7 @@ export default {
         })
         
         if (res && res.code === 0 && res.data) {
-          this.detail = res.data
+          this.detail = this.normalizeDetail(res.data)
         } else if (res && res.code === -403) {
           this.permissionDenied = true
         } else {

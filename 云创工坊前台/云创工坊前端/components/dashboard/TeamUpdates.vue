@@ -4,16 +4,16 @@
 			<view class="card-header">
 					<view class="card-header-left">
 						<view class="card-header-bar" />
-						<text class="card-header-title">多级直推动态（开单，含自己）</text>
+						<text class="card-header-title">多级直推动态</text>
 					</view>
 				<text class="card-header-badge">Live</text>
 			</view>
 
-			<view v-if="!loggedIn" class="empty">登录后可查看团队动态</view>
+			<view v-if="!loggedIn" class="empty">登录后可查看多级直推动态</view>
 			<view v-else>
 				<view v-if="loading" class="empty">加载中...</view>
 				<view v-else>
-					<view v-if="list.length === 0" class="empty">暂无伙伴动态</view>
+					<view v-if="list.length === 0" class="empty">暂无多级直推动态</view>
 					<view v-else>
 						<view class="updates-list">
 							<view v-for="item in list" :key="item.id" class="update-item">
@@ -21,7 +21,7 @@
 								<view class="update-content">
 									<view class="update-title">
 										<text class="update-name">{{ item.inviter_name }}</text>
-										<text class="update-level-text" :class="'level-' + (item.level || 0)">({{ item.level_label || '伙伴' }})</text>
+										<text class="update-level-text" :class="'level-' + (item.level || 0)">{{ formatLevelRole(item) }}</text>
 										<template v-if="item.action_type === 'invite'">
 											<text class="update-detail">邀请了</text>
 											<text class="update-invitee">{{ item.invitee_name }}</text>
@@ -127,6 +127,10 @@ export default {
 			if (diff < hour) return Math.floor(diff / min) + ' 分钟前'
 			if (diff < day) return Math.floor(diff / hour) + ' 小时前'
 			return Math.floor(diff / day) + ' 天前'
+		},
+		formatLevelRole(item) {
+			const rawLevelLabel = item && item.level_label ? String(item.level_label) : (Number(item?.level || 0) === 0 ? '本人' : '')
+			return rawLevelLabel || '本人'
 		}
 	}
 }
@@ -250,13 +254,78 @@ export default {
 
 	.update-level-text {
 		font-size: 24rpx;
-		color: #6366f1;
 		margin-right: 8rpx;
 		font-weight: 800;
+		padding: 6rpx 14rpx;
+		border-radius: 999rpx;
+		border: 1rpx solid transparent;
+		line-height: 1;
 	}
 
 	.level-0 {
-		color: #f59e0b;
+		color: #92400e;
+		background: #fef3c7;
+		border-color: #fcd34d;
+	}
+
+	.level-1 {
+		color: #1d4ed8;
+		background: #dbeafe;
+		border-color: #93c5fd;
+	}
+
+	.level-2 {
+		color: #0369a1;
+		background: #e0f2fe;
+		border-color: #7dd3fc;
+	}
+
+	.level-3 {
+		color: #0f766e;
+		background: #ccfbf1;
+		border-color: #5eead4;
+	}
+
+	.level-4 {
+		color: #15803d;
+		background: #dcfce7;
+		border-color: #86efac;
+	}
+
+	.level-5 {
+		color: #65a30d;
+		background: #ecfccb;
+		border-color: #bef264;
+	}
+
+	.level-6 {
+		color: #b45309;
+		background: #fef3c7;
+		border-color: #fbbf24;
+	}
+
+	.level-7 {
+		color: #c2410c;
+		background: #ffedd5;
+		border-color: #fdba74;
+	}
+
+	.level-8 {
+		color: #be123c;
+		background: #ffe4e6;
+		border-color: #fda4af;
+	}
+
+	.level-9 {
+		color: #9d174d;
+		background: #fce7f3;
+		border-color: #f9a8d4;
+	}
+
+	.level-10 {
+		color: #6d28d9;
+		background: #ede9fe;
+		border-color: #c4b5fd;
 	}
 
 	.update-time {

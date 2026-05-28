@@ -73,7 +73,7 @@
 </template>
 
 <script>
-import { getHttpService, getCurrentUserInfo, getCurrentUserToken, normalizeUserInfo } from '@/utils/http-services'
+import { clearCurrentUserSession, getHttpService, getCurrentUserInfo, getCurrentUserToken, normalizeUserInfo } from '@/utils/http-services'
 import { getApiBaseUrl } from '@/utils/api-switch.js'
 export default {
   data() {
@@ -155,7 +155,7 @@ export default {
     this.initInviterInfo()
     if (this.forceLogin) {
       console.log('[login] 检测到 forceLogin，清理本地会话后等待重新登录')
-      this.clearLocalSession()
+      this.clearLocalSession({ resetApiBaseUrl: true })
       return
     }
     this.tryRestoreSession()
@@ -175,7 +175,31 @@ export default {
         ''
       )
 
-      return errcode === 40029 || /invalid code/i.test(combinedMessage)
+      return errcode === 40029 || errcode === 40163 || /invalid code|code been used/i.test(combinedMessage)
+    },
+
+    showWechatLoginError(result) {
+      if (this.isWechatCodeInvalid(result)) {
+        console.warn('[login] 检测到无效微信凭证，已清理旧登录凭证与接口缓存')
+        this.clearLocalSession({ resetApiBaseUrl: true })
+        uni.showModal({
+          title: '微信登录失败',
+          content:
+            `当前微信登录凭证无效，系统已自动重试但仍未成功。\n\n` +
+            `请优先检查：\n` +
+            `1. 当前接口地址是否切到了旧测试环境\n` +
+            `2. 后端 WECHAT_APP_ID 是否和小程序 appid 一致\n\n` +
+            `当前接口：${String(getApiBaseUrl() || '').replace(/\/+$/, '')}`,
+          showCancel: false,
+          confirmText: '知道了'
+        })
+        return
+      }
+
+      uni.showToast({
+        title: (result && result.message) || '登录失败',
+        icon: 'none'
+      })
     },
 
     getWechatLoginCode() {
@@ -361,14 +385,8 @@ export default {
       }
     },
 
-    clearLocalSession() {
-      uni.removeStorageSync('token')
-      uni.removeStorageSync('accessToken')
-      uni.removeStorageSync('refreshToken')
-      uni.removeStorageSync('userInfo')
-      uni.removeStorageSync('userId')
-      uni.removeStorageSync('uni_id_token')
-      uni.removeStorageSync('uni_id_token_expired')
+    clearLocalSession(options = {}) {
+      clearCurrentUserSession(options)
       this.isLoggedIn = false
       this.userId = ''
       this.userNickname = ''
@@ -542,10 +560,7 @@ export default {
             return
           }
 
-          uni.showToast({
-            title: (result && result.message) || '登录失败',
-            icon: 'none'
-          })
+          this.showWechatLoginError(result)
         } catch (e) {
           console.error('[login] 登录异常:', e)
           uni.showToast({

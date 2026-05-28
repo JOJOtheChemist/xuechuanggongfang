@@ -29,11 +29,6 @@
 						@tap.stop="copyDisplayId"
 					/>
 				</view>
-				<view class="profile-tags">
-					<view v-if="showDisplayRoleTag" class="role-tag">
-						<text class="role-text">{{ displayRole }}</text>
-					</view>
-				</view>
 			</view>
 
 			<!-- Login/Logout Buttons -->
@@ -191,28 +186,6 @@ export default {
 			if (this.userInfo && this.userInfo.username) return this.userInfo.username
 			if (this.isLoggedIn) return '已登录用户'
 			return '点击登录'
-		},
-		displayRole() {
-			// 优先使用合伙人等级，其次角色数组
-			const p = this.userInfo && this.userInfo.partner_info
-			if (p && p.level) return p.level
-			const roles = (this.userInfo && this.userInfo.role) || []
-			if (Array.isArray(roles) && roles.length) {
-				// 简单映射一下常见角色
-				if (roles.includes('admin')) return '管理员'
-				if (roles.includes('senior_partner')) return '高级校园合伙人'
-				if (roles.includes('partner')) return '校园合伙人'
-				if (roles.includes('team_member')) return '团队成员'
-			}
-			if (this.teamMetrics && this.teamMetrics.hasTeam) {
-				return this.teamPositionLabel || '队员'
-			}
-			if (this.isLoggedIn) return '已登录'
-			return '游客'
-		},
-		showDisplayRoleTag() {
-			const role = String(this.displayRole || '').trim()
-			return !!role && role !== '已登录' && role !== '初级' && role !== '高级' && role !== '团队成员'
 		},
 		showCampusPartnerBadge() {
 			const partnerInfo = this.userInfo && this.userInfo.partner_info
@@ -839,27 +812,6 @@ export default {
 		font-weight: 400;
 		color: #111111;
 		margin-top: 24rpx;
-	}
-
-	.profile-tags {
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		flex-wrap: wrap;
-		gap: 12rpx;
-	}
-
-	.role-tag {
-		padding: 6rpx 16rpx;
-		border-radius: 999rpx;
-		background: #ffffff;
-		border: none;
-	}
-
-	.role-text {
-		font-size: 20rpx;
-		color: #4f46e5;
-		font-weight: 600;
 	}
 
 	.id-text {

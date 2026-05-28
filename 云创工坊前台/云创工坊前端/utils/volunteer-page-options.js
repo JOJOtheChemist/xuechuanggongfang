@@ -6,11 +6,15 @@ import {
 } from './admission-access'
 import { isAdmissionAccessDeniedError, requestAdmission } from './admission-api'
 import { getStaticAssetUrl } from './cloud-static-assets'
-import { getHttpService } from './http-services'
+import { getCurrentUserInfo, getCurrentUserToken, getHttpService, normalizeUserInfo } from './http-services'
 import { getCachedImageSync, resolveCachedImage } from './remote-image-cache'
 import { volunteerInstitutionLoaderMethods } from './volunteer-institution-loader'
+import { requestInstitutionFullSnapshot } from './volunteer-institution-snapshot'
+import { createVolunteerPageSearchMethods } from './volunteer-page-search'
 import { createVolunteerPageData } from './volunteer-page-state'
+import { createVolunteerPageSummaryMethods } from './volunteer-page-summary'
 import {
+  DEFAULT_ADMISSION_PROVINCE,
   VOLUNTEER_CUSTOMER_SERVICE_PHONE,
   VOLUNTEER_UNLOCK_PAYMENT_AMOUNT,
   VOLUNTEER_UNLOCK_REQUIRED_INVITE_COUNT,
@@ -78,6 +82,15 @@ function buildVolunteerHeroBanners(imageUrl = VOLUNTEER_HERO_BANNER_URL) {
     shareImageUrl: VOLUNTEER_HERO_BANNER_URL,
     linkUrl: ''
   }]
+}
+
+function createEmptyRiskSummary() {
+  return {
+    hard: 0,
+    stable: 0,
+    safe: 0,
+    supplement: 0
+  }
 }
 
 function normalizeMajorCategory(value) {
@@ -530,6 +543,25 @@ function hasMatchedPreviewMajors(item, options = {}) {
   return getMatchedPreviewMajors(item, options).length > 0
 }
 
+function filterInstitutionsByRiskSelection(items, {
+  majorCategoryFilter = '',
+  scoreValue = null,
+  riskFilterKey = ''
+} = {}) {
+  const source = Array.isArray(items) ? items : []
+  const normalizedRiskFilterKey = String(riskFilterKey || '').trim()
+
+  if (scoreValue === null || scoreValue === undefined || scoreValue === '') {
+    return source
+  }
+
+  return source.filter((item) => hasMatchedPreviewMajors(item, {
+    majorCategoryFilter,
+    scoreValue,
+    riskFilterKey: normalizedRiskFilterKey
+  }))
+}
+
 function resolveInstitutionMajorRiskBuckets(item, majorCategoryFilter, scoreValue) {
   const matchedMajors = getMatchedPreviewMajors(item, {
     majorCategoryFilter,
@@ -671,6 +703,27 @@ function mapSchoolToPreviewCard(school) {
 
 const LOCAL_RECOMMENDATION_RISK_KEYS = ['hard', 'stable', 'safe']
 
+const volunteerPageSummaryMethods = createVolunteerPageSummaryMethods({
+  createEmptyRiskSummary,
+  requestInstitutionFullSnapshot,
+  isValidInstitution,
+  resolveInstitutionMajorRiskBuckets
+})
+
+const volunteerPageSearchMethods = createVolunteerPageSearchMethods({
+  formatScoreText,
+  parseScoreNumber,
+  normalizeUnlockStatus,
+  saveAdmissionScoreRequest,
+  isAdmissionAccessDeniedError,
+  consumeAdmissionQueryCountRequest,
+  isAdmissionQueryConsumeMissingEndpointError,
+  readLocalQueryQuota,
+  writeLocalUnlockStatus,
+  writeLocalQueryQuota,
+  volunteerInstitutionLoaderMethods
+})
+
 export function createVolunteerPageOptions() {
   return {
   data() {
@@ -727,6 +780,48 @@ export function createVolunteerPageOptions() {
       draftScoreValue() {
 	      return parseScoreNumber(this.scoreInput)
 	    },
+      activeRiskFilterKey() {
+        if (this.scoreValue === null) {
+          return ''
+        }
+
+        return String(this.selectedRiskFilterKey || '').trim()
+      },
+      institutionSummaryQuery() {
+        if (!this.hasFullInstitutionAccess) {
+          return null
+        }
+
+        const scoreValue =
+          this.scoreValue === null || this.scoreValue === undefined
+            ? undefined
+            : Number(this.scoreValue)
+
+        return {
+          province: DEFAULT_ADMISSION_PROVINCE,
+          examType: this.selectedExamValue,
+          subjectTrack: this.selectedSubjectTrackValue,
+          majorCategory: this.selectedMajorCategoryValue,
+          city: this.selectedCityValue,
+          schoolLevel: this.selectedLevelValue,
+          ownershipType: this.selectedNatureValue,
+          keyword: String(this.appliedKeyword || '').trim(),
+          majorKeyword: String(this.appliedMajorKeyword || '').trim(),
+          score: Number.isFinite(scoreValue) ? scoreValue : undefined
+        }
+      },
+      institutionSummaryQueryKey() {
+        return this.institutionSummaryQuery
+          ? JSON.stringify(this.institutionSummaryQuery)
+          : ''
+      },
+      riskSummaryReady() {
+        if (this.scoreValue === null || !this.hasFullInstitutionAccess) {
+          return false
+        }
+
+        return String(this.institutionSummaryLoadedKey || '') === String(this.institutionSummaryQueryKey || '')
+      },
       canEditScoreInput() {
         const scoreStatus = this.admissionUnlockStatus && this.admissionUnlockStatus.score
         if (!scoreStatus) {
@@ -834,16 +929,16 @@ export function createVolunteerPageOptions() {
 	        majorKeyword: this.appliedMajorKeyword
 	      }
 
-        if (this.hasFullInstitutionAccess) {
-          return this.institutions
-            .filter(isValidInstitution)
-            .filter((item) => !shouldHideDirectScoreInstitution(item))
-        }
-
-	      return this.institutions
-	        .filter(isValidInstitution)
+        const filteredByLocalFields = this.institutions
+          .filter(isValidInstitution)
           .filter((item) => !shouldHideDirectScoreInstitution(item))
-	        .filter((item) => institutionMatchesLocalFilters(item, localFilters))
+          .filter((item) => institutionMatchesLocalFilters(item, localFilters))
+
+	      return filterInstitutionsByRiskSelection(filteredByLocalFields, {
+          majorCategoryFilter: this.selectedMajorCategoryValue,
+          scoreValue: this.scoreValue,
+          riskFilterKey: this.activeRiskFilterKey
+        })
 	    },
 	    guestPreviewInstitutionItems() {
 	        return (Array.isArray(this.guestPreviewInstitutions) ? this.guestPreviewInstitutions : [])
@@ -851,6 +946,30 @@ export function createVolunteerPageOptions() {
 	      },
       hasFullInstitutionAccess() {
         return Boolean(this.userLoggedIn && this.admissionUnlockStatus && this.admissionUnlockStatus.unlocked)
+      },
+      shouldUseInstitutionSummarySource() {
+        return this.hasFullInstitutionAccess && this.scoreValue !== null && this.riskSummaryReady
+      },
+      summaryVisibleInstitutions() {
+        const localFilters = {
+          city: this.selectedCityValue,
+          schoolLevel: this.selectedLevelValue,
+          ownershipType: this.selectedNatureValue,
+          keyword: this.appliedKeyword,
+          majorKeyword: this.appliedMajorKeyword
+        }
+
+        return filterInstitutionsByRiskSelection(
+          (Array.isArray(this.institutionSummaryItems) ? this.institutionSummaryItems : [])
+            .filter(isValidInstitution)
+            .filter((item) => !shouldHideDirectScoreInstitution(item))
+            .filter((item) => institutionMatchesLocalFilters(item, localFilters)),
+          {
+            majorCategoryFilter: this.selectedMajorCategoryValue,
+            scoreValue: this.scoreValue,
+            riskFilterKey: this.activeRiskFilterKey
+          }
+        )
       },
       visibleInstitutions() {
         const localFilters = {
@@ -860,27 +979,36 @@ export function createVolunteerPageOptions() {
           keyword: this.appliedKeyword,
           majorKeyword: this.appliedMajorKeyword
         }
-        const filterGuestPreviewInstitutions = (items) => (Array.isArray(items) ? items : [])
+        const filterGuestPreviewInstitutions = (items) => filterInstitutionsByRiskSelection((Array.isArray(items) ? items : [])
           .filter(isValidInstitution)
           .filter((item) => !shouldHideDirectScoreInstitution(item))
-          .filter((item) => institutionMatchesLocalFilters(item, localFilters))
+          .filter((item) => institutionMatchesLocalFilters(item, localFilters)), {
+            majorCategoryFilter: this.selectedMajorCategoryValue,
+            scoreValue: this.scoreValue,
+            riskFilterKey: this.activeRiskFilterKey
+          })
         const hasActiveLocalFilters = Boolean(
           this.selectedCityValue ||
           this.selectedLevelValue ||
           this.selectedNatureValue ||
           this.appliedKeyword ||
-          this.appliedMajorKeyword
+          this.appliedMajorKeyword ||
+          this.activeRiskFilterKey
         )
 
         if (!this.hasFullInstitutionAccess) {
           return filterGuestPreviewInstitutions(this.guestPreviewInstitutionItems)
         }
 
-        if (this.filteredInstitutions.length > 0) {
+        if (this.shouldUseInstitutionSummarySource) {
+          return this.summaryVisibleInstitutions
+        }
+
+        if (this.institutions.length > 0 || Number(this.page || 0) > 0) {
           return this.filteredInstitutions
         }
 
-        if (hasActiveLocalFilters || this.institutions.length > 0 || Number(this.page || 0) > 0) {
+        if (hasActiveLocalFilters) {
           return []
         }
 
@@ -934,37 +1062,20 @@ export function createVolunteerPageOptions() {
           : null
       },
 	    riskSummary() {
-	      const summary = {
-	        hard: 0,
-	        stable: 0,
-	        safe: 0,
-	        supplement: 0
-	      }
+	      const summary = createEmptyRiskSummary()
 
-	      if (this.scoreValue === null) {
+	      if (!this.riskSummaryReady) {
 	        return summary
 	      }
 
-	      return this.institutions.reduce((currentSummary, item) => {
-	        if (this.resolveSupplementAvailability(item)) {
-	          currentSummary.supplement += 1
-	        }
-
-	        const buckets = resolveInstitutionMajorRiskBuckets(
-            item,
-            this.selectedMajorCategoryValue,
-            this.scoreValue
-          )
-          buckets.forEach((bucket) => {
-            if (['hard', 'stable', 'safe'].includes(bucket) && currentSummary[bucket] !== undefined) {
-              currentSummary[bucket] += 1
-            }
-          })
-	        return currentSummary
-	      }, summary)
+	      return Object.assign(summary, this.institutionSummaryCounts || {})
 	    },
       hasMore() {
         if (!this.hasFullInstitutionAccess) {
+          return false
+        }
+
+        if (this.shouldUseInstitutionSummarySource) {
           return false
         }
 
@@ -979,24 +1090,55 @@ export function createVolunteerPageOptions() {
 
         const loadedCount = Array.isArray(this.institutions) ? this.institutions.length : 0
         const visibleCount = Array.isArray(this.visibleInstitutions) ? this.visibleInstitutions.length : 0
+        if (this.shouldUseInstitutionSummarySource) {
+          return `共匹配 ${visibleCount} 所`
+        }
         const totalCount = Number(this.total || 0) > 0 ? Number(this.total || 0) : loadedCount
 
         if (totalCount > 0) {
-          return `当前返回 ${visibleCount} 所 · 已加载 ${loadedCount}/${totalCount} 所`
+          if (loadedCount >= totalCount && visibleCount === loadedCount) {
+            return `共匹配 ${totalCount} 所`
+          }
+
+          if (visibleCount === loadedCount) {
+            return `共匹配 ${totalCount} 所 · 已拉取 ${loadedCount} 所`
+          }
+
+          return `共匹配 ${totalCount} 所 · 已拉取 ${loadedCount} 所 · 当前展示 ${visibleCount} 所`
         }
 
         if (this.loading && loadedCount === 0) {
           return '正在加载院校数据...'
         }
 
-        return `已展示 ${visibleCount} 所 · 已加载 ${loadedCount} 所`
+        if (visibleCount === loadedCount) {
+          return `已拉取 ${loadedCount} 所`
+        }
+
+        return `已拉取 ${loadedCount} 所 · 当前展示 ${visibleCount} 所`
       },
       resultSummaryHintText() {
         if (!this.hasFullInstitutionAccess) {
           return ''
         }
 
-        return this.hasMore ? '可继续加载更多匹配院校。' : '当前条件下的匹配院校已加载完成。'
+        if (this.scoreValue === null) {
+          return this.hasMore
+            ? '下方学校列表按批加载；输入分数后会显示稳冲保全量统计。'
+            : '当前匹配学校已全部拉取；输入分数后会显示稳冲保全量统计。'
+        }
+
+        if (this.scoreValue !== null && !this.riskSummaryReady && this.institutionSummaryLoading) {
+          return '稳冲保统计正在按全量结果同步，下方学校列表仍会继续分批加载。'
+        }
+
+        if (this.shouldUseInstitutionSummarySource) {
+          return '稳冲保和下方学校卡片已按同一口径统计。'
+        }
+
+        return this.hasMore
+          ? '稳冲保显示的是全量统计，下方学校列表按批加载。'
+          : '稳冲保显示的是全量统计，当前匹配学校已全部拉取。'
       },
       institutionLoadingText() {
         const loadedCount = Array.isArray(this.institutions) ? this.institutions.length : 0
@@ -1232,362 +1374,8 @@ export function createVolunteerPageOptions() {
     },
 	  methods: {
       ...volunteerInstitutionLoaderMethods,
-      flushDraftInputs() {
-        const inputRefs = [
-          this.$refs && this.$refs.scoreInputField,
-          this.$refs && this.$refs.keywordInputField,
-          this.$refs && this.$refs.majorKeywordInputField
-        ]
-
-        inputRefs.forEach((ref) => {
-          if (!ref) return
-
-          const target = Array.isArray(ref) ? ref[0] : ref
-          if (target && typeof target.commitValue === 'function') {
-            target.commitValue()
-          }
-        })
-      },
-      syncScoreInputFromStatus(status, options = {}) {
-        const normalizedStatus = normalizeUnlockStatus(status || {})
-        const savedScoreText = formatScoreText(normalizedStatus.score && normalizedStatus.score.value)
-
-        if (!savedScoreText) {
-          if (options.force) {
-            this.appliedScoreInput = ''
-          }
-          return
-        }
-
-        const draftText = String(this.scoreInput || '').trim()
-        const appliedText = String(this.appliedScoreInput || '').trim()
-
-        if (options.force || !draftText || draftText === appliedText) {
-          this.scoreInput = savedScoreText
-        }
-
-        if (options.force || !appliedText) {
-          this.appliedScoreInput = savedScoreText
-        }
-      },
-      createLocalQueryQuotaSnapshot() {
-        return {
-          localRemainingQueryCount: this.localRemainingQueryCount,
-          localQueryUnlimited: this.localQueryUnlimited,
-          admissionUnlockStatus: normalizeUnlockStatus(this.admissionUnlockStatus || {}),
-          lastUnlockStatusLoadedAt: this.lastUnlockStatusLoadedAt
-        }
-      },
-      restoreLocalQueryQuotaSnapshot(snapshot) {
-        if (!snapshot || !this.userLoggedIn) {
-          return
-        }
-
-        this.localRemainingQueryCount = snapshot.localRemainingQueryCount
-        this.localQueryUnlimited = snapshot.localQueryUnlimited
-        this.admissionUnlockStatus = normalizeUnlockStatus(snapshot.admissionUnlockStatus || {})
-        this.lastUnlockStatusLoadedAt = Number(snapshot.lastUnlockStatusLoadedAt || 0)
-
-        writeLocalUnlockStatus(this.currentUserId, this.admissionUnlockStatus)
-        writeLocalQueryQuota(this.currentUserId, {
-          unlimited: this.localQueryUnlimited,
-          remainingCount: this.localQueryUnlimited ? null : this.localRemainingQueryCount
-        })
-      },
-      applyOptimisticAdmissionQueryConsume() {
-        if (!this.userLoggedIn || !this.hasFullInstitutionAccess || this.localQueryUnlimited) {
-          return null
-        }
-
-        const currentStatus = normalizeUnlockStatus(this.admissionUnlockStatus || {})
-        const currentRemainingSource =
-          this.localRemainingQueryCount !== null && this.localRemainingQueryCount !== undefined
-            ? this.localRemainingQueryCount
-            : currentStatus.score && currentStatus.score.remainingModifyCount
-        const currentRemaining = Number(currentRemainingSource)
-
-        if (!Number.isFinite(currentRemaining) || currentRemaining <= 0) {
-          return null
-        }
-
-        const snapshot = this.createLocalQueryQuotaSnapshot()
-        const nextRemaining = Math.max(0, currentRemaining - 1)
-        const currentUsed = Number(currentStatus.score && currentStatus.score.usedModifyCount)
-        const nextStatus = normalizeUnlockStatus(Object.assign({}, currentStatus, {
-          score: Object.assign({}, currentStatus.score || {}, {
-            remainingModifyCount: nextRemaining,
-            usedModifyCount: Number.isFinite(currentUsed) ? currentUsed + 1 : currentUsed,
-            canModify: nextRemaining > 0,
-            notice: nextRemaining > 0 ? `当前还可查询 ${nextRemaining} 次` : '当前查询次数已用完'
-          })
-        }))
-
-        this.localRemainingQueryCount = nextRemaining
-        this.localQueryUnlimited = false
-        this.admissionUnlockStatus = nextStatus
-        this.lastUnlockStatusLoadedAt = Date.now()
-
-        writeLocalUnlockStatus(this.currentUserId, nextStatus)
-        writeLocalQueryQuota(this.currentUserId, {
-          unlimited: false,
-          remainingCount: nextRemaining
-        })
-
-        return snapshot
-      },
-      syncLocalQueryQuota(status, options = {}) {
-        const normalizedStatus = normalizeUnlockStatus(status || {})
-        const scoreStatus = normalizedStatus.score || {}
-        const shouldReset = Boolean(options.force)
-        const storedQuota = !shouldReset ? readLocalQueryQuota(this.currentUserId) : null
-
-        if (!this.userLoggedIn || !normalizedStatus.unlocked) {
-          this.localRemainingQueryCount = null
-          this.localQueryUnlimited = false
-          return
-        }
-
-        if (scoreStatus.unlimited) {
-          this.localRemainingQueryCount = null
-          this.localQueryUnlimited = true
-          writeLocalQueryQuota(this.currentUserId, {
-            unlimited: true,
-            remainingCount: null
-          })
-          return
-        }
-
-        const nextRemaining = scoreStatus.remainingModifyCount
-        const normalizedRemaining =
-          nextRemaining === null || nextRemaining === undefined
-            ? null
-            : Math.max(0, Number(nextRemaining) || 0)
-
-        if (shouldReset || this.localRemainingQueryCount === null || this.localRemainingQueryCount === undefined) {
-          this.localRemainingQueryCount = normalizedRemaining
-        } else if (storedQuota && storedQuota.remainingCount !== undefined && storedQuota.remainingCount !== null) {
-          this.localRemainingQueryCount = Math.max(0, Number(storedQuota.remainingCount) || 0)
-        }
-
-        this.localQueryUnlimited = false
-        writeLocalQueryQuota(this.currentUserId, {
-          unlimited: false,
-          remainingCount: this.localRemainingQueryCount
-        })
-      },
-      consumeLocalAdmissionQueryQuotaFallback(error) {
-        if (!this.userLoggedIn || !this.hasFullInstitutionAccess || this.localQueryUnlimited) {
-          return true
-        }
-
-        const currentStatus = normalizeUnlockStatus(this.admissionUnlockStatus || {})
-        const fallbackRemainingSource =
-          this.localRemainingQueryCount !== null && this.localRemainingQueryCount !== undefined
-            ? this.localRemainingQueryCount
-            : currentStatus.score && currentStatus.score.remainingModifyCount
-        const currentRemaining = Number(fallbackRemainingSource)
-
-        if (!Number.isFinite(currentRemaining) || currentRemaining <= 0) {
-          return false
-        }
-
-        const nextRemaining = Math.max(0, currentRemaining - 1)
-        const currentUsed = Number(currentStatus.score && currentStatus.score.usedModifyCount)
-        const nextStatus = normalizeUnlockStatus(Object.assign({}, currentStatus, {
-          score: Object.assign({}, currentStatus.score || {}, {
-            remainingModifyCount: nextRemaining,
-            usedModifyCount: Number.isFinite(currentUsed) ? currentUsed + 1 : currentUsed,
-            canModify: nextRemaining > 0,
-            notice: nextRemaining > 0 ? '查询次数已本地同步' : '当前查询次数已用完'
-          })
-        }))
-
-        this.localRemainingQueryCount = nextRemaining
-        this.localQueryUnlimited = false
-        this.admissionUnlockStatus = nextStatus
-        this.lastUnlockStatusLoadedAt = Date.now()
-        writeLocalQueryQuota(this.currentUserId, {
-          unlimited: false,
-          remainingCount: nextRemaining
-        })
-        writeLocalUnlockStatus(this.currentUserId, nextStatus)
-        this.setAdmissionDebugPayload({
-          api: {
-            queryConsume: {
-              requestedAt: new Date().toISOString(),
-              fallback: true,
-              reason: 'query-count/consume 接口返回 404，已改用本地次数兜底',
-              error: String((error && error.message) || '查询次数同步失败'),
-              remainingCount: nextRemaining
-            }
-          }
-        })
-        console.warn('[volunteer] query consume endpoint missing, fallback to local quota:', error)
-        return true
-      },
-      applyDraftFilters() {
-        this.appliedKeyword = String(this.keyword || '').trim()
-        this.appliedMajorKeyword = String(this.majorKeyword || '').trim()
-        this.appliedTopFilterIndex = this.selectedTopFilterIndex
-        this.appliedCityIndex = this.selectedCityIndex
-        this.appliedLevelIndex = this.selectedLevelIndex
-        this.appliedNatureIndex = this.selectedNatureIndex
-        this.appliedRiskFilterKey = this.draftScoreValue === null ? '' : this.selectedRiskFilterKey
-      },
-      isInstitutionBaseQueryChanged() {
-        const draftScoreValue = this.draftScoreValue
-        const appliedScoreValue = this.scoreValue
-        const scoreChanged =
-          draftScoreValue === null
-            ? appliedScoreValue !== null
-            : appliedScoreValue === null || Math.abs(Number(draftScoreValue) - Number(appliedScoreValue)) > 0.000001
-
-        return (
-          this.selectedTopFilterIndex !== this.appliedTopFilterIndex ||
-          scoreChanged ||
-          String(this.keyword || '').trim() !== String(this.appliedKeyword || '').trim() ||
-          String(this.majorKeyword || '').trim() !== String(this.appliedMajorKeyword || '').trim() ||
-          this.selectedCityIndex !== this.appliedCityIndex ||
-          this.selectedLevelIndex !== this.appliedLevelIndex ||
-          this.selectedNatureIndex !== this.appliedNatureIndex ||
-          (draftScoreValue === null ? '' : this.selectedRiskFilterKey) !== String(this.appliedRiskFilterKey || '') ||
-          String(this.draftExamValue || '') !== String(this.selectedExamValue || '') ||
-          String(this.draftSubjectTrackValue || '') !== String(this.selectedSubjectTrackValue || '') ||
-          String(this.draftMajorCategoryValue || '') !== String(this.selectedMajorCategoryValue || '')
-        )
-      },
-      isLocalSearchOnlyChange() {
-        return !this.hasFullInstitutionAccess && !this.isInstitutionBaseQueryChanged()
-      },
-      async persistScoreIfNeeded() {
-        const draftScore = this.draftScoreValue
-        const normalizedDraftText = formatScoreText(draftScore)
-
-        if (draftScore === null) {
-          this.appliedScoreInput = ''
-          return true
-        }
-
-        if (!this.userLoggedIn || !this.admissionUnlockStatus.unlocked) {
-          this.appliedScoreInput = normalizedDraftText
-          return true
-        }
-
-        const currentStatus = normalizeUnlockStatus(this.admissionUnlockStatus || {})
-        const currentSavedScore = parseScoreNumber(currentStatus.score && currentStatus.score.value)
-
-        if (currentSavedScore !== null && Math.abs(currentSavedScore - draftScore) < 0.000001) {
-          this.appliedScoreInput = normalizedDraftText
-          return true
-        }
-
-        this.scoreSaving = true
-        try {
-          const result = await saveAdmissionScoreRequest({
-            score: draftScore,
-            examYear: new Date().getFullYear(),
-            examType: this.draftExamValue
-          })
-          const nextStatus = normalizeUnlockStatus(result.data.status || {})
-          this.admissionUnlockStatus = nextStatus
-          this.lastUnlockStatusLoadedAt = Date.now()
-          writeLocalUnlockStatus(this.currentUserId, nextStatus)
-          this.appliedScoreInput = normalizedDraftText
-          this.syncScoreInputFromStatus(nextStatus, { force: true })
-          this.syncLocalQueryQuota(nextStatus, { force: true })
-          uni.showToast({
-            title: nextStatus.score && nextStatus.score.notice ? nextStatus.score.notice : '分数已保存',
-            icon: 'none'
-          })
-          return true
-        } catch (error) {
-          const message = String((error && error.message) || '分数保存失败')
-          const fallbackScoreText = formatScoreText(currentStatus.score && currentStatus.score.value)
-          const accessDenied = isAdmissionAccessDeniedError(error)
-
-          if (fallbackScoreText) {
-            this.scoreInput = fallbackScoreText
-            this.appliedScoreInput = fallbackScoreText
-          }
-
-          if (accessDenied) {
-            const latestStatus = await this.loadAdmissionUnlockStatus({ force: true }).catch(() => null)
-            if (!latestStatus || !latestStatus.unlocked) {
-              this.resetInstitutionResults()
-            }
-          }
-
-          uni.showModal({
-            title: accessDenied ? '暂未解锁' : '分数暂未保存',
-            content: message,
-            showCancel: false
-          })
-          return false
-        } finally {
-          this.scoreSaving = false
-        }
-      },
-      async reloadInstitutions(options = {}) {
-        if (!options.skipScorePersist) {
-          const ready = await this.persistScoreIfNeeded()
-          if (!ready) return
-        }
-        return volunteerInstitutionLoaderMethods.reloadInstitutions.call(this, options)
-      },
-      async consumeAdmissionQueryCount() {
-        if (!this.userLoggedIn || !this.hasFullInstitutionAccess || this.localQueryUnlimited) {
-          return true
-        }
-
-        const optimisticSnapshot = this.applyOptimisticAdmissionQueryConsume()
-        this.queryCountConsuming = true
-        try {
-          const result = await consumeAdmissionQueryCountRequest()
-          const nextStatus = normalizeUnlockStatus(result.data.status || {})
-          this.admissionUnlockStatus = nextStatus
-          this.lastUnlockStatusLoadedAt = Date.now()
-          writeLocalUnlockStatus(this.currentUserId, nextStatus)
-          this.syncLocalQueryQuota(nextStatus, { force: true })
-          return true
-        } catch (error) {
-          if (isAdmissionQueryConsumeMissingEndpointError(error)) {
-            if (optimisticSnapshot) {
-              this.setAdmissionDebugPayload({
-                api: {
-                  queryConsume: {
-                    requestedAt: new Date().toISOString(),
-                    fallback: true,
-                    optimistic: true,
-                    reason: 'query-count/consume 接口不可用，已保留点击时的本地扣减结果',
-                    error: String((error && error.message) || '查询次数同步失败'),
-                    remainingCount: this.localRemainingQueryCount
-                  }
-                }
-              })
-              return true
-            }
-            return this.consumeLocalAdmissionQueryQuotaFallback(error)
-          }
-
-          const message = String((error && error.message) || '查询次数同步失败')
-          if (isAdmissionAccessDeniedError(error) || /查询次数|修改次数|增加次数/.test(message)) {
-            const latestStatus = await this.loadAdmissionUnlockStatus({ force: true }).catch(() => null)
-            if (!latestStatus && optimisticSnapshot) {
-              this.restoreLocalQueryQuotaSnapshot(optimisticSnapshot)
-            }
-          } else if (optimisticSnapshot) {
-            this.restoreLocalQueryQuotaSnapshot(optimisticSnapshot)
-          }
-
-          uni.showToast({
-            title: message,
-            icon: 'none'
-          })
-          return false
-        } finally {
-          this.queryCountConsuming = false
-        }
-      },
+      ...volunteerPageSearchMethods,
+      ...volunteerPageSummaryMethods,
       async loadBannerImages() {
         try {
           const cachedUrl = await resolveCachedImage(VOLUNTEER_HERO_BANNER_URL)
@@ -1704,12 +1492,8 @@ export function createVolunteerPageOptions() {
         })
       },
       readStoredUserState() {
-        const userInfo = uni.getStorageSync('userInfo') || {}
-        const token =
-          uni.getStorageSync('token') ||
-          uni.getStorageSync('accessToken') ||
-          uni.getStorageSync('uni_id_token') ||
-          ''
+        const userInfo = normalizeUserInfo(getCurrentUserInfo() || {})
+        const token = getCurrentUserToken()
         const userId = userInfo.uid || userInfo.userId || userInfo.id || uni.getStorageSync('userId') || ''
 
         return {
@@ -1743,6 +1527,9 @@ export function createVolunteerPageOptions() {
             storedUser.userId ||
             ''
           )
+          if (this.currentUserId) {
+            uni.setStorageSync('userId', this.currentUserId)
+          }
           this.currentUserNickname = latestUser.nickname || latestUser.username || this.currentUserNickname
           this.currentUserAvatar =
             latestUser.avatar ||
@@ -1756,11 +1543,23 @@ export function createVolunteerPageOptions() {
       refreshUserIdentity(options = {}) {
         const previousUserId = this.currentUserId
         const storedUser = this.readStoredUserState()
+        const hasToken = Boolean(storedUser.token)
+        const shouldRecoverUserId = hasToken && !storedUser.userId && options.skipUserIdRecovery !== true
 
-        this.userLoggedIn = Boolean(storedUser.token && storedUser.userId)
+        this.userLoggedIn = hasToken
         this.currentUserId = storedUser.userId
         this.currentUserNickname = storedUser.nickname
         this.currentUserAvatar = storedUser.avatar
+
+        if (shouldRecoverUserId) {
+          return this.syncCurrentUserProfile()
+            .catch((error) => {
+              console.error('[volunteer] recover user id failed:', error)
+            })
+            .then(() => this.refreshUserIdentity(Object.assign({}, options, {
+              skipUserIdRecovery: true
+            })))
+        }
 
         if (previousUserId && previousUserId !== this.currentUserId) {
           this.admissionUnlockStatus = createDefaultUnlockStatus()
@@ -1773,7 +1572,7 @@ export function createVolunteerPageOptions() {
           this.resetInstitutionResults()
         }
 
-        if (!this.userLoggedIn) {
+        if (!hasToken) {
           this.currentUserId = ''
           this.currentUserNickname = ''
           this.currentUserAvatar = ''
@@ -2142,85 +1941,6 @@ export function createVolunteerPageOptions() {
         })
       },
       handlePhoneCopied() {},
-      async handleSearchAction() {
-        this.flushDraftInputs()
-
-        const hasLocalInstitutions =
-          (Array.isArray(this.institutions) && this.institutions.length > 0) ||
-          (Array.isArray(this.guestPreviewInstitutions) && this.guestPreviewInstitutions.length > 0)
-
-        if (this.isLocalSearchOnlyChange() && hasLocalInstitutions) {
-          this.closeDropdown()
-          this.applyDraftFilters()
-          this.errorText = ''
-          this.loading = false
-          this.loadingMore = false
-          this.institutionLoadProgressText = ''
-          return
-        }
-
-        if (!this.canQueryInstitutions) {
-          if (!this.userLoggedIn) {
-            const shouldLogin = await new Promise((resolve) => {
-              uni.showModal({
-                title: '登录后开始筛查',
-                content: '登录后可保存分数，解锁志愿系统后再查看筛查结果。',
-                confirmText: '去登录',
-                cancelText: '稍后再说',
-                success: (res) => resolve(Boolean(res && res.confirm)),
-                fail: () => resolve(false)
-              })
-            })
-
-            if (shouldLogin) {
-              this.handleLogin()
-            }
-            return
-          }
-
-          uni.showModal({
-            title: '暂未解锁志愿系统',
-            content:
-              this.lockedRemainingInviteCount > 0
-                ? `当前还差 ${this.lockedRemainingInviteCount} 人解锁，也可支付 ${this.lockedPaymentAmountText} 元后开始筛查。`
-                : `请先完成解锁同步，或支付 ${this.lockedPaymentAmountText} 元后开始筛查。`,
-            showCancel: false,
-            confirmText: '我知道了'
-          })
-          return
-        }
-
-        this.closeDropdown()
-
-        if (this.searchActionDisabled) {
-          if (!this.localQueryUnlimited && this.localRemainingQueryCount !== null && this.localRemainingQueryCount <= 0) {
-            this.showCustomerServiceModal()
-          }
-          return
-        }
-
-        const ready = await this.persistScoreIfNeeded()
-        if (!ready) return
-
-        const consumed = await this.consumeAdmissionQueryCount()
-        if (!consumed) return
-
-        const shouldReloadInstitutions = this.isInstitutionBaseQueryChanged() || this.institutions.length === 0
-        this.applyDraftFilters()
-
-        if (shouldReloadInstitutions) {
-          await this.reloadInstitutions({
-            immediate: true,
-            skipScorePersist: true
-          })
-          return
-        }
-
-        this.errorText = ''
-        this.loading = false
-        this.loadingMore = false
-        this.institutionLoadProgressText = ''
-      },
       toggleDropdown(key) {
         this.activeDropdownKey = this.activeDropdownKey === key ? '' : key
       },

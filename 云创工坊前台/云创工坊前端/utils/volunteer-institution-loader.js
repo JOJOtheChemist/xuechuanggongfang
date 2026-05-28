@@ -201,6 +201,9 @@ export const volunteerInstitutionLoaderMethods = {
     this.lastInstitutionRequestAt = 0
     this.page = 0
     this.total = 0
+    if (typeof this.resetInstitutionSummarySnapshot === 'function') {
+      this.resetInstitutionSummarySnapshot()
+    }
   },
   clearInstitutionReloadTimer() {
     if (this.institutionReloadTimer) {
@@ -257,8 +260,9 @@ export const volunteerInstitutionLoaderMethods = {
       ownershipType: this.selectedNatureValue,
       keyword: String(this.appliedKeyword || '').trim(),
       majorKeyword: String(this.appliedMajorKeyword || '').trim(),
+      // 风险档位统一在前端按“命中专业 -> 学校去重”处理，避免和后端学校参考分口径打架。
       score: Number.isFinite(scoreValue) ? scoreValue : undefined,
-      riskBucket: Number.isFinite(scoreValue) ? String(this.appliedRiskFilterKey || '').trim() : ''
+      riskBucket: ''
     }
   },
   async loadInstitutions(reset, options) {
@@ -272,6 +276,18 @@ export const volunteerInstitutionLoaderMethods = {
 
     if (this.scoreValue === null && this.appliedRiskFilterKey) {
       this.appliedRiskFilterKey = ''
+    }
+
+    if (
+      reset !== false &&
+      options.skipSummarySync !== true &&
+      typeof this.loadInstitutionSummarySnapshot === 'function'
+    ) {
+      this.loadInstitutionSummarySnapshot({
+        force: Boolean(options.force)
+      }).catch((error) => {
+        console.warn('[volunteer][summary] load failed:', error && error.message)
+      })
     }
 
     const baseQuery = this.buildInstitutionBaseQuery()
@@ -372,7 +388,7 @@ export const volunteerInstitutionLoaderMethods = {
 
     this.loading = reset !== false ? !hasCachedItems : false
     this.loadingMore = reset === false
-    this.institutionLoadProgressText = reset === false ? '正在加载更多院校' : (hasCachedItems ? '' : '正在加载院校数据')
+    this.institutionLoadProgressText = reset === false ? '正在加载下一批院校' : (hasCachedItems ? '' : '正在加载院校数据')
     if (reset !== false && !hasCachedItems) {
       this.institutions = []
       this.page = 0

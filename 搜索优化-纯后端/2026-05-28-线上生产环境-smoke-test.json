@@ -1,0 +1,115 @@
+{
+  "generatedAt": "2026-05-28T06:56:25.800Z",
+  "baseUrl": "https://xuechuang.xyz/api/v1",
+  "login": {
+    "status": 200,
+    "durationMs": 319.27,
+    "code": 0,
+    "userId": 3694
+  },
+  "authMe": {
+    "status": 200,
+    "durationMs": 95.95,
+    "code": 0,
+    "userId": 3694,
+    "nickname": "高考测试用户"
+  },
+  "scenarios": {
+    "broad_physics": {
+      "params": {
+        "province": "云南",
+        "examType": "gaokao",
+        "subjectTrack": "物理组",
+        "page": 1,
+        "pageSize": 20
+      },
+      "firstRequest": {
+        "status": 200,
+        "durationMs": 1757.87,
+        "code": 0,
+        "total": 1852,
+        "firstItemName": "上海中侨职业技术大学"
+      },
+      "secondRequest": {
+        "status": 200,
+        "durationMs": 88.26,
+        "code": 0,
+        "total": 1852,
+        "count": 20,
+        "firstItemName": "上海中侨职业技术大学",
+        "riskBucket": null
+      }
+    },
+    "score_stable_public": {
+      "params": {
+        "province": "云南",
+        "examType": "gaokao",
+        "subjectTrack": "物理组",
+        "schoolLevel": "本科",
+        "ownershipType": "公办",
+        "score": 500,
+        "riskBucket": "stable",
+        "page": 1,
+        "pageSize": 20
+      },
+      "firstRequest": {
+        "status": 200,
+        "durationMs": 281.95,
+        "code": 0,
+        "total": 110,
+        "firstItemName": "桂林电子科技大学"
+      },
+      "secondRequest": {
+        "status": 200,
+        "durationMs": 96.75,
+        "code": 0,
+        "total": 110,
+        "count": 20,
+        "firstItemName": "桂林电子科技大学",
+        "riskBucket": "stable"
+      }
+    },
+    "narrow_yunnan_cs": {
+      "params": {
+        "province": "云南",
+        "examType": "gaokao",
+        "subjectTrack": "物理组",
+        "city": "云南省",
+        "schoolLevel": "本科",
+        "ownershipType": "公办",
+        "keyword": "云南",
+        "majorKeyword": "计算机",
+        "score": 520,
+        "riskBucket": "stable",
+        "page": 1,
+        "pageSize": 20
+      },
+      "firstRequest": {
+        "status": 200,
+        "durationMs": 233.22,
+        "code": 0,
+        "total": 1,
+        "firstItemName": "云南大学"
+      },
+      "secondRequest": {
+        "status": 200,
+        "durationMs": 81.3,
+        "code": 0,
+        "total": 1,
+        "count": 1,
+        "firstItemName": "云南大学",
+        "riskBucket": "stable"
+      }
+    }
+  },
+  "detail": {
+    "institutionId": 15101,
+    "institutionName": "上海中侨职业技术大学",
+    "status": 200,
+    "durationMs": 87.34,
+    "code": 0,
+    "majorCount": 11,
+    "introductionPresent": false,
+    "logoUrlPresent": false
+  }
+}

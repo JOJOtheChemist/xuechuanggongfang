@@ -1,0 +1,193 @@
+{
+  "generatedAt": "2026-05-28T06:47:31.250Z",
+  "environment": {
+    "baseUrl": "http://127.0.0.1:3001",
+    "node": "v23.11.0",
+    "redisEnabled": true
+  },
+  "cold": {
+    "broad_physics": {
+      "durationMs": 1184.7,
+      "total": 1701,
+      "count": 20,
+      "first": "上海中侨职业技术大学"
+    }
+  },
+  "warmSingles": {
+    "broad_physics": {
+      "durationMs": 7.15,
+      "total": 1701,
+      "count": 20,
+      "first": "上海中侨职业技术大学"
+    },
+    "score_stable_public": {
+      "durationMs": 104.78,
+      "total": 109,
+      "count": 20,
+      "first": "桂林电子科技大学"
+    },
+    "narrow_yunnan_cs": {
+      "durationMs": 64.68,
+      "total": 1,
+      "count": 1,
+      "first": "云南大学"
+    }
+  },
+  "loads": {
+    "broad_physics": {
+      "c10": {
+        "summary": {
+          "name": "broad_physics_c10",
+          "requests": 100,
+          "ok": 100,
+          "errors": 0,
+          "avgMs": 14.37,
+          "minMs": 6.16,
+          "p50Ms": 12.95,
+          "p95Ms": 24.84,
+          "p99Ms": 33.78,
+          "maxMs": 34.8,
+          "throughputRps": 661.59
+        }
+      },
+      "c30": {
+        "summary": {
+          "name": "broad_physics_c30",
+          "requests": 240,
+          "ok": 240,
+          "errors": 0,
+          "avgMs": 31.36,
+          "minMs": 11.04,
+          "p50Ms": 30.64,
+          "p95Ms": 43.01,
+          "p99Ms": 64.64,
+          "maxMs": 75.07,
+          "throughputRps": 912.19
+        }
+      }
+    },
+    "score_stable_public": {
+      "c10": {
+        "summary": {
+          "name": "score_stable_public_c10",
+          "requests": 100,
+          "ok": 100,
+          "errors": 0,
+          "avgMs": 15.21,
+          "minMs": 7.95,
+          "p50Ms": 14.42,
+          "p95Ms": 21.61,
+          "p99Ms": 23.71,
+          "maxMs": 27.36,
+          "throughputRps": 619.84
+        }
+      },
+      "c30": {
+        "summary": {
+          "name": "score_stable_public_c30",
+          "requests": 240,
+          "ok": 240,
+          "errors": 0,
+          "avgMs": 37.78,
+          "minMs": 24.6,
+          "p50Ms": 38.28,
+          "p95Ms": 46.75,
+          "p99Ms": 53.75,
+          "maxMs": 55.14,
+          "throughputRps": 752.31
+        }
+      }
+    },
+    "narrow_yunnan_cs": {
+      "c10": {
+        "summary": {
+          "name": "narrow_yunnan_cs_c10",
+          "requests": 100,
+          "ok": 100,
+          "errors": 0,
+          "avgMs": 6.02,
+          "minMs": 4.07,
+          "p50Ms": 5.85,
+          "p95Ms": 8.14,
+          "p99Ms": 9.22,
+          "maxMs": 9.31,
+          "throughputRps": 1594.39
+        }
+      },
+      "c30": {
+        "summary": {
+          "name": "narrow_yunnan_cs_c30",
+          "requests": 240,
+          "ok": 240,
+          "errors": 0,
+          "avgMs": 15.38,
+          "minMs": 11.35,
+          "p50Ms": 15.34,
+          "p95Ms": 18.45,
+          "p99Ms": 21.22,
+          "maxMs": 21.63,
+          "throughputRps": 1863.64
+        }
+      }
+    }
+  },
+  "mixed": {
+    "summary": {
+      "name": "mixed_c30",
+      "requests": 240,
+      "ok": 240,
+      "errors": 0,
+      "avgMs": 27.17,
+      "minMs": 18.17,
+      "p50Ms": 26.96,
+      "p95Ms": 34.28,
+      "p99Ms": 37.95,
+      "maxMs": 39.21,
+      "throughputRps": 1045.43
+    }
+  },
+  "hotQueries": [
+    {
+      "member": "b17ecd673f72c8b6b3b9b621892ff5344a6283d3",
+      "score": 423,
+      "filters": {
+        "province": "云南",
+        "examType": "gaokao",
+        "subjectTrack": "物理组",
+        "riskBucket": "all"
+      },
+      "total": 1701
+    },
+    {
+      "member": "94f3a5d6c2150e106065ba269e84ef2daebd10a1",
+      "score": 421,
+      "filters": {
+        "province": "云南",
+        "examType": "gaokao",
+        "subjectTrack": "物理组",
+        "city": "云南省",
+        "schoolLevel": "本科",
+        "ownershipType": "公办",
+        "keyword": "云南",
+        "majorKeyword": "计算机",
+        "score": 520,
+        "riskBucket": "stable"
+      },
+      "total": 1
+    },
+    {
+      "member": "6ab931a6240c35fd1719af341a7759eb1115b7b5",
+      "score": 421,
+      "filters": {
+        "province": "云南",
+        "examType": "gaokao",
+        "subjectTrack": "物理组",
+        "schoolLevel": "本科",
+        "ownershipType": "公办",
+        "score": 500,
+        "riskBucket": "stable"
+      },
+      "total": 109
+    }
+  ]
+}

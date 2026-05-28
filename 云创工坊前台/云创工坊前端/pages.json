@@ -120,6 +120,18 @@
 			]
 		},
 		{
+			"root": "subpackages/app-update",
+			"pages": [
+				{
+					"path": "index",
+					"style": {
+						"navigationBarTitleText": "更新方法",
+						"backgroundColor": "#f8fafc"
+					}
+				}
+			]
+		},
+		{
 			"root": "subpackages/task-center",
 			"pages": [
 				{

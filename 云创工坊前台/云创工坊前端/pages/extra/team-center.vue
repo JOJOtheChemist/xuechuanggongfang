@@ -46,8 +46,9 @@
 			:crown-icon-url="crownIconUrl"
 			:member-icon-url="memberIconUrl"
 			:coin-icon-url="coinIconUrl"
+			action-text="查看团队成员"
 			@close="closeMyTeamDetail"
-			@join="closeMyTeamDetail"
+			@action="openMyTeamMembers"
 		/>
 	</view>
 </template>
@@ -148,6 +149,18 @@ export default {
 		},
 		closeMyTeamDetail() {
 			this.showMyTeamDetailDialog = false
+		},
+		openMyTeamMembers() {
+			const teamId = String((this.myTeam && (this.myTeam.team_id || this.myTeam.id || this.myTeam._id)) || '').trim()
+			if (!teamId) {
+				uni.showToast({ title: '暂无团队信息', icon: 'none' })
+				return
+			}
+
+			this.closeMyTeamDetail()
+			uni.navigateTo({
+				url: `/pages/extra/team-member-list?teamId=${encodeURIComponent(teamId)}`
+			})
 		},
 		async loadMyTeam() {
 			const token = uni.getStorageSync('token')

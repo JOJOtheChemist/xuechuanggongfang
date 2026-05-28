@@ -66,6 +66,13 @@
 						</view>
 					</view>
 
+					<profile-version-card
+						:current-version="currentVersion"
+						:latest-version="latestVersion"
+						:update-tip="updateTip"
+						@tap="navigateToUpdateGuide"
+					/>
+
                     <!-- Unified Debug Footer (Inside Scroll) -->
                     <!-- Hidden recruitment debug tags
                     <view class="global-debug" style="margin-top: 40rpx; padding-bottom: 60rpx; font-size: 20rpx; color: #ccc; text-align: center; display: flex; flex-direction: column; gap: 6rpx;">
@@ -109,9 +116,17 @@
 
 <script>
 import ProfileHeader from '../../components/profile/ProfileHeader.vue'
+import ProfileVersionCard from '../../components/profile/ProfileVersionCard.vue'
 import ProfileSummaryPanels from '../../components/profile/ProfileSummaryPanels.vue'
 import IncentiveSystem from '../../components/tasks/IncentiveSystem.vue'
 import { getHttpService, getCurrentUserToken } from '../../utils/http-services'
+import {
+	CURRENT_APP_VERSION,
+	DEFAULT_UPDATE_GUIDE_PATH,
+	DEFAULT_UPDATE_TIP,
+	fetchRemoteAppVersionInfo,
+	readCachedAppVersionInfo
+} from '../../utils/app-version'
 import { getPointsStats } from '../../utils/points-api'
 import { getCachedImageSync, resolveCachedImages } from '../../utils/remote-image-cache'
 
@@ -144,6 +159,7 @@ function createDefaultTeamCardState(overrides = {}) {
 export default {
 	components: {
 		ProfileHeader,
+		ProfileVersionCard,
 		ProfileSummaryPanels,
 		IncentiveSystem
 	},
@@ -165,6 +181,10 @@ export default {
 				teamIncome: 0,
 				companyIncome: 0
 			},
+			currentVersion: CURRENT_APP_VERSION,
+			latestVersion: CURRENT_APP_VERSION,
+			updateTip: DEFAULT_UPDATE_TIP,
+			updateGuidePath: DEFAULT_UPDATE_GUIDE_PATH,
 			childRefreshKey: 0,
 			hasInitialized: false,
 			teamCard: createDefaultTeamCardState(),
@@ -198,6 +218,7 @@ export default {
 		this.loadCoinStats()
 		this.loadAnnualCoinStats()
 		this.refreshTeamSummary()
+		this.loadAppVersionInfo()
 
 		const page =
 			(this.$mp && this.$mp.page) ||
@@ -245,6 +266,19 @@ export default {
 			this.teamCard = createDefaultTeamCardState()
 			this.closeTeamQrcodeModal()
 			this.childRefreshKey += 1
+		},
+		async loadAppVersionInfo() {
+			const cachedInfo = readCachedAppVersionInfo()
+			this.currentVersion = cachedInfo.currentVersion || this.currentVersion
+			this.latestVersion = cachedInfo.latestVersion || this.latestVersion
+			this.updateTip = cachedInfo.updateTip
+			this.updateGuidePath = cachedInfo.updateGuidePath
+
+			const latestInfo = await fetchRemoteAppVersionInfo()
+			this.currentVersion = latestInfo.currentVersion || this.currentVersion
+			this.latestVersion = latestInfo.latestVersion || this.latestVersion
+			this.updateTip = latestInfo.updateTip
+			this.updateGuidePath = latestInfo.updateGuidePath
 		},
 		async loadSimplePoints() {
 			const token = this.getAuthToken()
@@ -614,6 +648,16 @@ export default {
 		navigateToPointsCenter() {
 			uni.navigateTo({
 				url: '/pages/extra/points-center'
+			})
+		},
+		navigateToUpdateGuide() {
+			const query = [
+				`currentVersion=${encodeURIComponent(this.currentVersion || CURRENT_APP_VERSION)}`,
+				`latestVersion=${encodeURIComponent(this.latestVersion || CURRENT_APP_VERSION)}`
+			].join('&')
+
+			uni.navigateTo({
+				url: `${this.updateGuidePath || DEFAULT_UPDATE_GUIDE_PATH}?${query}`
 			})
 		}
 	}

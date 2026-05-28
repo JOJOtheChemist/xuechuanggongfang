@@ -56,7 +56,7 @@ export default {
 
 .business-hero-notice {
 	position: absolute;
-	top: 170rpx;
+	top: 200rpx;
 	left: 92rpx;
 	min-width: 0;
 	max-width: 560rpx;

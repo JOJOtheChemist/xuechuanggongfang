@@ -99,13 +99,11 @@ export default {
       return this.isVipOpened ? '已开通' : '立即开通'
     },
     vipPrivilegeText() {
-      const phone = String(this.customerServicePhone || '').trim()
-      const phoneText = phone ? `客服 ${phone}` : '联系客服'
       if (String(this.status.userType || '').trim() === 'paid_special') {
-        return `查分大使 · 无限查分 · ${phoneText}`
+        return '查分大使 · 无限查分'
       }
 
-      return `VIP：客服加3次 / 查分大使无限查分 · ${phoneText}`
+      return 'VIP：客服加3次 / 查分大使无限查分'
     }
   },
   methods: {

@@ -34,7 +34,7 @@
 					</view>
 					
 					<view class="view-btn" :class="{ 'view-btn-disabled': item.can_view_detail === false }">
-						{{ item.can_view_detail === false ? '只有队长可以查看' : '查看详情' }}
+						{{ item.can_view_detail === false ? '不可查看' : '查看详情' }}
 					</view>
 				</view>
 			</view>
@@ -43,6 +43,7 @@
 </template>
 <script>
 import { getHttpService } from '@/utils/http-services'
+import { readStorageSync, writeStorageSync } from '@/utils/storage-bridge'
 	export default {
 		data() {
 			return {
@@ -63,7 +64,7 @@ import { getHttpService } from '@/utils/http-services'
 			async loadData() {
 				this.loading = true
 				try {
-					const token = uni.getStorageSync('token')
+					const token = await readStorageSync('token', '')
 					if (!token) {
 						uni.showToast({
 							title: '请先登录',
@@ -104,7 +105,7 @@ import { getHttpService } from '@/utils/http-services'
 				const min = date.getMinutes().toString().padStart(2, '0')
 				return `${y}-${m}-${d} ${h}:${min}`
 			},
-			viewDetail(item) {
+			async viewDetail(item) {
 				console.log('[order-management] Clicked item:', item)
 
 				if (item && item.can_view_detail === false) {
@@ -116,7 +117,7 @@ import { getHttpService } from '@/utils/http-services'
 				}
 				
 				// Store item data for the detail page to consume
-				uni.setStorageSync('current_order_detail', item)
+				await writeStorageSync('current_order_detail', item)
 				
 				// Navigate to the DEDICATED detail page
 				// Note: Passing businessId as 'id' to be compatible with logic that might use it, 

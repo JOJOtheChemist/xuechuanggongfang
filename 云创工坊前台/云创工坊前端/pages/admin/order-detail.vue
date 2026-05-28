@@ -114,6 +114,7 @@
 
 <script>
 import { getHttpService } from '@/utils/http-services'
+import { readStorageSync } from '@/utils/storage-bridge'
 export default {
   data() {
     return {
@@ -123,24 +124,27 @@ export default {
     }
   },
   onLoad(options) {
-    let signupId = options.id
-    
-    // 如果 URL 没带 id，尝试从缓存拿 (兼容之前的逻辑)
-    if (!signupId) {
-      const cached = uni.getStorageSync('current_order_detail')
-      if (cached && (cached.id || cached._id)) {
-        signupId = cached.id || cached._id
-      }
-    }
-    
-    if (signupId) {
-      this.fetchDetail(signupId)
-    } else {
-       uni.showToast({ title: '未指定订单ID', icon: 'none' })
-       this.loading = false
-    }
+    void this.initializePage(options || {})
   },
   methods: {
+    async initializePage(options) {
+      let signupId = options.id
+
+      // 如果 URL 没带 id，尝试从缓存拿 (兼容之前的逻辑)
+      if (!signupId) {
+        const cached = await readStorageSync('current_order_detail', null)
+        if (cached && (cached.id || cached._id)) {
+          signupId = cached.id || cached._id
+        }
+      }
+
+      if (signupId) {
+        await this.fetchDetail(signupId)
+      } else {
+        uni.showToast({ title: '未指定订单ID', icon: 'none' })
+        this.loading = false
+      }
+    },
     normalizeDetail(raw) {
       if (!raw || typeof raw !== 'object') return null
       const extraPayload = raw.extraPayload && typeof raw.extraPayload === 'object' ? raw.extraPayload : {}
@@ -169,7 +173,12 @@ export default {
     async fetchDetail(signupId) {
       this.loading = true
       try {
-        const token = uni.getStorageSync('token')
+        const token = await readStorageSync('token', '')
+        if (!token) {
+          uni.showToast({ title: '请先登录', icon: 'none' })
+          return
+        }
+
         const businessService = getHttpService('business-service')
         
         // 显式传递 _token，使用对象参数形式

@@ -114,6 +114,18 @@ export function createVolunteerPageData() {
     guestPreviewInstitutions: [],
     guestPreviewLoading: false,
     guestPreviewRequestPromise: null,
+    institutionSummaryCounts: {
+      hard: 0,
+      stable: 0,
+      safe: 0,
+      supplement: 0
+    },
+    institutionSummaryItems: [],
+    institutionSummaryTotal: 0,
+    institutionSummaryLoading: false,
+    institutionSummaryActiveKey: '',
+    institutionSummaryLoadedKey: '',
+    institutionSummaryRequestPromise: null,
     shareInviteSheetVisible: false,
     page: 0,
     total: 0,

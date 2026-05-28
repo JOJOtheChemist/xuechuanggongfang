@@ -162,17 +162,20 @@
     </view>
 
     <view
-      v-if="hasHiddenSchoolItems || hasMore || loadingMore"
-      class="load-more"
-      @tap="handleLoadMore"
+      v-if="autoLoadStatusText"
+      class="load-more load-more-passive"
     >
-      <text>{{ loadMoreActionText }}</text>
+      <text>{{ autoLoadStatusText }}</text>
     </view>
   </view>
 </template>
 
 <script>
 import { getCachedImageSync, resolveCachedImages } from '../../../utils/remote-image-cache'
+import {
+  matchesMajorScoreFilters,
+  resolveSupplementAvailability
+} from '../../../utils/volunteer-local-admission'
 import MajorInlineMeta from './MajorInlineMeta.vue'
 
 function normalizeNature(value) {
@@ -266,6 +269,14 @@ export default {
       type: String,
       default: ''
     },
+    riskFilterKey: {
+      type: String,
+      default: ''
+    },
+    scoreValue: {
+      type: [Number, String],
+      default: ''
+    },
     subjectTrackFilter: {
       type: String,
       default: ''
@@ -315,6 +326,14 @@ export default {
       this.resetRenderedSchoolCount()
       this.scheduleSchoolHydration()
     },
+    riskFilterKey() {
+      this.resetRenderedSchoolCount()
+      this.scheduleSchoolHydration()
+    },
+    scoreValue() {
+      this.resetRenderedSchoolCount()
+      this.scheduleSchoolHydration()
+    },
     subjectTrackFilter() {
       this.resetRenderedSchoolCount()
       this.scheduleSchoolHydration()
@@ -344,6 +363,12 @@ export default {
     normalizedMajorKeywordFilter() {
       return normalizeSearchText(this.majorKeywordFilter)
     },
+    normalizedRiskFilterKey() {
+      return String(this.riskFilterKey || '').trim()
+    },
+    normalizedScoreValue() {
+      return toFiniteNumber(this.scoreValue)
+    },
     normalizedSubjectTrackFilter() {
       return normalizeSubjectTrack(this.subjectTrackFilter)
     },
@@ -358,17 +383,17 @@ export default {
     scoreTableColumns() {
       return SCORE_TABLE_COLUMNS
     },
-    loadMoreActionText() {
+    autoLoadStatusText() {
       if (this.loadingMore) {
-        return this.loadingMoreText || '正在加载更多院校...'
+        return this.loadingMoreText || '正在加载下一批院校...'
       }
 
       if (this.hasHiddenSchoolItems) {
-        return `继续显示更多院校（${this.visibleSchoolItems.length}/${this.schoolItems.length}）`
+        return `下滑继续展开本批院校（已展示 ${this.visibleSchoolItems.length}/${this.schoolItems.length}）`
       }
 
       if (this.hasMore) {
-        return '继续加载更多匹配院校'
+        return '下滑继续加载下一批院校'
       }
 
       return ''
@@ -734,6 +759,24 @@ export default {
         return majorName.includes(normalizedKeyword) || majorCategory.includes(normalizedKeyword)
       })
     },
+    filterMajorsByRisk(majors, item) {
+      const source = Array.isArray(majors) ? majors : []
+      const riskFilterKey = this.normalizedRiskFilterKey
+      const scoreValue = this.normalizedScoreValue
+
+      if (scoreValue === null) {
+        return source
+      }
+
+      if (riskFilterKey === 'supplement') {
+        return resolveSupplementAvailability(item) ? source : []
+      }
+
+      return source.filter((major) => matchesMajorScoreFilters(major, {
+        score: scoreValue,
+        riskBucket: riskFilterKey
+      }, item))
+    },
     resolveVisibleMajorPreviews(item) {
       const previewMajors = this.filterMajorsByKeyword(this.getPreviewMajors(item))
       const categoryFilteredMajors = this.filterMajorsByCategory(previewMajors)
@@ -751,8 +794,10 @@ export default {
           return normalizeSubjectTrack(major.subjectTrack) === this.normalizedSubjectTrackFilter
         })
 
-      if (categoryFilteredMajors.length) {
-        return categoryFilteredMajors
+      const riskFilteredMajors = this.filterMajorsByRisk(categoryFilteredMajors, item)
+
+      if (riskFilteredMajors.length) {
+        return riskFilteredMajors
       }
 
       return []
@@ -948,8 +993,10 @@ export default {
           return normalizeSubjectTrack(major.subjectTrack) === this.normalizedSubjectTrackFilter
         })
 
-      if (categoryFilteredMajors.length) {
-        return categoryFilteredMajors
+      const riskFilteredMajors = this.filterMajorsByRisk(categoryFilteredMajors, item)
+
+      if (riskFilteredMajors.length) {
+        return riskFilteredMajors
       }
 
       return []
@@ -1497,7 +1544,11 @@ export default {
   background: #f8fafc;
   border: 1rpx solid #dbe4f0;
   text-align: center;
-  color: #2563eb;
+  color: #64748b;
+}
+
+.load-more-passive {
+  pointer-events: none;
 }
 
 </style>

@@ -28,7 +28,7 @@
 			:member-icon-url="memberIconUrl"
 			:coin-icon-url="coinIconUrl"
 			@close="closeTeamDetail"
-			@join="handleJoinFromDialog"
+			@action="handleJoinFromDialog"
 		/>
 	</view>
 </template>

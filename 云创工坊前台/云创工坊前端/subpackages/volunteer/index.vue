@@ -1,10 +1,7 @@
 <template>
   <view class="volunteer-page">
     <view class="direct-score-top-hero">
-      <view class="direct-score-back-button" @tap="handleBackToVolunteer">
-        <text class="direct-score-back-icon">‹</text>
-        <text class="direct-score-back-text">返回</text>
-      </view>
+      <view class="direct-score-back-button" @tap="handleBackToVolunteer"></view>
       <image
         class="direct-score-top-hero-image"
         :src="directScoreTopHeroUrl"
@@ -143,7 +140,7 @@
             :class="{ 'risk-pill-content-supplement': option.value === 'supplement' }"
           >
             <text class="risk-pill-label">{{ option.displayLabel || option.label }}</text>
-            <text class="risk-pill-count">{{ scoreValue === null ? '--' : riskSummary[option.value] }}</text>
+            <text class="risk-pill-count">{{ scoreValue === null || !riskSummaryReady ? '--' : riskSummary[option.value] }}</text>
           </view>
         </view>
       </view>
@@ -260,10 +257,13 @@
 
       <volunteer-direct-score-results
         v-else
+        ref="directScoreResults"
         :institutions="visibleInstitutions"
         :has-more="hasMore"
         :major-category-filter="selectedMajorCategoryValue"
         :major-keyword-filter="appliedMajorKeyword"
+        :risk-filter-key="activeRiskFilterKey"
+        :score-value="scoreValue"
         :subject-track-filter="selectedSubjectTrackValue"
         :suspend-rendering="filterInputFocused"
         :loading-more="loadingMore"
@@ -404,6 +404,7 @@ const originalData = typeof baseVolunteerPageOptions.data === 'function'
 const originalOnLoad = baseVolunteerPageOptions.onLoad
 const originalOnShow = baseVolunteerPageOptions.onShow
 const originalOnPullDownRefresh = baseVolunteerPageOptions.onPullDownRefresh
+const originalOnReachBottom = baseVolunteerPageOptions.onReachBottom
 const originalOnShareAppMessage = baseVolunteerPageOptions.onShareAppMessage
 const originalOnUnload = baseVolunteerPageOptions.onUnload
 const baseComputed = baseVolunteerPageOptions.computed || {}
@@ -573,6 +574,20 @@ const onPullDownRefresh = function onPullDownRefresh(...args) {
   }
 }
 
+const onReachBottom = function onReachBottom(...args) {
+  const resultsRef = this.$refs && this.$refs.directScoreResults
+  const resultsComponent = Array.isArray(resultsRef) ? resultsRef[0] : resultsRef
+
+  if (resultsComponent && typeof resultsComponent.handleLoadMore === 'function') {
+    resultsComponent.handleLoadMore()
+    return
+  }
+
+  if (typeof originalOnReachBottom === 'function') {
+    return originalOnReachBottom.apply(this, args)
+  }
+}
+
 export default {
 	  components: {
 			VolunteerAccessStatusUpsellBanners,
@@ -588,7 +603,7 @@ export default {
   onLoad,
   onShow,
   onPullDownRefresh,
-  onReachBottom() {},
+  onReachBottom,
   onShareAppMessage(...args) {
     if (typeof originalOnShareAppMessage === 'function') {
       return originalOnShareAppMessage.apply(this, args)

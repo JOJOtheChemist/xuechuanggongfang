@@ -29,14 +29,12 @@
 		},
 		computed: {
 			safeTags() {
-				const teamLabel = typeof this.teamName === 'string' ? this.teamName.trim() : ''
 				const normalized = Array.isArray(this.tags)
 					? this.tags
 						.map(tag => (typeof tag === 'string' ? tag.trim() : ''))
 						.filter(Boolean)
 					: []
-				const merged = teamLabel ? [teamLabel, ...normalized] : normalized
-				return Array.from(new Set(merged)).slice(0, Math.max(0, this.max))
+				return Array.from(new Set(normalized)).slice(0, Math.max(0, this.max))
 			}
 		}
 	}

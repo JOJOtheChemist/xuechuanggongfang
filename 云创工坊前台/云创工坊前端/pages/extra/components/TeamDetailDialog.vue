@@ -40,7 +40,7 @@
 				</view>
 			</scroll-view>
 
-			<button class="join-btn" @tap="handleJoin">立即加入团队</button>
+			<button class="join-btn" @tap="handleAction">{{ actionText }}</button>
 		</view>
 	</view>
 </template>
@@ -83,6 +83,10 @@ export default {
 		coinIconUrl: {
 			type: String,
 			default: ''
+		},
+		actionText: {
+			type: String,
+			default: '立即加入团队'
 		}
 	},
 	computed: {
@@ -119,8 +123,8 @@ export default {
 		handleClose() {
 			this.$emit('close')
 		},
-		handleJoin() {
-			this.$emit('join', this.team)
+		handleAction() {
+			this.$emit('action', this.team)
 		}
 	}
 }

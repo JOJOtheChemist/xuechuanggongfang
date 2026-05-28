@@ -51,3 +51,19 @@ export async function requestInstitutionList(query = {}) {
     }
   }
 }
+
+export async function requestInstitutionFullSnapshot(query = {}) {
+  const envelope = await requestAdmissionEnvelope('/admission/institutions/full-snapshot', query, { auth: true })
+  const data = envelope && envelope.body ? envelope.body.data : {}
+  const items = Array.isArray(data && data.items) ? data.items : []
+  const total = Math.max(0, Number(data && data.total) || items.length)
+
+  return {
+    envelope,
+    data: {
+      items,
+      total,
+      generatedAt: String((data && data.generatedAt) || '')
+    }
+  }
+}

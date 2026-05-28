@@ -28,7 +28,6 @@ import {
   resolveRiskFilterKey as resolveAdmissionRiskFilterKey,
   resolveScoreGap as resolveAdmissionScoreGap,
   resolveSupplementAvailability as resolveAdmissionSupplementAvailability,
-  sortInstitutionsForScore,
   buildLocalGuestPreviewCacheKey,
   readLocalGuestPreviewCache,
   writeLocalQueryQuota,
@@ -826,7 +825,7 @@ export function createVolunteerPageOptions() {
           this.selectedRiskFilterKey !== this.appliedRiskFilterKey
         )
       },
-      filteredInstitutions() {
+	    filteredInstitutions() {
 	      const localFilters = {
 	        city: this.selectedCityValue,
 	        schoolLevel: this.selectedLevelValue,
@@ -834,12 +833,17 @@ export function createVolunteerPageOptions() {
 	        keyword: this.appliedKeyword,
 	        majorKeyword: this.appliedMajorKeyword
 	      }
-	      const items = this.institutions
+
+        if (this.hasFullInstitutionAccess) {
+          return this.institutions
+            .filter(isValidInstitution)
+            .filter((item) => !shouldHideDirectScoreInstitution(item))
+        }
+
+	      return this.institutions
 	        .filter(isValidInstitution)
           .filter((item) => !shouldHideDirectScoreInstitution(item))
 	        .filter((item) => institutionMatchesLocalFilters(item, localFilters))
-
-	      return this.scoreValue === null ? items : sortInstitutionsForScore(items, this.scoreValue)
 	    },
 	    guestPreviewInstitutionItems() {
 	        return (Array.isArray(this.guestPreviewInstitutions) ? this.guestPreviewInstitutions : [])
@@ -872,34 +876,15 @@ export function createVolunteerPageOptions() {
           return filterGuestPreviewInstitutions(this.guestPreviewInstitutionItems)
         }
 
-        if (this.scoreValue === null) {
-          if (this.filteredInstitutions.length > 0) {
-            return this.filteredInstitutions
-          }
-
-          if (hasActiveLocalFilters || this.institutions.length > 0) {
-            return []
-          }
-
-          return filterGuestPreviewInstitutions(this.guestPreviewInstitutionItems)
+        if (this.filteredInstitutions.length > 0) {
+          return this.filteredInstitutions
         }
 
-        const locallyMatchedInstitutions = this.filteredInstitutions.filter((item) => this.isLocalRecommendationMatch(item))
-
-        if (this.appliedRiskFilterKey) {
-          const matchedInstitutions = locallyMatchedInstitutions.filter((item) => this.matchesRiskFilter(item, this.appliedRiskFilterKey))
-          return matchedInstitutions.length > 0
-            ? matchedInstitutions
-            : (hasActiveLocalFilters || this.institutions.length > 0
-              ? []
-              : filterGuestPreviewInstitutions(this.guestPreviewInstitutionItems))
+        if (hasActiveLocalFilters || this.institutions.length > 0 || Number(this.page || 0) > 0) {
+          return []
         }
 
-        return locallyMatchedInstitutions.length > 0
-          ? locallyMatchedInstitutions
-          : (hasActiveLocalFilters || this.institutions.length > 0
-            ? []
-            : filterGuestPreviewInstitutions(this.guestPreviewInstitutionItems))
+        return filterGuestPreviewInstitutions(this.guestPreviewInstitutionItems)
       },
       visibleSchoolCards() {
         const keyCount = {}
@@ -960,7 +945,7 @@ export function createVolunteerPageOptions() {
 	        return summary
 	      }
 
-	      return this.filteredInstitutions.reduce((currentSummary, item) => {
+	      return this.institutions.reduce((currentSummary, item) => {
 	        if (this.resolveSupplementAvailability(item)) {
 	          currentSummary.supplement += 1
 	        }
@@ -979,7 +964,13 @@ export function createVolunteerPageOptions() {
 	      }, summary)
 	    },
       hasMore() {
-        return false
+        if (!this.hasFullInstitutionAccess) {
+          return false
+        }
+
+        const loadedCount = Array.isArray(this.institutions) ? this.institutions.length : 0
+        const totalCount = Math.max(0, Number(this.total || 0) || 0)
+        return totalCount > loadedCount
       },
       resultSummaryText() {
         if (!this.hasFullInstitutionAccess) {
@@ -989,12 +980,9 @@ export function createVolunteerPageOptions() {
         const loadedCount = Array.isArray(this.institutions) ? this.institutions.length : 0
         const visibleCount = Array.isArray(this.visibleInstitutions) ? this.visibleInstitutions.length : 0
         const totalCount = Number(this.total || 0) > 0 ? Number(this.total || 0) : loadedCount
-        const loadPercent = totalCount > 0
-          ? Math.min(100, Math.round((loadedCount / totalCount) * 100))
-          : 0
 
         if (totalCount > 0) {
-          return `已展示 ${visibleCount} 所 · 已加载 ${loadedCount}/${totalCount} 所（${loadPercent}%）`
+          return `当前返回 ${visibleCount} 所 · 已加载 ${loadedCount}/${totalCount} 所`
         }
 
         if (this.loading && loadedCount === 0) {
@@ -1008,7 +996,7 @@ export function createVolunteerPageOptions() {
           return ''
         }
 
-        return '首次加载会稍慢一点，后续查分会更顺畅。'
+        return this.hasMore ? '可继续加载更多匹配院校。' : '当前条件下的匹配院校已加载完成。'
       },
       institutionLoadingText() {
         const loadedCount = Array.isArray(this.institutions) ? this.institutions.length : 0
@@ -1135,14 +1123,6 @@ export function createVolunteerPageOptions() {
           return this.loading || this.guestPreviewLoading
         }
 
-        const loadedCount = Array.isArray(this.institutions) ? this.institutions.length : 0
-        const totalCount = Math.max(0, Number(this.total || 0) || 0)
-        const hasCompleteFullSnapshot = totalCount > 0 && loadedCount >= totalCount
-
-        if (hasCompleteFullSnapshot) {
-          return false
-        }
-
         return this.loading
       },
       showError() {
@@ -1210,7 +1190,11 @@ export function createVolunteerPageOptions() {
 	      uni.stopPullDownRefresh()
 	    })
 	  },
-    onReachBottom() {},
+    onReachBottom() {
+      if (this.hasFullInstitutionAccess && this.hasMore && !this.loadingMore && !this.loading) {
+        this.loadMore()
+      }
+    },
     onShareAppMessage() {
       this.shareInviteSheetVisible = false
       const inviterName = this.resolveShareNickname()
@@ -1451,14 +1435,6 @@ export function createVolunteerPageOptions() {
         this.appliedRiskFilterKey = this.draftScoreValue === null ? '' : this.selectedRiskFilterKey
       },
       isInstitutionBaseQueryChanged() {
-        return (
-          this.selectedTopFilterIndex !== this.appliedTopFilterIndex ||
-          String(this.draftExamValue || '') !== String(this.selectedExamValue || '') ||
-          String(this.draftSubjectTrackValue || '') !== String(this.selectedSubjectTrackValue || '') ||
-          String(this.draftMajorCategoryValue || '') !== String(this.selectedMajorCategoryValue || '')
-        )
-      },
-      isLocalSearchOnlyChange() {
         const draftScoreValue = this.draftScoreValue
         const appliedScoreValue = this.scoreValue
         const scoreChanged =
@@ -1466,7 +1442,22 @@ export function createVolunteerPageOptions() {
             ? appliedScoreValue !== null
             : appliedScoreValue === null || Math.abs(Number(draftScoreValue) - Number(appliedScoreValue)) > 0.000001
 
-        return !this.isInstitutionBaseQueryChanged() && !scoreChanged
+        return (
+          this.selectedTopFilterIndex !== this.appliedTopFilterIndex ||
+          scoreChanged ||
+          String(this.keyword || '').trim() !== String(this.appliedKeyword || '').trim() ||
+          String(this.majorKeyword || '').trim() !== String(this.appliedMajorKeyword || '').trim() ||
+          this.selectedCityIndex !== this.appliedCityIndex ||
+          this.selectedLevelIndex !== this.appliedLevelIndex ||
+          this.selectedNatureIndex !== this.appliedNatureIndex ||
+          (draftScoreValue === null ? '' : this.selectedRiskFilterKey) !== String(this.appliedRiskFilterKey || '') ||
+          String(this.draftExamValue || '') !== String(this.selectedExamValue || '') ||
+          String(this.draftSubjectTrackValue || '') !== String(this.selectedSubjectTrackValue || '') ||
+          String(this.draftMajorCategoryValue || '') !== String(this.selectedMajorCategoryValue || '')
+        )
+      },
+      isLocalSearchOnlyChange() {
+        return !this.hasFullInstitutionAccess && !this.isInstitutionBaseQueryChanged()
       },
       async persistScoreIfNeeded() {
         const draftScore = this.draftScoreValue
@@ -2292,7 +2283,6 @@ export function createVolunteerPageOptions() {
 	      const previousRiskFilterKey = this.selectedRiskFilterKey
 	      const nextRiskFilterKey = previousRiskFilterKey === value ? '' : value
 	      this.selectedRiskFilterKey = nextRiskFilterKey
-        this.appliedRiskFilterKey = nextRiskFilterKey
 	    },
 	    handleFilterChange() {
         this.closeDropdown()

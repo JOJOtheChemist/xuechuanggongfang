@@ -162,11 +162,11 @@
     </view>
 
     <view
-      v-if="hasHiddenSchoolItems"
+      v-if="hasHiddenSchoolItems || hasMore || loadingMore"
       class="load-more"
       @tap="handleLoadMore"
     >
-      <text>继续显示更多院校（{{ visibleSchoolItems.length }}/{{ schoolItems.length }}）</text>
+      <text>{{ loadMoreActionText }}</text>
     </view>
   </view>
 </template>
@@ -357,6 +357,21 @@ export default {
     },
     scoreTableColumns() {
       return SCORE_TABLE_COLUMNS
+    },
+    loadMoreActionText() {
+      if (this.loadingMore) {
+        return this.loadingMoreText || '正在加载更多院校...'
+      }
+
+      if (this.hasHiddenSchoolItems) {
+        return `继续显示更多院校（${this.visibleSchoolItems.length}/${this.schoolItems.length}）`
+      }
+
+      if (this.hasMore) {
+        return '继续加载更多匹配院校'
+      }
+
+      return ''
     }
   },
   methods: {
@@ -432,7 +447,14 @@ export default {
       }
     },
     handleLoadMore() {
+      if (this.loadingMore) {
+        return
+      }
+
       if (!this.hasHiddenSchoolItems) {
+        if (this.hasMore) {
+          this.$emit('load-more')
+        }
         return
       }
 
@@ -440,6 +462,13 @@ export default {
         this.schoolItems.length,
         (Number(this.renderedSchoolCount) || 0) + RENDER_BATCH_STEP
       )
+
+      if (
+        this.renderedSchoolCount >= this.schoolItems.length &&
+        this.hasMore
+      ) {
+        this.$emit('load-more')
+      }
     },
     clearSchoolHydrationTimer() {
       if (this.schoolHydrationTimer) {

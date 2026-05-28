@@ -261,10 +261,14 @@
       <volunteer-direct-score-results
         v-else
         :institutions="visibleInstitutions"
+        :has-more="hasMore"
         :major-category-filter="selectedMajorCategoryValue"
         :major-keyword-filter="appliedMajorKeyword"
         :subject-track-filter="selectedSubjectTrackValue"
         :suspend-rendering="filterInputFocused"
+        :loading-more="loadingMore"
+        :loading-more-text="institutionLoadProgressText"
+        @load-more="loadMore"
         @select="handleSchoolSelect"
       />
 

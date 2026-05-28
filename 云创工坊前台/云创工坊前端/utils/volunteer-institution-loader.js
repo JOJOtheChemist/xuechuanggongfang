@@ -1,12 +1,13 @@
 import { isAdmissionAccessDeniedError } from './admission-api'
 import {
   DEFAULT_ADMISSION_PROVINCE,
+  INSTITUTION_CACHE_PAGE_SIZE,
   buildLocalInstitutionCacheKey,
   isValidInstitution,
   readLocalInstitutionCache,
   writeLocalInstitutionCache
 } from './volunteer-local-admission'
-import { buildInstitutionSnapshotDebugApi, requestInstitutionSnapshot } from './volunteer-institution-snapshot'
+import { buildInstitutionListDebugApi, requestInstitutionList } from './volunteer-institution-snapshot'
 
 export const FILTER_DEBOUNCE_MS = 300
 export const INSTITUTION_REQUEST_DEDUPE_MS = 800
@@ -156,6 +157,34 @@ function compactInstitutionList(items) {
     .filter(Boolean)
 }
 
+function mergeInstitutionItems(currentItems, nextItems) {
+  const merged = []
+  const seen = new Set()
+
+  ;[...(Array.isArray(currentItems) ? currentItems : []), ...(Array.isArray(nextItems) ? nextItems : [])].forEach((item) => {
+    if (!isValidInstitution(item)) return
+
+    const key = String(
+      item.stableId ||
+      item.stable_id ||
+      item.id ||
+      item.institutionId ||
+      item.institution_id ||
+      item.name ||
+      ''
+    ).trim()
+
+    if (!key || seen.has(key)) {
+      return
+    }
+
+    seen.add(key)
+    merged.push(item)
+  })
+
+  return compactInstitutionList(merged)
+}
+
 export const volunteerInstitutionLoaderMethods = {
   resetInstitutionResults() {
     this.clearInstitutionReloadTimer()
@@ -200,7 +229,7 @@ export const volunteerInstitutionLoaderMethods = {
     if (options === undefined) options = {}
     this.institutions = compactInstitutionList(items).filter(isValidInstitution)
     this.institutionBaseCacheKey = cacheKey
-    this.page = 1
+    this.page = Math.max(1, Number(options.page || 1))
     this.total = Number(options.total || 0) || this.institutions.length
     this.errorText = ''
     this.loading = false
@@ -213,11 +242,23 @@ export const volunteerInstitutionLoaderMethods = {
     })
   },
   buildInstitutionBaseQuery() {
+    const scoreValue =
+      this.scoreValue === null || this.scoreValue === undefined
+        ? undefined
+        : Number(this.scoreValue)
+
     return {
       province: DEFAULT_ADMISSION_PROVINCE,
       examType: this.selectedExamValue,
       subjectTrack: this.selectedSubjectTrackValue,
-      majorCategory: this.selectedMajorCategoryValue
+      majorCategory: this.selectedMajorCategoryValue,
+      city: this.selectedCityValue,
+      schoolLevel: this.selectedLevelValue,
+      ownershipType: this.selectedNatureValue,
+      keyword: String(this.appliedKeyword || '').trim(),
+      majorKeyword: String(this.appliedMajorKeyword || '').trim(),
+      score: Number.isFinite(scoreValue) ? scoreValue : undefined,
+      riskBucket: Number.isFinite(scoreValue) ? String(this.appliedRiskFilterKey || '').trim() : ''
     }
   },
   async loadInstitutions(reset, options) {
@@ -229,13 +270,15 @@ export const volunteerInstitutionLoaderMethods = {
       return
     }
 
-    if (reset === false) return
-
     if (this.scoreValue === null && this.appliedRiskFilterKey) {
       this.appliedRiskFilterKey = ''
     }
 
-    const query = this.buildInstitutionBaseQuery()
+    const baseQuery = this.buildInstitutionBaseQuery()
+    const query = Object.assign({}, baseQuery)
+    const targetPage = reset === false ? Math.max(1, Number(this.page || 0) + 1) : 1
+    query.page = targetPage
+    query.pageSize = INSTITUTION_CACHE_PAGE_SIZE
     const requestKey = JSON.stringify(query)
     const cacheKey = buildLocalInstitutionCacheKey(query)
     const requestAt = Date.now()
@@ -245,11 +288,25 @@ export const volunteerInstitutionLoaderMethods = {
     const cachedTotal = Math.max(0, Number(cached && cached.total) || 0)
     const hasCachedItems = cachedItems.length > 0
 
+    if (reset === false) {
+      const currentTotal = Math.max(0, Number(this.total || 0) || cachedTotal)
+      const currentLoadedCount = Array.isArray(this.institutions) ? this.institutions.length : 0
+
+      if (this.loadingMore || this.loading) {
+        return
+      }
+
+      if (currentTotal > 0 && currentLoadedCount >= currentTotal) {
+        return
+      }
+    }
+
     if (requestKey === this.activeInstitutionRequestKey && this.activeInstitutionRequestPromise) {
       return this.activeInstitutionRequestPromise
     }
 
     if (
+      reset !== false &&
       !options.force &&
       this.institutionBaseCacheKey === cacheKey &&
       this.institutions.length > 0 &&
@@ -263,15 +320,15 @@ export const volunteerInstitutionLoaderMethods = {
       return
     }
 
-    if (cached && hasCachedItems) {
+    if (reset !== false && cached && hasCachedItems) {
       console.log('[volunteer][load] using local cache, count:', cachedItems.length)
       if (typeof this.setAdmissionDebugPayload === 'function') {
         this.setAdmissionDebugPayload({
           source: 'local-cache',
-          query,
+          query: baseQuery,
           cacheKey,
           total: cachedTotal || cachedItems.length,
-          pageCount: 1,
+          pageCount: Math.max(1, Number(cached.page || 1)),
           api: {
             institutions: {
               requestedAt: new Date().toISOString(),
@@ -288,7 +345,8 @@ export const volunteerInstitutionLoaderMethods = {
       }
 
       this.applyInstitutionResults(cachedItems, cacheKey, {
-        total: cachedTotal || cachedItems.length
+        total: cachedTotal || cachedItems.length,
+        page: Math.max(1, Number(cached.page || 1))
       })
 
       if (!options.force && !skipLocalCache) {
@@ -299,6 +357,7 @@ export const volunteerInstitutionLoaderMethods = {
     }
 
     if (
+      reset !== false &&
       !options.force &&
       requestKey === this.lastInstitutionRequestKey &&
       requestAt - this.lastInstitutionRequestAt < INSTITUTION_REQUEST_DEDUPE_MS
@@ -311,20 +370,20 @@ export const volunteerInstitutionLoaderMethods = {
     const requestSeq = this.institutionRequestSeq + 1
     this.institutionRequestSeq = requestSeq
 
-    this.loading = !hasCachedItems
-    this.loadingMore = false
-    this.institutionLoadProgressText = hasCachedItems ? '' : '正在加载院校数据'
-    if (!hasCachedItems) {
+    this.loading = reset !== false ? !hasCachedItems : false
+    this.loadingMore = reset === false
+    this.institutionLoadProgressText = reset === false ? '正在加载更多院校' : (hasCachedItems ? '' : '正在加载院校数据')
+    if (reset !== false && !hasCachedItems) {
       this.institutions = []
       this.page = 0
       this.total = 0
     }
     this.errorText = ''
 
-    if (!hasCachedItems && typeof this.setAdmissionDebugPayload === 'function') {
+    if (reset !== false && !hasCachedItems && typeof this.setAdmissionDebugPayload === 'function') {
       this.setAdmissionDebugPayload({
         source: 'requesting',
-        query,
+        query: baseQuery,
         cacheKey,
         requestSeq,
         total: 0,
@@ -335,7 +394,7 @@ export const volunteerInstitutionLoaderMethods = {
             state: 'requesting',
             request: {
               method: 'GET',
-              path: '/admission/institutions/full-snapshot',
+              path: '/admission/institutions',
               query: Object.assign({}, query || {})
             }
           }
@@ -343,9 +402,13 @@ export const volunteerInstitutionLoaderMethods = {
       })
     }
 
-    console.log('[volunteer][load] start snapshot loading, query:', JSON.stringify(query))
+    console.log('[volunteer][load] start institution list loading, query:', JSON.stringify(query))
 
-    const requestPromise = this.fetchInstitutionSnapshot(query, requestSeq, cacheKey)
+    const requestPromise = this.fetchInstitutionPage(query, requestSeq, cacheKey, {
+      reset: reset !== false,
+      baseQuery,
+      targetPage
+    })
     this.activeInstitutionRequestKey = requestKey
     this.activeInstitutionRequestPromise = requestPromise
 
@@ -355,10 +418,10 @@ export const volunteerInstitutionLoaderMethods = {
 
       writeLocalInstitutionCache(cacheKey, compactInstitutionList(result.items), {
         total: result.total,
-        page: 1,
-        pageSize: result.total || result.items.length || 1,
-        loadedPages: 1,
-        pageCount: 1,
+        page: result.page,
+        pageSize: result.pageSize,
+        loadedPages: result.page,
+        pageCount: result.page,
         loadingMore: false,
         progressText: ''
       })
@@ -373,22 +436,24 @@ export const volunteerInstitutionLoaderMethods = {
         }
       }
 
-      if (hasCachedItems) {
+      if (reset !== false && hasCachedItems) {
         console.warn('[volunteer][load] background refresh failed, keeping local cache:', error && error.message)
         this.errorText = ''
         this.institutionLoadProgressText = ''
         this.loading = false
+        this.loadingMore = false
         return
       }
 
-      console.error('[volunteer][load] snapshot failed:', error && error.message)
+      console.error('[volunteer][load] institution list failed:', error && error.message)
       this.errorText = (error && error.message) || '院校数据加载失败'
       this.institutionLoadProgressText = ''
       this.loading = false
+      this.loadingMore = false
       if (typeof this.setAdmissionDebugPayload === 'function') {
         this.setAdmissionDebugPayload({
           source: 'request-error',
-          query,
+          query: baseQuery,
           cacheKey,
           requestSeq,
           total: 0,
@@ -398,7 +463,7 @@ export const volunteerInstitutionLoaderMethods = {
               requestedAt: new Date().toISOString(),
               request: {
                 method: 'GET',
-                path: '/admission/institutions/full-snapshot',
+                path: '/admission/institutions',
                 query: Object.assign({}, query || {})
               },
               error: (error && error.message) || '院校数据加载失败'
@@ -417,35 +482,43 @@ export const volunteerInstitutionLoaderMethods = {
 
       if (requestSeq === this.institutionRequestSeq) {
         this.loading = false
+        this.loadingMore = false
       }
     }
   },
-  async fetchInstitutionSnapshot(query, requestSeq, cacheKey) {
-    const snapshotResult = await requestInstitutionSnapshot(query)
+  async fetchInstitutionPage(query, requestSeq, cacheKey, options = {}) {
+    const listResult = await requestInstitutionList(query)
     if (requestSeq !== this.institutionRequestSeq) return null
 
-    const snapshotData = snapshotResult && snapshotResult.data ? snapshotResult.data : {}
-    const snapshotItems = (Array.isArray(snapshotData.items) ? snapshotData.items : []).filter(isValidInstitution)
-    const total = Math.max(0, Number(snapshotData.total) || snapshotItems.length)
+    const listData = listResult && listResult.data ? listResult.data : {}
+    const listItems = compactInstitutionList(Array.isArray(listData.items) ? listData.items : [])
+    const total = Math.max(0, Number(listData.total) || listItems.length)
+    const page = Math.max(1, Number(listData.page) || Number(options.targetPage) || 1)
+    const pageSize = Math.max(1, Number(listData.pageSize) || Number(query.pageSize) || INSTITUTION_CACHE_PAGE_SIZE)
+    const mergedItems = options.reset
+      ? listItems
+      : mergeInstitutionItems(this.institutions, listItems)
 
     if (requestSeq === this.institutionRequestSeq) {
-      this.applyInstitutionResults(snapshotItems, cacheKey, {
-        total
+      this.applyInstitutionResults(mergedItems, cacheKey, {
+        total,
+        page
       })
       if (typeof this.setAdmissionDebugPayload === 'function') {
         this.setAdmissionDebugPayload({
           source: 'remote',
-          query,
+          query: options.baseQuery || query,
           cacheKey,
           requestSeq,
           total,
-          pageCount: 1,
+          pageCount: page,
           api: {
-            institutions: buildInstitutionSnapshotDebugApi(query, snapshotResult.envelope, {
+            institutions: buildInstitutionListDebugApi(query, listResult.envelope, {
               cacheKey,
               total,
-              snapshot: true,
-              mergedItems: snapshotItems.length
+              page,
+              pageSize,
+              mergedItems: mergedItems.length
             })
           }
         })
@@ -453,9 +526,11 @@ export const volunteerInstitutionLoaderMethods = {
     }
 
     return {
-      source: 'snapshot',
-      items: snapshotItems,
-      total
+      source: 'list',
+      items: mergedItems,
+      total,
+      page,
+      pageSize
     }
   },
   reloadInstitutions(options) {
@@ -465,8 +540,7 @@ export const volunteerInstitutionLoaderMethods = {
   },
   continueInstitutionLoading(options) {
     if (options === undefined) options = {}
-    return this.loadInstitutions(true, {
-      immediate: true,
+    return this.loadInstitutions(false, {
       force: Boolean(options.force)
     })
   },

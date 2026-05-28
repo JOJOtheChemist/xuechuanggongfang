@@ -19,7 +19,7 @@ export const VOLUNTEER_TOP_FILTER_OPTIONS = [
   { label: '历史+化学+生物', examType: 'gaokao', subjectTrack: '历史组', majorCategory: '' }
 ]
 
-const LOCAL_INSTITUTION_CACHE_VERSION = '20260525-gaokao-full-snapshot-v5'
+const LOCAL_INSTITUTION_CACHE_VERSION = '20260528-gaokao-backend-filter-v1'
 const LOCAL_INSTITUTION_CACHE_TTL_MS = 12 * 60 * 60 * 1000
 const LOCAL_INSTITUTION_CACHE_PREFIX = 'admission_institutions_cache:'
 const LOCAL_GUEST_PREVIEW_CACHE_VERSION = '20260523-gaokao-guest-preview-v3'
@@ -378,8 +378,16 @@ export function buildLocalInstitutionCacheKey(query) {
     version: LOCAL_INSTITUTION_CACHE_VERSION,
     province: query.province || '',
     examType: query.examType || '',
+    examYear: query.examYear || '',
     subjectTrack: query.subjectTrack || '',
     majorCategory: query.majorCategory || '',
+    city: query.city || '',
+    schoolLevel: query.schoolLevel || '',
+    ownershipType: query.ownershipType || '',
+    schoolType: query.schoolType || '',
+    keyword: query.keyword || '',
+    majorKeyword: query.majorKeyword || '',
+    score: query.score === undefined || query.score === null ? '' : query.score,
     riskBucket: query.riskBucket || ''
   }))}`
 }

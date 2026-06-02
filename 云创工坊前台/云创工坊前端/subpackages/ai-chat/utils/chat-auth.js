@@ -114,7 +114,7 @@ export function persistAuthSession(payload = {}) {
 	const userId = normalizeText(
 		payload.userId ||
 		payload.uid ||
-		(userInfo && (userInfo.uid || userInfo.userId || userInfo.user_id || userInfo.id || userInfo.username)),
+		(userInfo && (userInfo.id || userInfo.userId || userInfo.user_id || userInfo.uid || userInfo.username)),
 		''
 	)
 
@@ -169,7 +169,7 @@ export function hasStoredAuthEvidence() {
 	const rawUserInfo = getStoredValue('userInfo', {})
 	if (isPlainObject(rawUserInfo)) {
 		const profileUserId = normalizeText(
-			rawUserInfo.uid || rawUserInfo.userId || rawUserInfo.user_id || rawUserInfo.id,
+			rawUserInfo.id || rawUserInfo.userId || rawUserInfo.user_id || rawUserInfo.uid,
 			''
 		)
 		if (profileUserId) return true
@@ -183,7 +183,7 @@ export function extractDisplayUserInfo() {
 	const userInfo = isPlainObject(rawUserInfo) ? rawUserInfo : {}
 	return {
 		userId: normalizeText(
-			userInfo.uid || userInfo.userId || userInfo.user_id || userInfo.id || getStoredValue('userId'),
+			userInfo.id || userInfo.userId || userInfo.user_id || userInfo.uid || getStoredValue('userId'),
 			''
 		),
 		nickname: normalizeText(

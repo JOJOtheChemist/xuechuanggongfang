@@ -860,6 +860,10 @@ export default {
 		this.debugPanelOpen = shouldShowDebugPanel
 		this.syncVisualImages()
 		this.syncVolunteerUnlockAssets()
+		if (this.visualMode === 'gaokao') {
+			this.redirectToGaokaoWebview()
+			return
+		}
 		this.bootstrapPage()
 	},
 	onShow() {
@@ -916,6 +920,22 @@ export default {
 				this.remainingQueryBannerUrl = REMAINING_QUERY_BANNER_URL
 				this.vipBannerUrl = VIP_BANNER_URL
 			}
+		},
+		redirectToGaokaoWebview() {
+			const query = [
+				['sessionId', this.sessionId || ''],
+				['user_id', this.currentUserId || '']
+			]
+				.filter(([, value]) => String(value || '').trim())
+				.map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+				.join('&')
+			const url = `/subpackages/ai-chat/webview${query ? `?${query}` : ''}`
+			uni.redirectTo({
+				url,
+				fail: () => {
+					uni.showToast({ title: '页面打开失败', icon: 'none' })
+				}
+			})
 		},
 		handleIntroTopicSelect(item) {
 			const topicKey = normalizeText(item && item.topicKey, '')

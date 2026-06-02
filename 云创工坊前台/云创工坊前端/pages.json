@@ -116,6 +116,14 @@
 						"navigationStyle": "custom",
 						"backgroundColor": "#ffffff"
 					}
+				},
+				{
+					"path": "webview",
+					"style": {
+						"navigationBarTitleText": "云南高考志愿咨询",
+						"navigationStyle": "custom",
+						"backgroundColor": "#f5f1e8"
+					}
 				}
 			]
 		},

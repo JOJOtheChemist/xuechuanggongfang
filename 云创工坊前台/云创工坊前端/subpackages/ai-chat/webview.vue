@@ -25,15 +25,30 @@
 			<text class="gaokao-webview-tip-title">未配置高考老师页面地址</text>
 			<text class="gaokao-webview-tip-desc">请检查 WebView 页面 URL。</text>
 		</view>
+		<!-- #ifdef H5 -->
+		<view v-else class="gaokao-webview-frame-shell">
+			<iframe
+				:src="webviewUrl"
+				class="gaokao-webview-iframe"
+				allow="camera; microphone; display-capture; clipboard-read; clipboard-write"
+				allowfullscreen
+			></iframe>
+		</view>
+		<!-- #endif -->
+		<!-- #ifndef H5 -->
 		<web-view
 			v-else
 			:src="webviewUrl"
 			:webview-styles="webviewStyles"
 		></web-view>
+		<!-- #endif -->
 	</view>
 </template>
 
 <script>
+import { getCurrentUserToken } from '@/utils/http-services'
+import { buildGaokaoWebviewRoute } from './utils/chat-auth.js'
+
 export default {
 	data() {
 		return {
@@ -55,6 +70,19 @@ export default {
 		}
 	},
 	onLoad(options = {}) {
+		const token = String(getCurrentUserToken() || '').trim()
+		if (!token) {
+			const redirect = encodeURIComponent(buildGaokaoWebviewRoute(options))
+			uni.redirectTo({
+				url: `/pages/auth/login/index?redirect=${redirect}`,
+				fail: () => {
+					uni.navigateTo({
+						url: `/pages/auth/login/index?redirect=${redirect}`
+					})
+				}
+			})
+			return
+		}
 		this.sessionId = String(options.sessionId || '').trim()
 		this.userId = String(options.user_id || options.userId || '').trim()
 		const storageUserInfo = uni.getStorageSync('userInfo') || {}
@@ -204,6 +232,23 @@ export default {
 	font-size: 26rpx;
 	line-height: 1.6;
 	color: #7c6a52;
+}
+
+.gaokao-webview-frame-shell {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: calc(116rpx + env(safe-area-inset-top, 0px));
+	bottom: 0;
+	overflow: hidden;
+}
+
+.gaokao-webview-iframe {
+	display: block;
+	width: 100%;
+	height: 100%;
+	border: none;
+	background: #ffffff;
 }
 
 web-view {
